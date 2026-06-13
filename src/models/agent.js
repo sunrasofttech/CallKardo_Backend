@@ -57,6 +57,16 @@ Agent.init(
       defaultValue: true,
       field: 'allow_interruption',
     },
+    pace: {
+      type: DataTypes.DECIMAL(3, 2),
+      defaultValue: 1.00,
+      field: 'pace',
+    },
+    temperature: {
+      type: DataTypes.DECIMAL(3, 2),
+      defaultValue: 0.60,
+      field: 'temperature',
+    },
   },
   {
     sequelize,

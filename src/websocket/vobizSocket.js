@@ -91,7 +91,10 @@ class VobizSocketHandler {
             // Synthesize Response text -> Voice Audio
             const voiceName = session.agent.voice.voiceId;
             const language = session.agent.language;
-            const audioBuffer = await SarvamService.synthesizeText(text, voiceName, language);
+            const audioBuffer = await SarvamService.synthesizeText(text, voiceName, language, {
+              pace: session.agent.pace,
+              temperature: session.agent.temperature,
+            });
 
             // Stream audio chunk back to VoBiz WS
             if (ws.readyState === ws.OPEN) {

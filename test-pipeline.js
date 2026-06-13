@@ -43,6 +43,8 @@ const { startScheduler } = require('./src/workers/schedulerWorker');
 const { startCallWorker } = require('./src/workers/callWorker');
 const { startAiWorker } = require('./src/workers/aiWorker');
 
+const { seedVoices } = require('./src/utils/seeder');
+
 const PORT = 3001; // Separate port for testing
 
 async function runIntegrationTest() {
@@ -56,14 +58,9 @@ async function runIntegrationTest() {
 
     // 2. Seed Baseline Data
     console.log('Seeding voices, plans, and categories...');
-    const defaultVoice = await Voice.create({
-      name: 'Amrit Voice',
-      provider: 'sarvam',
-      voiceId: 'amrit',
-      language: 'en-IN',
-      gender: 'male',
-      isCustom: false,
-    });
+    await seedVoices();
+
+    const defaultVoice = await Voice.findOne({ where: { voiceId: 'shubh' } });
 
     const lawyerCategory = await Category.create({
       name: 'Lawyer',

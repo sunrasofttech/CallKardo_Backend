@@ -51,7 +51,7 @@ class SarvamService {
    * @param {string} languageCode - Target language (e.g. 'hi-IN', 'en-IN')
    * @returns {Promise<Buffer>} Audio buffer (typically linear16 PCM or WAV)
    */
-  async synthesizeText(text, voiceId = defaults.sarvam.defaultVoiceId, languageCode = defaults.sarvam.defaultLanguageCode) {
+  async synthesizeText(text, voiceId = defaults.sarvam.defaultVoiceId, languageCode = defaults.sarvam.defaultLanguageCode, options = {}) {
     if (!this.apiKey || this.apiKey === 'your_sarvam_api_key') {
       return this._mockTtsAudio(text);
     }
@@ -74,11 +74,11 @@ class SarvamService {
         `${this.apiBaseUrl}/text-to-speech`,
         {
           inputs: [text],
-          voice: voiceId, // e.g. 'amrit' or category preloaded voices
-          speaker_gender: defaults.sarvam.defaultSpeakerGender, // Default gender, can be mapped from Voice model
+          voice: voiceId, // e.g. 'shubh' or category preloaded voices
           language_code: locale,
-          target_tps: 15,
-          speech_rate: 1.0,
+          model: 'bulbul:v3',
+          pace: options.pace !== undefined ? parseFloat(options.pace) : 1.0,
+          temperature: options.temperature !== undefined ? parseFloat(options.temperature) : 0.6,
         },
         {
           headers: {

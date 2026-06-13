@@ -9,6 +9,8 @@ const createAgentSchema = Joi.object({
   categoryId: Joi.string().uuid().optional(),
   activeStatus: Joi.boolean().default(true),
   allowInterruption: Joi.boolean().default(true),
+  pace: Joi.number().min(0.5).max(2.0).default(1.00),
+  temperature: Joi.number().min(0.01).max(2.0).default(0.60),
 });
 
 const updateAgentSchema = Joi.object({
@@ -20,6 +22,8 @@ const updateAgentSchema = Joi.object({
   categoryId: Joi.string().uuid().optional(),
   activeStatus: Joi.boolean().optional(),
   allowInterruption: Joi.boolean().optional(),
+  pace: Joi.number().min(0.5).max(2.0).optional(),
+  temperature: Joi.number().min(0.01).max(2.0).optional(),
 });
 
 module.exports = {

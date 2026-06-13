@@ -18,6 +18,9 @@ async function bootServer() {
       // Note: sync() creates tables if they do not exist
       await sequelize.sync();
       console.log('All database models synced successfully.');
+
+      const { seedVoices } = require('./utils/seeder');
+      await seedVoices();
     }
 
     const server = http.createServer(app);
