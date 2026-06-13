@@ -1,10 +1,10 @@
 const axios = require('axios');
-require('dotenv').config();
+const defaults = require('../config/defaults');
 
 class AiAnalysisService {
   constructor() {
-    this.apiKey = process.env.GEMINI_API_KEY;
-    this.modelName = 'gemini-1.5-flash';
+    this.apiKey = defaults.gemini.apiKey;
+    this.modelName = defaults.gemini.analysisModel;
   }
 
   /**

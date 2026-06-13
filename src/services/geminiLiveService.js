@@ -1,17 +1,17 @@
 const WebSocket = require('ws');
-require('dotenv').config();
+const defaults = require('../config/defaults');
 
 class GeminiLiveSession {
   /**
    * Represents an active bidirectional Gemini conversation session
    * @param {object} config
    * @param {string} config.systemPrompt - System instruction text
-   * @param {string} [config.model] - Gemini model identifier (e.g. gemini-2.0-flash-exp)
+   * @param {string} [config.model] - Gemini model identifier (e.g. gemini-2.5-flash)
    * @param {function} config.onResponseText - Callback when assistant streams text
    * @param {function} config.onError - Callback on error
    * @param {function} config.onClose - Callback on close
    */
-  constructor({ systemPrompt, model = 'models/gemini-2.0-flash-exp', onResponseText, onError, onClose }) {
+  constructor({ systemPrompt, model = defaults.gemini.liveModel, onResponseText, onError, onClose }) {
     this.systemPrompt = systemPrompt;
     this.modelName = model;
     this.onResponseText = onResponseText;
@@ -19,7 +19,7 @@ class GeminiLiveSession {
     this.onClose = onClose;
     
     this.ws = null;
-    this.apiKey = process.env.GEMINI_API_KEY;
+    this.apiKey = defaults.gemini.apiKey;
     this.isConnected = false;
   }
 

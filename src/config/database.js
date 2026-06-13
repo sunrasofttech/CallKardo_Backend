@@ -1,15 +1,15 @@
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
+const defaults = require('./defaults');
 
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = defaults.nodeEnv === 'production';
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'ailive_backend',
-  process.env.DB_USER || 'root',
-  process.env.DB_PASSWORD || '',
+  defaults.db.name,
+  defaults.db.user,
+  defaults.db.password,
   {
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: parseInt(process.env.DB_PORT || '3306', 10),
+    host: defaults.db.host,
+    port: defaults.db.port,
     dialect: 'mysql',
     logging: isProduction ? false : console.log,
     pool: {

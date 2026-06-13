@@ -1,10 +1,10 @@
 const axios = require('axios');
 const WebSocket = require('ws');
-require('dotenv').config();
+const defaults = require('../config/defaults');
 
 class VobizService {
   constructor() {
-    this.apiUrl = process.env.VOBIZ_API_URL || 'https://api.vobiz.example.com/v1';
+    this.apiUrl = defaults.vobiz.apiUrl;
   }
 
   /**
@@ -33,7 +33,7 @@ class VobizService {
           from: fromNumber,
           to: toNumber,
           // VoBiz should connect its audio streaming websocket to our server with this token
-          stream_url: `wss://${process.env.WS_HOST || '127.0.0.1:8000'}/ws/vobiz?token=${wsToken}`,
+          stream_url: `wss://${defaults.ws.host}/ws/vobiz?token=${wsToken}`,
           audio_format: 'linear16_16khz',
         },
         {
@@ -66,7 +66,7 @@ class VobizService {
   _simulateIncomingCall(wsToken) {
     // Delay slightly to mimic dialing connection times
     setTimeout(() => {
-      const port = process.env.WS_PORT || 8000;
+      const port = defaults.ws.port;
       const wsUrl = `ws://127.0.0.1:${port}/ws/vobiz?token=${wsToken}`;
       console.log(`[VoBiz Simulator] Dialing customer... Connecting to WS: ${wsUrl}`);
 

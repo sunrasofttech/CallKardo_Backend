@@ -1,9 +1,9 @@
 const { WebSocketServer } = require('ws');
 const http = require('http');
 const vobizSocketHandler = require('./vobizSocket');
-require('dotenv').config();
+const defaults = require('../config/defaults');
 
-const port = process.env.WS_PORT || 8000;
+const port = defaults.ws.port;
 
 function startWebSocketServer(server = null) {
   let wss;

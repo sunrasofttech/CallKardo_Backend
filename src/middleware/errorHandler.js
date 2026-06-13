@@ -1,10 +1,11 @@
 const ResponseBuilder = require('../utils/response');
+const defaults = require('../config/defaults');
 
 /**
  * Global error handling middleware.
  */
 function errorHandler(err, req, res, next) {
-  console.error('Unhandled Error:', err);
+  console.log('Unhandled Error:', err);
 
   // Sequelize Unique Constraint Error
   if (err.name === 'SequelizeUniqueConstraintError') {
@@ -26,7 +27,7 @@ function errorHandler(err, req, res, next) {
     res,
     message,
     statusCode,
-    process.env.NODE_ENV === 'development' ? { stack: err.stack } : null
+    defaults.nodeEnv === 'development' ? { stack: err.stack } : null
   );
 }
 

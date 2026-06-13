@@ -1,10 +1,10 @@
 const axios = require('axios');
-require('dotenv').config();
+const defaults = require('../config/defaults');
 
 class SarvamService {
   constructor() {
-    this.apiKey = process.env.SARVAM_API_KEY;
-    this.apiBaseUrl = 'https://api.sarvam.ai';
+    this.apiKey = defaults.sarvam.apiKey;
+    this.apiBaseUrl = defaults.sarvam.apiBaseUrl;
   }
 
   /**
@@ -12,7 +12,7 @@ class SarvamService {
    * @param {Buffer} audioBuffer - Linear16 PCM audio chunk
    * @param {string} languageCode - Language code (e.g. en-IN, hi-IN)
    */
-  async transcribeAudioChunk(audioBuffer, languageCode = 'en-IN') {
+  async transcribeAudioChunk(audioBuffer, languageCode = defaults.sarvam.defaultLanguageCode) {
     // If API Key is missing, simulate mock transcription
     if (!this.apiKey || this.apiKey === 'your_sarvam_api_key') {
       return this._mockTranscription(audioBuffer);
@@ -51,7 +51,7 @@ class SarvamService {
    * @param {string} languageCode - Target language (e.g. 'hi-IN', 'en-IN')
    * @returns {Promise<Buffer>} Audio buffer (typically linear16 PCM or WAV)
    */
-  async synthesizeText(text, voiceId = 'amrit', languageCode = 'en-IN') {
+  async synthesizeText(text, voiceId = defaults.sarvam.defaultVoiceId, languageCode = defaults.sarvam.defaultLanguageCode) {
     if (!this.apiKey || this.apiKey === 'your_sarvam_api_key') {
       return this._mockTtsAudio(text);
     }
@@ -75,7 +75,7 @@ class SarvamService {
         {
           inputs: [text],
           voice: voiceId, // e.g. 'amrit' or category preloaded voices
-          speaker_gender: 'Male', // Default gender, can be mapped from Voice model
+          speaker_gender: defaults.sarvam.defaultSpeakerGender, // Default gender, can be mapped from Voice model
           language_code: locale,
           target_tps: 15,
           speech_rate: 1.0,

@@ -4,6 +4,7 @@ const { GeminiLiveSession } = require('../services/geminiLiveService');
 const SarvamService = require('../services/sarvamService');
 const QueueService = require('../services/queueService');
 const { redisClient } = require('../config/redis');
+const defaults = require('../config/defaults');
 
 class VobizSocketHandler {
   /**
@@ -64,7 +65,7 @@ class VobizSocketHandler {
       // 2. Instantiate Gemini Live Session
       const geminiSession = new GeminiLiveSession({
         systemPrompt: session.agent.systemPrompt,
-        model: 'models/gemini-2.0-flash-exp',
+        model: defaults.gemini.liveModel,
         onResponseText: async (text) => {
           try {
             console.log(`[Gemini Response]: ${text}`);

@@ -2,9 +2,9 @@ const app = require('./app');
 const http = require('http');
 const { sequelize } = require('./models');
 const { startWebSocketServer } = require('./websocket/wsServer');
-require('dotenv').config();
+const defaults = require('./config/defaults');
 
-const port = process.env.PORT || 3000;
+const port = defaults.port;
 
 async function bootServer() {
   try {
@@ -13,7 +13,7 @@ async function bootServer() {
     console.log('Database connection established successfully.');
 
     // Sync models in development mode
-    if (process.env.NODE_ENV !== 'production') {
+    if (defaults.nodeEnv !== 'production') {
       console.log('Syncing database models...');
       // Note: sync() creates tables if they do not exist
       await sequelize.sync();

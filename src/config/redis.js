@@ -1,9 +1,9 @@
 const { createClient } = require('redis');
-require('dotenv').config();
+const defaults = require('./defaults');
 
-const redisHost = process.env.REDIS_HOST || '127.0.0.1';
-const redisPort = process.env.REDIS_PORT || 6379;
-const redisPassword = process.env.REDIS_PASSWORD || null;
+const redisHost = defaults.redis.host;
+const redisPort = defaults.redis.port;
+const redisPassword = defaults.redis.password;
 
 const redisUrl = redisPassword
   ? `redis://:${redisPassword}@${redisHost}:${redisPort}`
