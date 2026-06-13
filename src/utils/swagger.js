@@ -174,6 +174,47 @@ const swaggerSpec = {
         },
       },
     },
+    '/voices': {
+      get: {
+        summary: 'Get all available voices',
+        responses: {
+          200: { description: 'List of voices retrieved' },
+        },
+      },
+    },
+    '/voices/preview': {
+      post: {
+        summary: 'Generate and return a voice preview (cached on disk)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  voiceId: { type: 'string', description: 'Voice UUID or provider identifier' },
+                  text: { type: 'string', description: 'Sample text to synthesize' },
+                  language: { type: 'string', description: 'Locale code (e.g. en-IN, hi-IN)' },
+                  pace: { type: 'number', minimum: 0.5, maximum: 2.0, default: 1.0 },
+                  temperature: { type: 'number', minimum: 0.01, maximum: 2.0, default: 0.6 },
+                },
+                required: ['voiceId'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Binary audio stream',
+            content: {
+              'audio/wav': {
+                schema: { type: 'string', format: 'binary' },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 };
 

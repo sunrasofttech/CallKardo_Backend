@@ -15,6 +15,7 @@ const customerRoutes = require('./routes/customerRoutes');
 const campaignRoutes = require('./routes/campaignRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const voiceRoutes = require('./routes/voiceRoutes');
 
 // Swagger Spec
 const swaggerSpec = require('./utils/swagger');
@@ -120,6 +121,7 @@ app.use('/api/v1/customers', customerRoutes);
 app.use('/api/v1/campaigns', campaignRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/v1/voices', voiceRoutes);
 
 // 5. Global 404 Route
 app.use((req, res, next) => {
