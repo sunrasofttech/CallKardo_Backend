@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS `voices` (
   `language` VARCHAR(10) NOT NULL,
   `gender` VARCHAR(10) NOT NULL, -- male, female, neutral
   `is_custom` TINYINT(1) DEFAULT 0,
+  `sample_text` TEXT NULL,
   `user_id` VARCHAR(36) NULL, -- NULL if global category voice
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

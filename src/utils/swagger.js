@@ -193,10 +193,6 @@ const swaggerSpec = {
                 type: 'object',
                 properties: {
                   voiceId: { type: 'string', description: 'Voice UUID or provider identifier' },
-                  text: { type: 'string', description: 'Sample text to synthesize' },
-                  language: { type: 'string', description: 'Locale code (e.g. en-IN, hi-IN)' },
-                  pace: { type: 'number', minimum: 0.5, maximum: 2.0, default: 1.0 },
-                  temperature: { type: 'number', minimum: 0.01, maximum: 2.0, default: 0.6 },
                 },
                 required: ['voiceId'],
               },

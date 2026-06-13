@@ -36,6 +36,11 @@ Voice.init(
       defaultValue: false,
       field: 'is_custom',
     },
+    sampleText: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'sample_text',
+    },
     userId: {
       type: DataTypes.UUID,
       allowNull: true,

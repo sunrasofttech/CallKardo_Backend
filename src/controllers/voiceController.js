@@ -45,8 +45,7 @@ class VoiceController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { voiceId, text: rawText, language, pace, temperature } = value;
-      const text = rawText || 'Hello, this is a preview of the voice agent. How does my voice sound?';
+      const { voiceId } = value;
 
       // Robust check if voiceId is a UUID or a provider voiceId string
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(voiceId);
@@ -63,9 +62,10 @@ class VoiceController {
       }
 
       const resolvedVoiceId = voice.voiceId;
-      const resolvedLanguage = language || voice.language || 'en-IN';
-      const resolvedPace = pace !== undefined ? pace : 1.0;
-      const resolvedTemp = temperature !== undefined ? temperature : 0.6;
+      const resolvedLanguage = voice.language || 'en-IN';
+      const text = voice.sampleText || 'Hello, this is a preview of the voice agent.';
+      const resolvedPace = 1.0;
+      const resolvedTemp = 0.6;
 
       // Generate unique cache key using MD5 hash of parameters
       const configStr = `${resolvedVoiceId}_${resolvedLanguage}_${text}_${resolvedPace}_${resolvedTemp}`;
@@ -84,7 +84,7 @@ class VoiceController {
       }
 
       // Synthesize text
-      console.log(`Calling Sarvam AI TTS for voice preview: ${resolvedVoiceId} (${resolvedLanguage})`);
+      console.log(`Calling Sarvam AI TTS for voice preview: ${resolvedVoiceId} (${resolvedLanguage}) using sample text: "${text}"`);
       const audioBuffer = await sarvamService.synthesizeText(text, resolvedVoiceId, resolvedLanguage, {
         pace: resolvedPace,
         temperature: resolvedTemp,
@@ -104,6 +104,7 @@ class VoiceController {
       next(err);
     }
   }
+
 }
 
 module.exports = new VoiceController();
