@@ -6,6 +6,32 @@ const defaults = require('../config/defaults');
 
 class VobizController {
   /**
+   * Webhook invoked by VoBiz when the call is answered.
+   * We return XML instructing VoBiz to connect a WebSocket stream.
+   */
+  async answerCallWebhook(req, res, next) {
+    try {
+      const { token } = req.query;
+      if (!token) {
+        return res.status(400).send('Missing token');
+      }
+
+      const streamUrl = `wss://${defaults.ws.host}/ws/vobiz?token=${token}`;
+      
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Stream url="${streamUrl}" keepCallAlive="true" />
+</Response>`;
+
+      res.set('Content-Type', 'text/xml');
+      return res.send(xml);
+    } catch (err) {
+      console.error('VoBiz answer webhook error:', err);
+      return res.status(500).send('Internal Server Error');
+    }
+  }
+
+  /**
    * Connect or update VoBiz credentials
    */
   async connectAccount(req, res, next) {

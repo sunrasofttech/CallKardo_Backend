@@ -27,12 +27,13 @@ class VobizService {
     }
 
     try {
-      // VoBiz API expects: POST /api/v1/Account/{authId}/Call/
       const authId = apiKey;
       const authToken = apiSecret;
       const url = `${this.apiUrl}/Account/${authId}/Call/`;
 
-      const answerUrl = `wss://${defaults.ws.host}/ws/vobiz?token=${wsToken}`;
+      // Answer URL must be an HTTP/S endpoint that returns XML
+      // We'll point it to our vobiz webhook endpoint
+      const answerUrl = `https://${defaults.ws.host}/api/v1/vobiz/answer?token=${wsToken}`;
 
       const data = {
         from: fromNumber,
