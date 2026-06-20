@@ -12,7 +12,7 @@ async function bootServer() {
     await sequelize.authenticate();
     console.log('Database connection established successfully.');
 
-    // Sync models in development mode
+    // Sync models and seed data in development mode only
     if (defaults.nodeEnv !== 'production') {
       console.log('Syncing database models...');
       // Note: sync() creates tables if they do not exist
@@ -21,17 +21,17 @@ async function bootServer() {
 
       const { seedVoices } = require('./utils/seeder');
       await seedVoices();
-
-      // Start queue workers automatically in development background
-      console.log('Starting background queue workers (Scheduler, Call, and AI Worker)...');
-      const { startScheduler } = require('./workers/schedulerWorker');
-      const { startCallWorker } = require('./workers/callWorker');
-      const { startAiWorker } = require('./workers/aiWorker');
-
-      startScheduler();
-      startCallWorker();
-      startAiWorker();
     }
+
+    // Start queue workers in all environments
+    console.log('Starting background queue workers (Scheduler, Call, and AI Worker)...');
+    const { startScheduler } = require('./workers/schedulerWorker');
+    const { startCallWorker } = require('./workers/callWorker');
+    const { startAiWorker } = require('./workers/aiWorker');
+
+    startScheduler();
+    startCallWorker();
+    startAiWorker();
 
     const server = http.createServer(app);
 
