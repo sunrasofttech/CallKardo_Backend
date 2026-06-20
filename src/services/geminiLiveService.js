@@ -123,7 +123,6 @@ class GeminiLiveSession {
           parts: [{ text: responseText }],
         });
 
-        console.log(`[Gemini Response]: ${responseText}`);
         if (this.onResponseText) {
           this.onResponseText(responseText);
         }
