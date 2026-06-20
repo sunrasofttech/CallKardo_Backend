@@ -28,7 +28,7 @@ module.exports = {
       return process.env.GEMINI_ANALYSIS_MODEL || 'gemini-3.5-flash';
     },
     get liveModel() {
-      return process.env.GEMINI_LIVE_MODEL || 'models/gemini-2.0-flash-exp';
+      return process.env.GEMINI_LIVE_MODEL || 'models/gemini-2.0-flash';
     },
   },
 
