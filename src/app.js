@@ -24,6 +24,9 @@ const path = require('path');
 
 const app = express();
 
+// Enable trust proxy to correctly identify user IPs behind reverse proxies (for express-rate-limit)
+app.set('trust proxy', process.env.TRUST_PROXY ? (isNaN(process.env.TRUST_PROXY) ? process.env.TRUST_PROXY : parseInt(process.env.TRUST_PROXY, 10)) : 1);
+
 // 1. Security & Body Parsing Middleware
 app.use(helmet({
   contentSecurityPolicy: false, // Disabled to allow Swagger UI CDN loading easily
@@ -38,7 +41,7 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('CORS policy does not allow access from the specified Origin.'), false);
+    return callback(new Error(`CORS policy does not allow access from the specified Origin: ${origin}`), false);
   },
   credentials: true
 }));
