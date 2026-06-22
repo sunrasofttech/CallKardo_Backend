@@ -149,7 +149,7 @@ class VobizSocketHandler {
             if (ws.readyState === ws.OPEN && audioBuffer.length > 44) {
               const srcRate = audioBuffer.readUInt32LE(24); // sample rate from WAV header
               const rawPcm = audioBuffer.slice(44);         // strip WAV header
-              const TARGET_RATE = 8000;                     // VoBiz telephony standard
+              const TARGET_RATE = 16000;                    // Match incoming L16 16kHz for best quality
               const resampledPcm = resamplePCM(rawPcm, srcRate, TARGET_RATE);
               console.log(`[TTS] ${rawPcm.length}B @${srcRate}Hz → ${resampledPcm.length}B @${TARGET_RATE}Hz`);
 
@@ -202,8 +202,8 @@ class VobizSocketHandler {
       // after 500ms of silence (end-of-utterance detection)
       let audioInputBuffer = [];
       let silenceTimer = null;
-      const SILENCE_TIMEOUT_MS = 500; // ms of silence before transcribing
-      const MIN_BUFFER_BYTES = 3200;  // ~100ms of audio at 16kHz L16 minimum
+      const SILENCE_TIMEOUT_MS = 300; // ms of silence before transcribing (lower = faster response)
+      const MIN_BUFFER_BYTES = 1600;  // ~50ms of audio at 16kHz L16 minimum
 
       const flushAudioBuffer = async () => {
         if (audioInputBuffer.length === 0) return;

@@ -20,7 +20,7 @@ class VobizController {
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Stream bidirectional="true" keepCallAlive="true">${streamUrl}</Stream>
+    <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-l16;rate=16000">${streamUrl}</Stream>
     <Wait length="3600" />
 </Response>`;
 
