@@ -41,7 +41,8 @@
   </div>
 
   <script>
-    const wsUrl = "<%= wsUrl %>";
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/webcall?agentId=<%= agentId %>`;
     let ws = null;
     let audioContext = null;
     let microphone = null;
