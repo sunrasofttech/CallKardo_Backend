@@ -6,6 +6,44 @@ const QueueService = require('../services/queueService');
 const { redisClient } = require('../config/redis');
 const defaults = require('../config/defaults');
 
+/**
+ * Downsample 16-bit mono PCM from inputRate to outputRate using linear interpolation.
+ * VoBiz telephony only supports 8000/16000/24000Hz but Sarvam TTS outputs at 22050Hz.
+ */
+function resamplePCM(inputBuffer, inputRate, outputRate) {
+  if (inputRate === outputRate) return inputBuffer;
+  const inputSamples = Math.floor(inputBuffer.length / 2);
+  const outputSamples = Math.floor(inputSamples * outputRate / inputRate);
+  const outputBuffer = Buffer.alloc(outputSamples * 2);
+  for (let i = 0; i < outputSamples; i++) {
+    const srcPos = i * inputRate / outputRate;
+    const srcFloor = Math.floor(srcPos);
+    const srcCeil = Math.min(srcFloor + 1, inputSamples - 1);
+    const frac = srcPos - srcFloor;
+    const s1 = inputBuffer.readInt16LE(srcFloor * 2);
+    const s2 = inputBuffer.readInt16LE(srcCeil * 2);
+    const sample = Math.round(s1 + frac * (s2 - s1));
+    outputBuffer.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), i * 2);
+  }
+  return outputBuffer;
+}
+
+/**
+ * Strip markdown formatting from Gemini text before TTS synthesis.
+ */
+function stripMarkdown(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')  // bold
+    .replace(/\*(.*?)\*/g, '$1')       // italic
+    .replace(/`([^`]*)`/g, '$1')       // inline code
+    .replace(/#{1,6}\s/g, '')          // headings
+    .replace(/^\s*[-*+]\s+/gm, '')    // bullet points
+    .replace(/^\s*\d+\.\s+/gm, '')   // numbered lists
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/\n{3,}/g, '\n\n')       // excess newlines
+    .trim();
+}
+
 class VobizSocketHandler {
   /**
    * Handle incoming WebSocket connection from VoBiz
@@ -89,37 +127,44 @@ class VobizSocketHandler {
               message: `Agent responded: ${text}`,
             });
 
+            // Strip markdown before TTS (Gemini sometimes returns bold/bullets)
+            const cleanText = stripMarkdown(text);
+            if (!cleanText) {
+              console.warn('[TTS] Skipping empty/markdown-only response');
+              return;
+            }
+
             // Synthesize Response text -> Voice Audio
             const voiceName = session.agent.voice?.voiceId || defaults.sarvam.defaultVoiceId;
             const language = session.agent.language || defaults.sarvam.defaultLanguageCode;
-            console.log(`[TTS] Synthesizing with voice=${voiceName}, lang=${language}`);
+            console.log(`[TTS] Synthesizing: "${cleanText.substring(0, 60)}..." voice=${voiceName}`);
 
-            const audioBuffer = await SarvamService.synthesizeText(text, voiceName, language, {
+            const audioBuffer = await SarvamService.synthesizeText(cleanText, voiceName, language, {
               pace: session.agent.pace,
               temperature: session.agent.temperature,
             });
 
-            console.log(`[TTS] Got audio buffer: ${audioBuffer.length} bytes`);
-
             // Send audio back to VoBiz as JSON playAudio event
-            // Sarvam returns WAV with header — read sample rate from header bytes 24-27, strip header for raw PCM
+            // Sarvam outputs WAV at 22050Hz — resample to 8000Hz for telephony
             if (ws.readyState === ws.OPEN && audioBuffer.length > 44) {
-              const sampleRate = audioBuffer.readUInt32LE(24); // bytes 24-27 = sample rate in WAV spec
-              const rawPcm = audioBuffer.slice(44);
-              console.log(`[TTS] Sending ${rawPcm.length} bytes raw PCM at ${sampleRate}Hz to VoBiz`);
+              const srcRate = audioBuffer.readUInt32LE(24); // sample rate from WAV header
+              const rawPcm = audioBuffer.slice(44);         // strip WAV header
+              const TARGET_RATE = 8000;                     // VoBiz telephony standard
+              const resampledPcm = resamplePCM(rawPcm, srcRate, TARGET_RATE);
+              console.log(`[TTS] ${rawPcm.length}B @${srcRate}Hz → ${resampledPcm.length}B @${TARGET_RATE}Hz`);
 
               const playAudioEvent = JSON.stringify({
                 event: 'playAudio',
                 media: {
                   contentType: 'audio/x-l16',
-                  sampleRate: sampleRate,
-                  payload: rawPcm.toString('base64'),
+                  sampleRate: TARGET_RATE,
+                  payload: resampledPcm.toString('base64'),
                 },
               });
               ws.send(playAudioEvent);
-              audioChunks.push(rawPcm);
+              audioChunks.push(resampledPcm);
             } else if (audioBuffer.length <= 44) {
-              console.warn('[TTS] Audio buffer too small — TTS likely failed or returned mock audio');
+              console.warn('[TTS] Audio buffer too small — TTS likely failed');
             }
           } catch (ttsErr) {
             console.error('Failed to synthesize agent speech:', ttsErr);

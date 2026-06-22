@@ -85,7 +85,7 @@ class GeminiLiveSession {
 
       const requestBody = {
         systemInstruction: {
-          parts: [{ text: this.systemPrompt }],
+          parts: [{ text: `IMPORTANT: You are a voice AI agent on a phone call. Always respond in plain conversational text only. Never use markdown formatting such as bullet points, bold text (**), asterisks (*), headings (#), or numbered lists. Speak naturally as if talking on the phone.\n\n${this.systemPrompt}` }],
         },
         contents: this.conversationHistory,
         generationConfig: {
