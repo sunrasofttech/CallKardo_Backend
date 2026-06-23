@@ -51,10 +51,10 @@ class GeminiMultimodalLiveSession extends EventEmitter {
       if (this.onError) this.onError(err);
     });
 
-    this.ws.on('close', () => {
+    this.ws.on('close', (code, reason) => {
       this.isConnected = false;
       this.isSetupComplete = false;
-      console.log('[Gemini Multimodal Live] WS Closed');
+      console.log(`[Gemini Multimodal Live] WS Closed: Code=${code}, Reason=${reason ? reason.toString() : 'None'}`);
       if (this.onClose) this.onClose();
     });
   }
@@ -136,6 +136,9 @@ class GeminiMultimodalLiveSession extends EventEmitter {
         if (content.interrupted) {
           console.log('[Gemini Multimodal Live] Model was interrupted.');
         }
+      } else if (!parsed.setupComplete) {
+         // If it's not serverContent and not setupComplete, log it!
+         console.log('[Gemini Multimodal Live] Received unknown/error message:', JSON.stringify(parsed));
       }
     } catch (err) {
       console.error('[Gemini Multimodal Live] Error parsing message:', err.message);

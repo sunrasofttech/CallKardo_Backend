@@ -64,6 +64,12 @@ module.exports = {
     get encryptCredentials() {
       return process.env.ENCRYPT_CREDENTIALS === 'true';
     },
+    get parentAuthId() {
+      return process.env.VOBIZ_PARENT_AUTH_ID;
+    },
+    get parentAuthToken() {
+      return process.env.VOBIZ_PARENT_AUTH_TOKEN;
+    },
   },
 
   // Redis Configuration

@@ -1,9 +1,9 @@
-const { VobizAccount, VobizNumber } = require('../models');
+const { VobizAccount, VobizNumber, User } = require('../models');
 const ResponseBuilder = require('../utils/response');
-const { connectAccountSchema, addNumberSchema, updateNumberSchema } = require('../validators/vobiz');
+const { connectAccountSchema, addNumberSchema, updateNumberSchema, buyNumberSchema } = require('../validators/vobiz');
 const { encrypt, decrypt } = require('../utils/crypto');
+const vobizService = require('../services/vobizService');
 const defaults = require('../config/defaults');
-
 class VobizController {
   /**
    * Webhook invoked by VoBiz when the call is answered.
@@ -185,8 +185,111 @@ class VobizController {
         return ResponseBuilder.error(res, 'VoBiz number record not found', 404);
       }
 
+      // Unrent the number from Vobiz
+      await vobizService.unrentNumber(vobizNumber.number);
+
       await vobizNumber.destroy();
-      return ResponseBuilder.success(res, null, 'VoBiz number deleted successfully');
+      return ResponseBuilder.success(res, null, 'VoBiz number deleted and unrented successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Create a Vobiz Sub-Account for the merchant
+   */
+  async createSubAccount(req, res, next) {
+    try {
+      let account = await VobizAccount.findOne({ where: { userId: req.user.id } });
+      if (account) {
+        return ResponseBuilder.error(res, 'Vobiz sub-account is already provisioned for this user', 400);
+      }
+
+      const user = await User.findByPk(req.user.id);
+      if (!user) {
+        return ResponseBuilder.error(res, 'User not found', 404);
+      }
+
+      // Combine merchant details to save in Vobiz since they only accept 'name'
+      const subAccountName = [
+        user.businessName, 
+        `${user.firstName} ${user.lastName}`.trim(), 
+        user.email, 
+        user.phoneNumber
+      ].filter(Boolean).join(' | ').substring(0, 100); // Vobiz name limit might apply
+
+      const subAccountData = await vobizService.createSubAccount(subAccountName);
+
+      const encryptEnabled = defaults.vobiz.encryptCredentials;
+      const finalApiKey = encryptEnabled ? encrypt(subAccountData.authId) : subAccountData.authId;
+      const finalApiSecret = encryptEnabled ? encrypt(subAccountData.authToken) : subAccountData.authToken;
+
+      account = await VobizAccount.create({
+        userId: user.id,
+        customerId: subAccountData.authId, // Using authId as customerId for subaccounts
+        apiKey: finalApiKey,
+        apiSecret: finalApiSecret,
+      });
+
+      const sanitizedResponse = {
+        id: account.id,
+        customerId: account.customerId,
+        apiKey: `${subAccountData.authId.substring(0, 4)}...`,
+      };
+
+      return ResponseBuilder.success(res, sanitizedResponse, 'Vobiz sub-account created successfully', 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * List available phone numbers to purchase
+   */
+  async listAvailableNumbers(req, res, next) {
+    try {
+      const { countryISO, type, pattern } = req.query;
+      const numbers = await vobizService.listAvailableNumbers(countryISO, type, pattern);
+      return ResponseBuilder.success(res, numbers, 'Available numbers retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Buy a specific phone number and assign it to the merchant's sub-account
+   */
+  async buyNumber(req, res, next) {
+    try {
+      const { error, value } = buyNumberSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { number } = value;
+
+      const account = await VobizAccount.findOne({ where: { userId: req.user.id } });
+      if (!account) {
+        return ResponseBuilder.error(res, 'Vobiz sub-account not found. Please provision one first.', 404);
+      }
+
+      const subAccountAuthId = account.customerId; // Assuming customerId stores the sub-account authId
+
+      // Buy the number using parent account
+      const purchaseResult = await vobizService.buyNumber(number);
+
+      // Assign to the sub-account
+      await vobizService.assignNumberToSubAccount(number, subAccountAuthId);
+
+      // Save to database
+      const vobizNumber = await VobizNumber.create({
+        userId: req.user.id,
+        number: number,
+        status: 'active',
+        providerData: purchaseResult,
+      });
+
+      return ResponseBuilder.success(res, vobizNumber, 'Phone number purchased and assigned successfully', 201);
     } catch (err) {
       next(err);
     }

@@ -134,6 +134,137 @@ class VobizService {
       });
     }, 1500);
   }
+
+  /**
+   * Helper to create an Axios instance with standard Auth headers
+   */
+  _getClient(authId, authToken) {
+    return axios.create({
+      baseURL: this.apiUrl,
+      headers: {
+        'X-Auth-ID': authId,
+        'X-Auth-Token': authToken,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  /**
+   * Helper to get the parent client
+   */
+  _getParentClient() {
+    const parentAuthId = defaults.vobiz.parentAuthId;
+    const parentAuthToken = defaults.vobiz.parentAuthToken;
+    
+    if (!parentAuthId || !parentAuthToken) {
+      throw new Error('VOBIZ_PARENT_AUTH_ID or VOBIZ_PARENT_AUTH_TOKEN is not configured');
+    }
+    
+    return this._getClient(parentAuthId, parentAuthToken);
+  }
+
+  /**
+   * Create a SubAccount for a merchant
+   * POST /api/v1/accounts/{auth_id}/sub-accounts/
+   */
+  async createSubAccount(name) {
+    const client = this._getParentClient();
+    try {
+      const payload = {
+        name: name,
+        enabled: true
+      };
+      
+      const response = await client.post(`/accounts/${defaults.vobiz.parentAuthId}/sub-accounts/`, payload);
+      
+      if (response.data && response.data.auth_id) {
+         return {
+           authId: response.data.auth_id,
+           authToken: response.data.auth_token,
+           name: response.data.name
+         };
+      }
+      return response.data;
+    } catch (err) {
+      console.error('Vobiz createSubAccount Error:', err.response?.data || err.message);
+      throw new Error(err.response?.data?.message || 'Failed to create Vobiz Sub-Account');
+    }
+  }
+
+  /**
+   * List available phone numbers to purchase
+   * GET /api/v1/Account/{auth_id}/inventory/numbers
+   */
+  async listAvailableNumbers(countryISO = 'IN', type = 'local', pattern = '') {
+    const client = this._getParentClient();
+    try {
+      const params = {
+        country: countryISO,
+      };
+      if (pattern) {
+        params.search = pattern;
+      }
+      
+      const response = await client.get(`/Account/${defaults.vobiz.parentAuthId}/inventory/numbers`, { params });
+      return response.data;
+    } catch (err) {
+      console.error('Vobiz listAvailableNumbers Error:', err.response?.data || err.message);
+      throw new Error(err.response?.data?.message || 'Failed to list available phone numbers');
+    }
+  }
+
+  /**
+   * Buy a specific phone number under the parent account
+   * POST /api/v1/Account/{auth_id}/numbers/purchase-from-inventory
+   */
+  async buyNumber(number) {
+    const client = this._getParentClient();
+    try {
+      const e164 = number.startsWith('+') ? number : `+${number}`;
+      const payload = { e164 };
+      const response = await client.post(`/Account/${defaults.vobiz.parentAuthId}/numbers/purchase-from-inventory`, payload);
+      return response.data;
+    } catch (err) {
+      console.error('Vobiz buyNumber Error:', err.response?.data || err.message);
+      throw new Error(err.response?.data?.message || 'Failed to purchase phone number');
+    }
+  }
+
+  /**
+   * Assign a purchased number to a subaccount
+   * POST /api/v1/account/{auth_id}/numbers/{e164}/assign-subaccount
+   */
+  async assignNumberToSubAccount(number, subAccountAuthId) {
+    const client = this._getParentClient();
+    try {
+      const e164 = number.startsWith('+') ? number : `+${number}`;
+      const payload = {
+        sub_account_id: subAccountAuthId
+      };
+      
+      const response = await client.post(`/Account/${defaults.vobiz.parentAuthId}/numbers/${encodeURIComponent(e164)}/assign-subaccount`, payload);
+      return response.data;
+    } catch (err) {
+      console.error('Vobiz assignNumberToSubAccount Error:', err.response?.data || err.message);
+      throw new Error(err.response?.data?.message || 'Failed to assign phone number to sub-account');
+    }
+  }
+
+  /**
+   * Unrent a phone number
+   * DELETE /api/v1/Account/{auth_id}/numbers/{e164}
+   */
+  async unrentNumber(number) {
+    const client = this._getParentClient();
+    try {
+      const e164 = number.startsWith('+') ? number : `+${number}`;
+      const response = await client.delete(`/Account/${defaults.vobiz.parentAuthId}/numbers/${encodeURIComponent(e164)}`);
+      return response.data;
+    } catch (err) {
+      console.error('Vobiz unrentNumber Error:', err.response?.data || err.message);
+      throw new Error(err.response?.data?.message || 'Failed to unrent phone number');
+    }
+  }
 }
 
 module.exports = new VobizService();

@@ -19,8 +19,13 @@ const updateNumberSchema = Joi.object({
   providerData: Joi.object().optional(),
 });
 
+const buyNumberSchema = Joi.object({
+  number: Joi.string().required(),
+});
+
 module.exports = {
   connectAccountSchema,
   addNumberSchema,
   updateNumberSchema,
+  buyNumberSchema,
 };
