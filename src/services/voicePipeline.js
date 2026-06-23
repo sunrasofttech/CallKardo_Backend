@@ -1,4 +1,5 @@
 const { GeminiLiveSession } = require('./geminiLiveService');
+const { GeminiMultimodalLiveSession } = require('./geminiMultimodalLiveService');
 const SarvamService = require('./sarvamService');
 const defaults = require('../config/defaults');
 const fs = require('fs');
@@ -125,47 +126,79 @@ class VoicePipeline {
 
     this.isConnected = true;
 
-    this._log('info', 'Initializing VoicePipeline with Gemini and Sarvam...');
+    this._log('info', `Initializing VoicePipeline with AI Provider: ${this.agent.aiProvider}`);
 
-    this.geminiSession = new GeminiLiveSession({
-      systemPrompt: this.agent.systemPrompt,
-      model: defaults.gemini.liveModel,
-      onResponseText: async (text) => {
-        try {
-          this._log('info', `Agent responded: ${text}`);
-          if (this.onAgentTranscription) this.onAgentTranscription(text);
+    if (this.agent.aiProvider === 'geminilive') {
+      this.geminiSession = new GeminiMultimodalLiveSession({
+        systemPrompt: this.agent.systemPrompt,
+        voiceName: this.agent.voice?.voiceId || 'Puck',
+        onAudioOutput: (pcmBuffer, sampleRate) => {
+          // Resample Gemini's native 24kHz down to Vobiz 16kHz
+          const resampledPcm = resamplePCM(pcmBuffer, sampleRate, 16000);
+          
+          const audioDurationMs = wavDurationMs(resampledPcm); // Works for raw if we approximate, wait resamplePCM gives raw PCM. wavDurationMs expects WAV. 
+          // For raw PCM at 16kHz: length / 32 = ms
+          const rawDurationMs = Math.round((resampledPcm.length / 32000) * 1000);
+          this._setAgentSpeaking(rawDurationMs + 300);
 
-          // Mark agent as speaking immediately so interruption logic takes effect
-          // even before audio is synthesized.
-          this._setAgentSpeaking(3000); // Conservative minimum while we process
-
-          const cleanText = stripMarkdown(text);
-          if (!cleanText) return;
-
-          // ── ElevenLabs-quality technique: sentence-level streaming ──
-          // Split response into sentences and synthesize + stream each
-          // sentence in order. Customer hears first sentence ~1s sooner.
-          const sentences = splitIntoSentences(cleanText);
-
-          for (const sentence of sentences) {
-            // Chain onto the TTS queue to preserve sentence playback order
-            this._ttsQueue = this._ttsQueue.then(() =>
-              this._synthesizeAndPlay(sentence)
-            );
+          if (this.onAudioOutput) this.onAudioOutput(resampledPcm, 16000);
+        },
+        onTranscription: (text, role) => {
+          if (role === 'agent' && this.onAgentTranscription) {
+            this.onAgentTranscription(text);
+          } else if (role === 'user' && this.onCustomerTranscription) {
+            this.onCustomerTranscription(text);
           }
-        } catch (err) {
-          this._log('error', `TTS pipeline failure: ${err.message}`);
+        },
+        onError: (err) => {
+          this._log('error', `Gemini Multimodal Live connection error: ${err.message}`);
           if (this.onError) this.onError(err);
+        },
+        onClose: () => {
+          this._log('info', 'Gemini Multimodal Live session closed');
         }
-      },
-      onError: (err) => {
-        this._log('error', `Gemini Live connection error: ${err.message}`);
-        if (this.onError) this.onError(err);
-      },
-      onClose: () => {
-        this._log('info', 'Gemini session closed');
-      },
-    });
+      });
+    } else {
+      this.geminiSession = new GeminiLiveSession({
+        systemPrompt: this.agent.systemPrompt,
+        model: defaults.gemini.liveModel,
+        onResponseText: async (text) => {
+          try {
+            this._log('info', `Agent responded: ${text}`);
+            if (this.onAgentTranscription) this.onAgentTranscription(text);
+
+            // Mark agent as speaking immediately so interruption logic takes effect
+            // even before audio is synthesized.
+            this._setAgentSpeaking(3000); // Conservative minimum while we process
+
+            const cleanText = stripMarkdown(text);
+            if (!cleanText) return;
+
+            // ── ElevenLabs-quality technique: sentence-level streaming ──
+            // Split response into sentences and synthesize + stream each
+            // sentence in order. Customer hears first sentence ~1s sooner.
+            const sentences = splitIntoSentences(cleanText);
+
+            for (const sentence of sentences) {
+              // Chain onto the TTS queue to preserve sentence playback order
+              this._ttsQueue = this._ttsQueue.then(() =>
+                this._synthesizeAndPlay(sentence)
+              );
+            }
+          } catch (err) {
+            this._log('error', `TTS pipeline failure: ${err.message}`);
+            if (this.onError) this.onError(err);
+          }
+        },
+        onError: (err) => {
+          this._log('error', `Gemini Live connection error: ${err.message}`);
+          if (this.onError) this.onError(err);
+        },
+        onClose: () => {
+          this._log('info', 'Gemini session closed');
+        },
+      });
+    }
 
     let hasPreRecordedFirstMessage = false;
     let preRecordedFilePath = null;
@@ -277,13 +310,27 @@ class VoicePipeline {
   async handleAudioInput(pcmBuffer) {
     if (!this.isConnected) return;
 
-    this.audioInputBuffer.push(pcmBuffer);
+    if (this.agent.aiProvider === 'geminilive') {
+      // Interrupt handling
+      if (!this.agent.allowInterruption && this.isAgentSpeaking) {
+         // Do not send customer audio to Gemini if interruption is disabled and agent is talking
+         return;
+      }
+      
+      // Direct stream to Gemini Multimodal Live API
+      if (this.geminiSession && typeof this.geminiSession.sendAudioChunk === 'function') {
+        this.geminiSession.sendAudioChunk(pcmBuffer);
+      }
+    } else {
+      // Legacy STT buffering flow
+      this.audioInputBuffer.push(pcmBuffer);
 
-    if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    this.silenceTimer = setTimeout(() => this.flushAudioBuffer(), this.SILENCE_TIMEOUT_MS);
+      if (this.silenceTimer) clearTimeout(this.silenceTimer);
+      this.silenceTimer = setTimeout(() => this.flushAudioBuffer(), this.SILENCE_TIMEOUT_MS);
 
-    if (!this.maxDurationTimer) {
-      this.maxDurationTimer = setTimeout(() => this.flushAudioBuffer(), this.MAX_BUFFER_DURATION_MS);
+      if (!this.maxDurationTimer) {
+        this.maxDurationTimer = setTimeout(() => this.flushAudioBuffer(), this.MAX_BUFFER_DURATION_MS);
+      }
     }
   }
 
@@ -291,6 +338,8 @@ class VoicePipeline {
    * Transcribe buffered audio and send to Gemini.
    */
   async flushAudioBuffer() {
+    if (this.agent.aiProvider === 'geminilive') return; // Handled natively in real-time
+
     if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null; }
     if (this.maxDurationTimer) { clearTimeout(this.maxDurationTimer); this.maxDurationTimer = null; }
 

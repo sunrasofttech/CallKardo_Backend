@@ -30,7 +30,12 @@ module.exports = {
     get liveModel() {
       return process.env.GEMINI_LIVE_MODEL || 'gemini-3.5-flash';
     },
+    get multimodalLiveModel() {
+      return process.env.GEMINI_MULTIMODAL_LIVE_MODEL || 'gemini-2.0-flash-exp';
+    },
   },
+
+
 
   // Sarvam Service Configuration
   sarvam: {

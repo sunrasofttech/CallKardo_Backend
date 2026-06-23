@@ -118,7 +118,7 @@ class AgentController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage } = value;
+      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage, aiProvider } = value;
 
       // Validate voice exists
       const voice = await Voice.findByPk(voiceId);
@@ -148,6 +148,7 @@ class AgentController {
         pace,
         temperature,
         firstMessage,
+        aiProvider,
       });
 
       if (firstMessage) {
@@ -181,7 +182,7 @@ class AgentController {
         return ResponseBuilder.error(res, 'Forbidden: You cannot modify default preloaded agents', 403);
       }
 
-      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage } = value;
+      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage, aiProvider } = value;
 
       if (voiceId) {
         const voice = await Voice.findByPk(voiceId);
@@ -209,6 +210,7 @@ class AgentController {
         pace: pace !== undefined ? pace : agent.pace,
         temperature: temperature !== undefined ? temperature : agent.temperature,
         firstMessage: firstMessage !== undefined ? firstMessage : agent.firstMessage,
+        aiProvider: aiProvider !== undefined ? aiProvider : agent.aiProvider,
       });
 
       const isVoiceOrSettingsChanged = (voiceId && voiceId !== agent.voiceId) ||

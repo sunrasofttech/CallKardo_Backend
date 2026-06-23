@@ -52,6 +52,11 @@ Agent.init(
       allowNull: true,
       field: 'category_id',
     },
+    aiProvider: {
+      type: DataTypes.STRING(50),
+      defaultValue: 'custom',
+      field: 'ai_provider',
+    },
     isCustom: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
