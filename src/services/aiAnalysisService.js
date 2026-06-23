@@ -47,25 +47,40 @@ class AiAnalysisService {
         }
       `;
 
-      const response = await axios.post(
-        url,
-        {
-          contents: [
+      let response;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          response = await axios.post(
+            url,
             {
-              parts: [
-                { text: prompt },
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                  ],
+                },
               ],
+              generationConfig: {
+                responseMimeType: 'application/json',
+              },
             },
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-          },
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 10000,
+            {
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 30000,
+            }
+          );
+          break; // Success
+        } catch (err) {
+          retries--;
+          const msg = err.response?.data?.error?.message || err.message;
+          if (retries === 0 || (!msg.includes('timeout') && !msg.includes('high demand') && err.response?.status !== 503)) {
+            throw err;
+          }
+          console.warn(`[AI Analysis] Gemini API Error: ${msg}. Retrying in 2 seconds... (${retries} retries left)`);
+          await new Promise(res => setTimeout(res, 2000));
         }
-      );
+      }
 
       const responseText = response.data.candidates[0].content.parts[0].text;
       const parsed = JSON.parse(responseText.trim());

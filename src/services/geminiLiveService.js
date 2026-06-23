@@ -112,10 +112,25 @@ class GeminiLiveSession {
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent?key=${this.apiKey}`;
 
-      const response = await axios.post(url, requestBody, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000,
-      });
+      let response;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          response = await axios.post(url, requestBody, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000,
+          });
+          break; // Success
+        } catch (err) {
+          retries--;
+          const msg = err.response?.data?.error?.message || err.message;
+          if (retries === 0 || (!msg.includes('timeout') && !msg.includes('high demand') && err.response?.status !== 503)) {
+            throw err;
+          }
+          console.warn(`[Gemini Live] API Error: ${msg}. Retrying in 2 seconds... (${retries} retries left)`);
+          await new Promise(res => setTimeout(res, 2000));
+        }
+      }
 
       // Extract text from response
       const candidates = response.data?.candidates;
