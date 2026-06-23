@@ -43,7 +43,7 @@ class VobizSocketHandler {
         return;
       }
 
-      console.log(`VoBiz Connection established for Call Session: ${session.id}`);
+      console.log(`[VoBiz Call Connected] WebSocket connection established for Session: ${session.id}`);
 
       // Update session status to connected
       session.status = 'connected';
@@ -82,8 +82,14 @@ class VobizSocketHandler {
             ws.send(JSON.stringify({ event: 'clearAudio' }));
           }
         },
-        onAgentTranscription: (text) => transcriptChunks.push({ role: 'agent', text }),
-        onCustomerTranscription: (text) => transcriptChunks.push({ role: 'customer', text }),
+        onAgentTranscription: (text) => {
+          console.log(`[VoBiz Conversation] Agent: ${text}`);
+          transcriptChunks.push({ role: 'agent', text });
+        },
+        onCustomerTranscription: (text) => {
+          console.log(`[VoBiz Conversation] Customer: ${text}`);
+          transcriptChunks.push({ role: 'customer', text });
+        },
         onLog: async (level, message) => {
           await CallLog.create({
             callSessionId: session.id,
@@ -167,6 +173,11 @@ class VobizSocketHandler {
         freshSession.status = 'completed';
         freshSession.endTime = new Date();
         await freshSession.save();
+
+        const duration = Math.round(
+          (freshSession.endTime.getTime() - freshSession.startTime.getTime()) / 1000
+        );
+        console.log(`[VoBiz Call Ended] Call Session ${session.id} finished. Duration: ${duration} seconds.`);
 
         await CallLog.create({
           callSessionId: session.id,

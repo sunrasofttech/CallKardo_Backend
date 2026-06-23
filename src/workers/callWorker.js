@@ -184,6 +184,8 @@ async function processPlaceCall(payload) {
       decryptedApiSecret = vobizAccount.apiSecret;
     }
 
+    console.log(`[Campaign Call Start] Dialing customer ${customer.mobile} (Name: ${customer.name}) for Campaign "${campaign.name}"...`);
+
     // Invoke VoBiz Outbound dialing API
     const dialResponse = await VobizService.initiateCall({
       apiKey: decryptedApiKey,
@@ -194,7 +196,7 @@ async function processPlaceCall(payload) {
     });
 
     if (!dialResponse.success) {
-      console.error(`VoBiz dial failed for customer ${customer.mobile}:`, dialResponse.error);
+      console.error(`[Campaign Call Failed] VoBiz dial failed for customer ${customer.mobile}:`, dialResponse.error);
       
       // Dial failed instantly: clean up session
       session.status = 'failed';
@@ -214,6 +216,8 @@ async function processPlaceCall(payload) {
 
       // Deregister active call
       await QueueService.deregisterActiveCall(campaignId, session.id);
+    } else {
+      console.log(`[Campaign Call Dispatched] Outbound call successfully placed. Call ID: ${dialResponse.callId}`);
     }
 
   } catch (err) {
