@@ -19,7 +19,10 @@ class VobizService {
    */
   async initiateCall({ apiKey, apiSecret, fromNumber, toNumber, wsToken }) {
     // If credentials are mocks/unset, trigger a local mock simulation
-    const isMock = !apiKey || apiKey.includes('your_') || process.env.NODE_ENV !== 'production';
+    const isMock = !apiKey || 
+                   apiKey.includes('your_') || 
+                   apiKey.includes('mock') || 
+                   (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
 
     if (isMock) {
       this._simulateIncomingCall(wsToken);
@@ -80,15 +83,30 @@ class VobizService {
       client.on('open', () => {
         console.log('[VoBiz Simulator] Customer answered. WebSocket streaming started.');
         
-        // Send a fake binary audio chunk (representing customer saying "Hello, interested")
-        // We'll send a dummy buffer of 1024 bytes (representing Linear16 PCM silence/static)
-        client.send(Buffer.alloc(1024));
+        // Send a start event frame
+        client.send(JSON.stringify({
+          event: 'start',
+          start: { streamId: 'mock-stream-id' }
+        }));
+
+        // Send a fake audio chunk (representing customer saying "Hello, interested")
+        client.send(JSON.stringify({
+          event: 'media',
+          media: {
+            payload: Buffer.alloc(1024).toString('base64')
+          }
+        }));
 
         // After 4 seconds, send another audio chunk (representing customer asking about scheduling)
         setTimeout(() => {
           if (client.readyState === WebSocket.OPEN) {
             console.log('[VoBiz Simulator] Customer speaking turn 2...');
-            client.send(Buffer.alloc(1024));
+            client.send(JSON.stringify({
+              event: 'media',
+              media: {
+                payload: Buffer.alloc(1024).toString('base64')
+              }
+            }));
           }
         }, 4000);
 
@@ -96,6 +114,7 @@ class VobizService {
         setTimeout(() => {
           if (client.readyState === WebSocket.OPEN) {
             console.log('[VoBiz Simulator] Hanging up call.');
+            client.send(JSON.stringify({ event: 'stop' }));
             client.close(1000, 'Call completed naturally');
           }
         }, 8000);

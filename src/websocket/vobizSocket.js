@@ -112,8 +112,13 @@ class VobizSocketHandler {
 
           if (frame.event === 'stop') {
             console.log(`[VoBiz Stream] Call stopped by VoBiz.`);
-            if (silenceTimer) clearTimeout(silenceTimer);
-            await flushAudioBuffer();
+            if (ws.pipeline) {
+              if (ws.pipeline.silenceTimer) {
+                clearTimeout(ws.pipeline.silenceTimer);
+                ws.pipeline.silenceTimer = null;
+              }
+              await ws.pipeline.flushAudioBuffer();
+            }
             return;
           }
 
