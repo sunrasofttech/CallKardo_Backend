@@ -189,12 +189,11 @@ class SarvamSTTStream {
   _sendAudioPayload(pcmBuffer) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    const wavBuffer = addWavHeader(pcmBuffer, 16000);
     const payload = JSON.stringify({
       audio: {
-        data: wavBuffer.toString('base64'),
-        sample_rate: '16000',
-        encoding: 'audio/wav',
+        data: pcmBuffer.toString('base64'),
+        sample_rate: 16000,
+        encoding: 'pcm_s16le',
       },
     });
     this.ws.send(payload);
