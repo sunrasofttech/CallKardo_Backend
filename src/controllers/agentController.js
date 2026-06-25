@@ -24,14 +24,18 @@ async function checkSensitiveWords(prompt) {
   });
 }
 
+async function clearFirstMessageAudio(agent) {
+  if (!agent.firstMessageAudioPath) return;
+  const oldPath = path.resolve(process.cwd(), agent.firstMessageAudioPath);
+  if (fs.existsSync(oldPath)) {
+    try { fs.unlinkSync(oldPath); } catch (e) {}
+  }
+  await agent.update({ firstMessageAudioPath: null });
+}
+
 async function handleFirstMessageAudio(agent, firstMessage) {
   if (!firstMessage) {
-    if (agent.firstMessageAudioPath) {
-      const oldPath = path.resolve(agent.firstMessageAudioPath);
-      if (fs.existsSync(oldPath)) {
-        try { fs.unlinkSync(oldPath); } catch (e) {}
-      }
-    }
+    await clearFirstMessageAudio(agent);
     return null;
   }
 
@@ -180,8 +184,10 @@ class AgentController {
       });
 
       if (firstMessage) {
-        const audioPath = await handleFirstMessageAudio(agent, firstMessage);
-        await agent.update({ firstMessageAudioPath: audioPath });
+        if ((aiProvider || 'custom') === 'custom') {
+          const audioPath = await handleFirstMessageAudio(agent, firstMessage);
+          await agent.update({ firstMessageAudioPath: audioPath });
+        }
       }
 
       return ResponseBuilder.success(res, agent, 'Voice Agent created successfully', 201);
@@ -246,6 +252,9 @@ class AgentController {
         }
       }
 
+      const previousAiProvider = agent.aiProvider;
+      const finalAiProvider = aiProvider !== undefined ? aiProvider : agent.aiProvider;
+
       await agent.update({
         name: name !== undefined ? name : agent.name,
         description: description !== undefined ? description : agent.description,
@@ -259,7 +268,7 @@ class AgentController {
         pace: pace !== undefined ? pace : agent.pace,
         temperature: temperature !== undefined ? temperature : agent.temperature,
         firstMessage: newFirstMessage,
-        aiProvider: aiProvider !== undefined ? aiProvider : agent.aiProvider,
+        aiProvider: finalAiProvider,
       });
 
       const isVoiceOrSettingsChanged = (voiceId && voiceId !== agent.voiceId) ||
@@ -267,7 +276,13 @@ class AgentController {
                                        (pace !== undefined && parseFloat(pace) !== parseFloat(agent.pace)) ||
                                        (temperature !== undefined && parseFloat(temperature) !== parseFloat(agent.temperature));
 
-      if (firstMessage !== undefined || (agent.firstMessage && isVoiceOrSettingsChanged)) {
+      if (finalAiProvider === 'geminilive') {
+        await clearFirstMessageAudio(agent);
+      } else if (
+        previousAiProvider === 'geminilive' ||
+        firstMessage !== undefined ||
+        (agent.firstMessage && isVoiceOrSettingsChanged)
+      ) {
         const audioPath = await handleFirstMessageAudio(agent, agent.firstMessage);
         await agent.update({ firstMessageAudioPath: audioPath });
       }

@@ -7,41 +7,80 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-const ws = new WebSocket(wsUrl);
+const candidates = [
+  { version: 'v1beta', model: 'models/gemini-2.0-flash' },
+  { version: 'v1beta', model: 'models/gemini-2.0-flash-lite' },
+  { version: 'v1beta', model: 'models/gemini-2.5-flash' },
+  { version: 'v1beta', model: 'models/gemini-2.5-flash-preview-tts' },
+  { version: 'v1alpha', model: 'models/gemini-2.0-flash' },
+  { version: 'v1alpha', model: 'models/gemini-2.0-flash-lite' },
+  { version: 'v1alpha', model: 'models/gemini-2.5-flash' },
+  { version: 'v1alpha', model: 'models/gemini-2.5-flash-preview-tts' },
+  // Let's also try without models/ prefix
+  { version: 'v1beta', model: 'gemini-2.0-flash' },
+  { version: 'v1alpha', model: 'gemini-2.0-flash' }
+];
 
-ws.on('open', () => {
-  console.log('WS Connected.');
-  const setupMessage = {
-    setup: {
-      model: 'models/gemini-2.0-flash-exp',
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Puck'
+async function testCandidate(candidate) {
+  return new Promise((resolve) => {
+    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${candidate.version}.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+    console.log(`\nTesting ${candidate.version} with model: ${candidate.model}`);
+    const ws = new WebSocket(wsUrl);
+    let resolved = false;
+
+    ws.on('open', () => {
+      const setupMessage = {
+        setup: {
+          model: candidate.model,
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: 'Puck'
+                }
+              }
             }
+          },
+          systemInstruction: {
+            parts: [{ text: "Hello" }]
           }
         }
-      },
-      systemInstruction: {
-        parts: [{ text: "Hello" }]
+      };
+      ws.send(JSON.stringify(setupMessage));
+    });
+
+    ws.on('message', (data) => {
+      const resp = data.toString();
+      console.log(`  [SUCCESS] Received message:`, resp.substring(0, 150));
+      if (!resolved) {
+        resolved = true;
+        ws.close();
+        resolve(true);
       }
+    });
+
+    ws.on('error', (err) => {
+      console.error(`  [ERROR]`, err.message);
+    });
+
+    ws.on('close', (code, reason) => {
+      if (!resolved) {
+        console.log(`  [FAILED] Closed with code ${code}, reason: ${reason.toString()}`);
+        resolve(false);
+      }
+    });
+  });
+}
+
+async function run() {
+  for (const c of candidates) {
+    const ok = await testCandidate(c);
+    if (ok) {
+      console.log(`\nFound working combination! Version: ${c.version}, Model: ${c.model}`);
     }
-  };
-  ws.send(JSON.stringify(setupMessage));
-  console.log('Sent setup message.');
-});
+  }
+  process.exit(0);
+}
 
-ws.on('message', (data) => {
-  console.log('Received:', data.toString());
-});
-
-ws.on('error', (err) => {
-  console.error('WS Error:', err);
-});
-
-ws.on('close', (code, reason) => {
-  console.log('WS Closed:', code, reason.toString());
-});
+run();

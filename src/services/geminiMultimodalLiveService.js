@@ -3,20 +3,21 @@ const defaults = require('../config/defaults');
 const EventEmitter = require('events');
 
 class GeminiMultimodalLiveSession extends EventEmitter {
-  constructor({ systemPrompt, voiceName, onAudioOutput, onError, onClose, onTranscription }) {
+  constructor({ systemPrompt, voiceName, allowInterruption = true, onAudioOutput, onError, onClose, onTranscription, onInterrupted }) {
     super();
     this.apiKey = defaults.gemini.apiKey;
-    const rawModel = defaults.gemini.multimodalLiveModel || 'gemini-2.0-flash-exp';
-    // Do not force or prepend 'models/' prefix for live or custom models
-    this.modelName = rawModel.startsWith('models/') ? rawModel.substring(7) : rawModel;
-    
+    const rawModel = defaults.gemini.multimodalLiveModel || 'gemini-2.0-flash';
+    this.modelName = this._formatModelName(rawModel);
+
     this.systemPrompt = systemPrompt;
     this.voiceName = voiceName || 'Aoede';
-    
+    this.allowInterruption = allowInterruption;
+
     this.onAudioOutput = onAudioOutput; // (pcmBuffer, sampleRate)
     this.onError = onError;
     this.onClose = onClose;
     this.onTranscription = onTranscription; // (text, role)
+    this.onInterrupted = onInterrupted;
     
     this.ws = null;
     this.isConnected = false;
@@ -32,7 +33,7 @@ class GeminiMultimodalLiveSession extends EventEmitter {
       // Fallback/mock behavior could go here, but for now we expect a real key for live WS
     }
 
-    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${this.apiKey}`;
+    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.apiKey}`;
     
     this.ws = new WebSocket(wsUrl);
 
@@ -59,26 +60,38 @@ class GeminiMultimodalLiveSession extends EventEmitter {
     });
   }
 
+  _formatModelName(model) {
+    const bare = model.startsWith('models/') ? model.substring(7) : model;
+    return `models/${bare}`;
+  }
+
   _sendSetup() {
     const setupMessage = {
       setup: {
         model: this.modelName,
         generationConfig: {
-          responseModalities: ["AUDIO"],
+          responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: this.voiceName
-              }
-            }
-          }
+                voiceName: this.voiceName,
+              },
+            },
+          },
         },
         systemInstruction: {
-          parts: [{ text: this.systemPrompt || "You are a helpful AI assistant on a phone call." }]
-        }
-      }
+          parts: [{ text: this.systemPrompt || 'You are a helpful AI assistant on a phone call.' }],
+        },
+        realtimeInputConfig: {
+          activityHandling: this.allowInterruption
+            ? 'START_OF_ACTIVITY_INTERRUPTS'
+            : 'NO_INTERRUPTION',
+        },
+        inputAudioTranscription: {},
+        outputAudioTranscription: {},
+      },
     };
-    
+
     this._send(setupMessage);
   }
 
@@ -89,6 +102,13 @@ class GeminiMultimodalLiveSession extends EventEmitter {
         parsed = JSON.parse(data.toString('utf8'));
       } else {
         parsed = JSON.parse(data);
+      }
+
+      if (parsed.error) {
+        const errMsg = parsed.error.message || JSON.stringify(parsed.error);
+        console.error('[Gemini Multimodal Live] API error:', errMsg);
+        if (this.onError) this.onError(new Error(errMsg));
+        return;
       }
 
       // Check for Setup Complete
@@ -113,6 +133,14 @@ class GeminiMultimodalLiveSession extends EventEmitter {
       if (parsed.serverContent) {
         const content = parsed.serverContent;
         
+        if (content.inputTranscription?.text && this.onTranscription) {
+          this.onTranscription(content.inputTranscription.text, 'user');
+        }
+
+        if (content.outputTranscription?.text && this.onTranscription) {
+          this.onTranscription(content.outputTranscription.text, 'agent');
+        }
+
         // Model Turn (Audio/Text from AI)
         if (content.modelTurn && content.modelTurn.parts) {
           for (const part of content.modelTurn.parts) {
@@ -131,10 +159,10 @@ class GeminiMultimodalLiveSession extends EventEmitter {
             }
           }
         }
-        
-        // Interrupted status
+
         if (content.interrupted) {
           console.log('[Gemini Multimodal Live] Model was interrupted.');
+          if (this.onInterrupted) this.onInterrupted();
         }
       } else if (!parsed.setupComplete) {
          // If it's not serverContent and not setupComplete, log it!
@@ -155,11 +183,11 @@ class GeminiMultimodalLiveSession extends EventEmitter {
     const base64Audio = pcmBuffer.toString('base64');
     const msg = {
       realtimeInput: {
-        mediaChunks: [{
-          mimeType: "audio/pcm;rate=16000",
-          data: base64Audio
-        }]
-      }
+        audio: {
+          mimeType: 'audio/pcm;rate=16000',
+          data: base64Audio,
+        },
+      },
     };
     this._send(msg);
   }

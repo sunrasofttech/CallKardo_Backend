@@ -116,6 +116,7 @@ class VoicePipeline {
 
     // Sentence-level TTS streaming queue to ensure ordered playback
     this._ttsQueue = Promise.resolve();
+    this._ttsGeneration = 0;
 
     this.audioInputBuffer = [];
     this.silenceTimer = null;
@@ -132,12 +133,11 @@ class VoicePipeline {
       this.geminiSession = new GeminiMultimodalLiveSession({
         systemPrompt: this.agent.systemPrompt,
         voiceName: this.agent.voice?.voiceId || 'Puck',
+        allowInterruption: this.agent.allowInterruption !== false,
         onAudioOutput: (pcmBuffer, sampleRate) => {
           // Resample Gemini's native 24kHz down to Vobiz 16kHz
           const resampledPcm = resamplePCM(pcmBuffer, sampleRate, 16000);
-          
-          const audioDurationMs = wavDurationMs(resampledPcm); // Works for raw if we approximate, wait resamplePCM gives raw PCM. wavDurationMs expects WAV. 
-          // For raw PCM at 16kHz: length / 32 = ms
+
           const rawDurationMs = Math.round((resampledPcm.length / 32000) * 1000);
           this._setAgentSpeaking(rawDurationMs + 300);
 
@@ -150,13 +150,16 @@ class VoicePipeline {
             this.onCustomerTranscription(text);
           }
         },
+        onInterrupted: () => {
+          this._cancelAgentSpeech();
+        },
         onError: (err) => {
           this._log('error', `Gemini Multimodal Live connection error: ${err.message}`);
           if (this.onError) this.onError(err);
         },
         onClose: () => {
           this._log('info', 'Gemini Multimodal Live session closed');
-        }
+        },
       });
     } else {
       this.geminiSession = new GeminiLiveSession({
@@ -167,6 +170,8 @@ class VoicePipeline {
             this._log('info', `Agent responded: ${text}`);
             if (this.onAgentTranscription) this.onAgentTranscription(text);
 
+            const ttsGeneration = ++this._ttsGeneration;
+
             // Mark agent as speaking immediately so interruption logic takes effect
             // even before audio is synthesized.
             this._setAgentSpeaking(3000); // Conservative minimum while we process
@@ -174,15 +179,11 @@ class VoicePipeline {
             const cleanText = stripMarkdown(text);
             if (!cleanText) return;
 
-            // ── ElevenLabs-quality technique: sentence-level streaming ──
-            // Split response into sentences and synthesize + stream each
-            // sentence in order. Customer hears first sentence ~1s sooner.
             const sentences = splitIntoSentences(cleanText);
 
             for (const sentence of sentences) {
-              // Chain onto the TTS queue to preserve sentence playback order
               this._ttsQueue = this._ttsQueue.then(() =>
-                this._synthesizeAndPlay(sentence)
+                this._synthesizeAndPlay(sentence, ttsGeneration)
               );
             }
           } catch (err) {
@@ -203,7 +204,8 @@ class VoicePipeline {
     let hasPreRecordedFirstMessage = false;
     let preRecordedFilePath = null;
 
-    if (this.agent.firstMessageAudioPath) {
+    // Pre-recorded first message uses Sarvam TTS — only for the custom (STT+REST+TTS) provider.
+    if (this.agent.aiProvider !== 'geminilive' && this.agent.firstMessageAudioPath) {
       preRecordedFilePath = path.resolve(process.cwd(), this.agent.firstMessageAudioPath);
       if (fs.existsSync(preRecordedFilePath)) {
         hasPreRecordedFirstMessage = true;
@@ -217,6 +219,13 @@ class VoicePipeline {
         this._playPreRecordedFirstMessage(preRecordedFilePath);
       });
     }
+  }
+
+  _cancelAgentSpeech() {
+    this._ttsGeneration++;
+    this.isAgentSpeaking = false;
+    if (this.speakingTimeout) clearTimeout(this.speakingTimeout);
+    if (this.onClearAudio) this.onClearAudio();
   }
 
   /**
@@ -237,8 +246,9 @@ class VoicePipeline {
    * Updates isAgentSpeaking with the actual WAV audio duration.
    * @param {string} text
    */
-  async _synthesizeAndPlay(text) {
+  async _synthesizeAndPlay(text, ttsGeneration) {
     if (!this.isConnected || !text.trim()) return;
+    if (ttsGeneration !== undefined && ttsGeneration !== this._ttsGeneration) return;
 
     try {
       const processedText = preprocessForTTS(text);
@@ -251,6 +261,7 @@ class VoicePipeline {
       });
 
       if (!this.isConnected || audioBuffer.length <= 44) return;
+      if (ttsGeneration !== undefined && ttsGeneration !== this._ttsGeneration) return;
 
       // ── FIX: compute actual audio duration and extend speaking window ──
       const audioDurationMs = wavDurationMs(audioBuffer);
@@ -363,9 +374,7 @@ class VoicePipeline {
 
         // Customer interrupted — stop agent audio immediately
         if (this.isAgentSpeaking) {
-          this.isAgentSpeaking = false;
-          if (this.speakingTimeout) clearTimeout(this.speakingTimeout);
-          if (this.onClearAudio) this.onClearAudio();
+          this._cancelAgentSpeech();
         }
 
         this._log('info', `Customer spoke: ${transcript}`);
