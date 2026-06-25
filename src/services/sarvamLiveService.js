@@ -1,32 +1,33 @@
 const axios = require('axios');
 const defaults = require('../config/defaults');
 
-class GeminiLiveSession {
+class SarvamLiveSession {
   /**
-   * Represents an active Gemini conversation session using the REST generateContent API with streaming.
+   * Represents an active Sarvam conversation session using the REST chat completions API with streaming.
    * Maintains multi-turn conversation history in memory for stateful dialogue.
    * 
    * @param {object} config
    * @param {string} config.systemPrompt - System instruction text
-   * @param {string} [config.model] - Gemini model identifier (e.g. gemini-3.5-flash)
+   * @param {string} [config.model] - Sarvam model identifier (e.g. sarvam-2b)
    * @param {function} config.onResponseText - Callback when assistant completes response with full text
    * @param {function} config.onResponseSentence - Callback when a complete sentence is streamed
    * @param {function} config.onStartResponse - Callback when assistant response starts (should return ttsGeneration)
    * @param {function} config.onError - Callback on error
    * @param {function} config.onClose - Callback on close
    */
-  constructor({ systemPrompt, model = defaults.gemini.liveModel, onResponseText, onResponseSentence, onStartResponse, onError, onClose }) {
+  constructor({ systemPrompt, model = defaults.sarvam.chatModel, onResponseText, onResponseSentence, onStartResponse, onError, onClose }) {
     this.systemPrompt = systemPrompt;
-    this.modelName = model.startsWith('models/') ? model.substring(7) : model;
+    this.modelName = model || 'sarvam-2b';
     this.onResponseText = onResponseText;
     this.onResponseSentence = onResponseSentence;
     this.onStartResponse = onStartResponse;
     this.onError = onError;
     this.onClose = onClose;
 
-    this.apiKey = defaults.gemini.apiKey;
+    this.apiKey = defaults.sarvam.apiKey;
+    this.apiBaseUrl = defaults.sarvam.apiBaseUrl || 'https://api.sarvam.ai';
     this.isConnected = false;
-    this.conversationHistory = []; // Multi-turn conversation context
+    this.conversationHistory = []; // OpenAI format multi-turn history
     this.activeController = null; // Active AbortController for cancelStream
   }
 
@@ -34,8 +35,8 @@ class GeminiLiveSession {
    * Initialize the session
    */
   connect(skipGreeting = false, firstMessage = null) {
-    if (!this.apiKey || this.apiKey === 'your_google_gemini_api_key') {
-      console.warn('Google Gemini API Key is missing. Simulating Mock Gemini responses.');
+    if (!this.apiKey || this.apiKey === 'your_sarvam_api_key') {
+      console.warn('Sarvam API Key is missing. Simulating Mock Sarvam responses.');
       this.isConnected = true;
       if (!skipGreeting) {
         setTimeout(() => {
@@ -46,8 +47,8 @@ class GeminiLiveSession {
             this.onResponseSentence(greeting, ttsGeneration);
           }
           this.conversationHistory.push({
-            role: 'model',
-            parts: [{ text: greeting }],
+            role: 'assistant',
+            content: greeting,
           });
           if (this.onResponseText) {
             this.onResponseText(greeting);
@@ -55,48 +56,48 @@ class GeminiLiveSession {
         }, 1000);
       } else if (firstMessage) {
         this.conversationHistory.push({
-          role: 'model',
-          parts: [{ text: firstMessage }],
+          role: 'assistant',
+          content: firstMessage,
         });
       }
       return;
     }
 
     this.isConnected = true;
-    console.log(`Gemini REST session initialized with model: ${this.modelName}`);
+    console.log(`Sarvam Chat Completion session initialized with model: ${this.modelName}`);
 
     if (skipGreeting) {
       if (firstMessage) {
         this.conversationHistory.push({
-          role: 'model',
-          parts: [{ text: firstMessage }],
+          role: 'assistant',
+          content: firstMessage,
         });
       }
     } else {
       // Send an initial greeting request to start the conversation
-      this._sendToGemini('[Call connected. Greet the customer according to your instructions.]');
+      this._sendToSarvam('[Call connected. Greet the customer according to your instructions.]');
     }
   }
 
   /**
-   * Send user speech text to Gemini
+   * Send user speech text to Sarvam
    * @param {string} text - Transcription of user's utterance
    */
   sendUserTurn(text) {
     if (!this.isConnected) {
-      console.error('Cannot send turn: Gemini session is not connected');
+      console.error('Cannot send turn: Sarvam session is not connected');
       return;
     }
 
     // Cancel any active stream before starting a new turn
     this.cancelStream();
 
-    if (!this.apiKey || this.apiKey === 'your_google_gemini_api_key') {
+    if (!this.apiKey || this.apiKey === 'your_sarvam_api_key') {
       this._simulateMockResponse(text);
       return;
     }
 
-    this._sendToGemini(text);
+    this._sendToSarvam(text);
   }
 
   /**
@@ -114,36 +115,31 @@ class GeminiLiveSession {
   }
 
   /**
-   * Send a message to Gemini REST API and stream the response
+   * Send a message to Sarvam Chat Completions API and stream the response
    * @param {string} userText - The user's message text
    */
-  async _sendToGemini(userText) {
+  async _sendToSarvam(userText) {
     try {
       // Add user turn to conversation history
       this.conversationHistory.push({
         role: 'user',
-        parts: [{ text: userText }],
+        content: userText,
       });
 
-      const requestBody = {
-        systemInstruction: {
-          parts: [{ text: `IMPORTANT: You are a voice AI agent on a phone call. Always respond in plain conversational text only. Never use markdown formatting such as bullet points, bold text (**), asterisks (*), headings (#), or numbered lists. Speak naturally as if talking on the phone.\n\n${this.systemPrompt}` }],
+      const messages = [
+        {
+          role: 'system',
+          content: `IMPORTANT: You are a voice AI agent on a phone call. Always respond in plain conversational text only. Never use markdown formatting such as bullet points, bold text (**), asterisks (*), headings (#), or numbered lists. Speak naturally as if talking on the phone.\n\n${this.systemPrompt}`,
         },
-        contents: this.conversationHistory,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 256,
-        },
-      };
+        ...this.conversationHistory,
+      ];
 
-      let modelPath = this.modelName;
-      if (modelPath.startsWith('tunedModels/')) {
-        // Do not prepend models/ for custom tuned models
-      } else {
-        modelPath = `models/${modelPath}`;
-      }
-      
-      const url = `https://generativelanguage.googleapis.com/v1beta/${modelPath}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+      const requestBody = {
+        model: this.modelName,
+        messages: messages,
+        temperature: 0.7,
+        stream: true,
+      };
 
       this.activeController = new AbortController();
 
@@ -151,8 +147,12 @@ class GeminiLiveSession {
       let retries = 3;
       while (retries > 0) {
         try {
-          response = await axios.post(url, requestBody, {
-            headers: { 'Content-Type': 'application/json' },
+          response = await axios.post(`${this.apiBaseUrl}/v1/chat/completions`, requestBody, {
+            headers: {
+              'Content-Type': 'application/json',
+              'api-subscription-key': this.apiKey,
+              'Authorization': `Bearer ${this.apiKey}`,
+            },
             responseType: 'stream',
             signal: this.activeController.signal,
             timeout: 30000,
@@ -160,6 +160,7 @@ class GeminiLiveSession {
           break; // Success
         } catch (err) {
           if (axios.isCancel(err) || err.name === 'AbortError') {
+            // Request was explicitly cancelled/aborted
             return;
           }
           retries--;
@@ -167,7 +168,7 @@ class GeminiLiveSession {
           if (retries === 0 || (!msg.includes('timeout') && !msg.includes('high demand') && err.response?.status !== 503)) {
             throw err;
           }
-          console.warn(`[Gemini Live] API Error: ${msg}. Retrying in 2 seconds... (${retries} retries left)`);
+          console.warn(`[Sarvam Live] API Error: ${msg}. Retrying in 2 seconds... (${retries} retries left)`);
           await new Promise(res => setTimeout(res, 2000));
         }
       }
@@ -177,7 +178,7 @@ class GeminiLiveSession {
       let fullResponseText = '';
       let currentSentence = '';
 
-      // Start response and capture active ttsGeneration ID
+      // Start response and capture the active ttsGeneration ID
       const ttsGeneration = this.onStartResponse ? this.onStartResponse() : undefined;
 
       stream.on('data', (chunk) => {
@@ -196,16 +197,7 @@ class GeminiLiveSession {
             }
             try {
               const parsed = JSON.parse(dataStr);
-              const parts = parsed.candidates?.[0]?.content?.parts;
-              let token = '';
-              if (parts) {
-                for (const part of parts) {
-                  if (part.text) {
-                    token += part.text;
-                  }
-                }
-              }
-
+              const token = parsed.choices?.[0]?.delta?.content || '';
               if (token) {
                 fullResponseText += token;
                 currentSentence += token;
@@ -242,8 +234,8 @@ class GeminiLiveSession {
         if (fullResponseText.trim()) {
           // Add model response to history
           this.conversationHistory.push({
-            role: 'model',
-            parts: [{ text: fullResponseText }],
+            role: 'assistant',
+            content: fullResponseText,
           });
 
           if (this.onResponseText) {
@@ -268,7 +260,7 @@ class GeminiLiveSession {
         return;
       }
       const errMsg = error.response?.data?.error?.message || error.message;
-      console.error('Gemini REST API Error:', errMsg);
+      console.error('Sarvam Chat Completions API Error:', errMsg);
       if (this.onError) {
         this.onError(new Error(errMsg));
       }
@@ -289,7 +281,7 @@ class GeminiLiveSession {
    * Simulate conversational AI behavior for local testing with streaming
    */
   _simulateMockResponse(inputText) {
-    console.log(`[Mock Gemini] Received user turn: "${inputText}"`);
+    console.log(`[Mock Sarvam] Received user turn: "${inputText}"`);
     let reply = "I understand. Let me check that for you.";
     
     const lowerText = inputText.toLowerCase();
@@ -318,8 +310,8 @@ class GeminiLiveSession {
         setTimeout(sendNextSentence, 800);
       } else {
         this.conversationHistory.push({
-          role: 'model',
-          parts: [{ text: reply }],
+          role: 'assistant',
+          content: reply,
         });
         if (this.onResponseText) {
           this.onResponseText(reply);
@@ -332,5 +324,5 @@ class GeminiLiveSession {
 }
 
 module.exports = {
-  GeminiLiveSession,
+  SarvamLiveSession,
 };

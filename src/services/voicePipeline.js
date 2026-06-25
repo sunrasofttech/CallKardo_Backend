@@ -1,5 +1,6 @@
 const { GeminiLiveSession } = require('./geminiLiveService');
 const { GeminiMultimodalLiveSession } = require('./geminiMultimodalLiveService');
+const { SarvamLiveSession } = require('./sarvamLiveService');
 const SarvamService = require('./sarvamService');
 const defaults = require('../config/defaults');
 const fs = require('fs');
@@ -85,8 +86,10 @@ function wavDurationMs(wavBuffer) {
   try {
     const sampleRate = wavBuffer.readUInt32LE(24);
     const byteRate = wavBuffer.readUInt32LE(28);
+    if (!byteRate || byteRate <= 0) return 1500;
     const dataLength = wavBuffer.length - 44;
-    return Math.round((dataLength / byteRate) * 1000);
+    const duration = Math.round((dataLength / byteRate) * 1000);
+    return isFinite(duration) && duration > 0 ? duration : 1500;
   } catch {
     return 1500;
   }
@@ -126,7 +129,9 @@ class VoicePipeline {
     this.MIN_BUFFER_BYTES = 1600;
 
     this.isConnected = true;
-    this.activeProvider = this.agent.aiProvider === 'geminilive' ? 'geminilive' : 'custom';
+    this.activeProvider = ['geminilive', 'custom', 'customv2'].includes(this.agent.aiProvider)
+      ? this.agent.aiProvider
+      : 'custom';
     this._isSwitchingProvider = false;
 
     this._log('info', `Initializing VoicePipeline with AI Provider: ${this.agent.aiProvider}`);
@@ -170,6 +175,8 @@ class VoicePipeline {
           }
         },
       });
+    } else if (this.activeProvider === 'customv2') {
+      this.geminiSession = this._createCustomv2Session();
     } else {
       this.geminiSession = this._createCustomGeminiSession();
     }
@@ -199,6 +206,9 @@ class VoicePipeline {
     this.isAgentSpeaking = false;
     if (this.speakingTimeout) clearTimeout(this.speakingTimeout);
     if (this.onClearAudio) this.onClearAudio();
+    if (this.geminiSession && typeof this.geminiSession.cancelStream === 'function') {
+      this.geminiSession.cancelStream();
+    }
   }
 
   _createCustomGeminiSession() {
@@ -207,29 +217,31 @@ class VoicePipeline {
       model: defaults.gemini.liveModel,
       onResponseText: async (text) => {
         try {
-          this._log('info', `Agent responded: ${text}`);
+          this._log('info', `Agent completed response: ${text}`);
           if (this.onAgentTranscription) this.onAgentTranscription(text);
-
-          const ttsGeneration = ++this._ttsGeneration;
-
-          // Mark agent as speaking immediately so interruption logic takes effect
-          // even before audio is synthesized.
-          this._setAgentSpeaking(3000); // Conservative minimum while we process
-
-          const cleanText = stripMarkdown(text);
+        } catch (err) {
+          this._log('error', `Gemini response logging failure: ${err.message}`);
+        }
+      },
+      onResponseSentence: async (sentenceText, ttsGeneration) => {
+        try {
+          const cleanText = stripMarkdown(sentenceText);
           if (!cleanText) return;
 
-          const sentences = splitIntoSentences(cleanText);
-
-          for (const sentence of sentences) {
-            this._ttsQueue = this._ttsQueue.then(() =>
-              this._synthesizeAndPlay(sentence, ttsGeneration)
-            );
-          }
+          // Schedule sentence TTS synthesis under the specific ttsGeneration
+          this._ttsQueue = this._ttsQueue.then(() =>
+            this._synthesizeAndPlay(cleanText, ttsGeneration)
+          );
         } catch (err) {
           this._log('error', `TTS pipeline failure: ${err.message}`);
           if (this.onError) this.onError(err);
         }
+      },
+      onStartResponse: () => {
+        // Set agent speaking immediately, increment generation ID and return it
+        const ttsGeneration = ++this._ttsGeneration;
+        this._setAgentSpeaking(3000);
+        return ttsGeneration;
       },
       onError: (err) => {
         this._log('error', `Gemini Live connection error: ${err.message}`);
@@ -237,6 +249,48 @@ class VoicePipeline {
       },
       onClose: () => {
         this._log('info', 'Gemini session closed');
+      },
+    });
+  }
+
+  _createCustomv2Session() {
+    return new SarvamLiveSession({
+      systemPrompt: this.agent.systemPrompt,
+      model: defaults.sarvam.chatModel || 'sarvam-2b',
+      onResponseText: async (text) => {
+        try {
+          this._log('info', `Agent completed response: ${text}`);
+          if (this.onAgentTranscription) this.onAgentTranscription(text);
+        } catch (err) {
+          this._log('error', `Sarvam response logging failure: ${err.message}`);
+        }
+      },
+      onResponseSentence: async (sentenceText, ttsGeneration) => {
+        try {
+          const cleanText = stripMarkdown(sentenceText);
+          if (!cleanText) return;
+
+          // Schedule sentence TTS synthesis under the specific ttsGeneration
+          this._ttsQueue = this._ttsQueue.then(() =>
+            this._synthesizeAndPlay(cleanText, ttsGeneration)
+          );
+        } catch (err) {
+          this._log('error', `TTS pipeline failure: ${err.message}`);
+          if (this.onError) this.onError(err);
+        }
+      },
+      onStartResponse: () => {
+        // Set agent speaking immediately, increment generation ID and return it
+        const ttsGeneration = ++this._ttsGeneration;
+        this._setAgentSpeaking(3000);
+        return ttsGeneration;
+      },
+      onError: (err) => {
+        this._log('error', `Sarvam Live connection error: ${err.message}`);
+        if (this.onError) this.onError(err);
+      },
+      onClose: () => {
+        this._log('info', 'Sarvam session closed');
       },
     });
   }

@@ -45,6 +45,9 @@ module.exports = {
     get apiBaseUrl() {
       return process.env.SARVAM_API_BASE_URL || 'https://api.sarvam.ai';
     },
+    get chatModel() {
+      return process.env.SARVAM_CHAT_MODEL || 'sarvam-105b';
+    },
     get defaultLanguageCode() {
       return 'en-IN';
     },
