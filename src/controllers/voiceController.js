@@ -6,6 +6,32 @@ const { Op } = require('sequelize');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const defaults = require('../config/defaults');
+
+function writeWavHeader(pcmBuffer, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const header = Buffer.alloc(44);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = pcmBuffer.length;
+  const chunkSize = 36 + dataSize;
+
+  header.write('RIFF', 0);
+  header.writeUInt32LE(chunkSize, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(numChannels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(dataSize, 40);
+
+  return Buffer.concat([header, pcmBuffer]);
+}
 
 class VoiceController {
   /**
@@ -91,12 +117,59 @@ class VoiceController {
         return res.send(cachedBuffer);
       }
 
-      // Synthesize text
-      console.log(`Calling Sarvam AI TTS for voice preview: ${resolvedVoiceId} (${resolvedLanguage}) using sample text: "${text}"`);
-      const audioBuffer = await sarvamService.synthesizeText(text, resolvedVoiceId, resolvedLanguage, {
-        pace: resolvedPace,
-        temperature: resolvedTemp,
-      });
+      let audioBuffer;
+
+      if (voice.provider === 'google') {
+        console.log(`Calling Gemini TTS for voice preview: ${resolvedVoiceId} using sample text: "${text}"`);
+        const model = 'gemini-3.1-flash-tts-preview';
+        const apiKey = defaults.gemini.apiKey;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+        const requestBody = {
+          contents: [
+            {
+              parts: [
+                { text: text }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: resolvedVoiceId
+                }
+              }
+            }
+          }
+        };
+
+        const response = await axios.post(url, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000
+        });
+
+        const candidates = response.data?.candidates;
+        if (!candidates || candidates.length === 0 || !candidates[0].content?.parts) {
+          throw new Error('Gemini TTS failed to generate audio');
+        }
+
+        const part = candidates[0].content.parts.find(p => p.inlineData);
+        if (!part) {
+          throw new Error('Gemini TTS response did not contain inline audio data');
+        }
+
+        const rawPcm = Buffer.from(part.inlineData.data, 'base64');
+        audioBuffer = writeWavHeader(rawPcm, 24000, 1, 16);
+      } else {
+        // Synthesize text
+        console.log(`Calling Sarvam AI TTS for voice preview: ${resolvedVoiceId} (${resolvedLanguage}) using sample text: "${text}"`);
+        audioBuffer = await sarvamService.synthesizeText(text, resolvedVoiceId, resolvedLanguage, {
+          pace: resolvedPace,
+          temperature: resolvedTemp,
+        });
+      }
 
       // Write to cache directory (creating it if needed)
       if (!fs.existsSync(previewsDir)) {
