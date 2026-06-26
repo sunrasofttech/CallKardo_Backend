@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Sequelize, DataTypes } = require('sequelize');
 const axios = require('axios');
 const { decrypt } = require('../src/utils/crypto');
+const defaults = require('../src/config/defaults');
 
 // Connect to live DB
 const sequelize = new Sequelize('callkardo_db', 'callkardo_user', 'Callkardo@2026', {
@@ -38,11 +39,13 @@ async function run() {
     }
 
     console.log('Decrypting credentials...');
-    let decryptedApiSecret = decrypt(account.apiSecret);
-    const authId = account.customerId;
+    const decryptedApiKey = decrypt(account.apiKey);
+    const decryptedApiSecret = decrypt(account.apiSecret);
+
+    const authId = decryptedApiKey;
     const authToken = decryptedApiSecret;
 
-    console.log(`Auth ID: ${authId}`);
+    console.log(`Decrypted Auth ID: ${authId}`);
     
     // Create axios client for VoBiz API
     const client = axios.create({
@@ -56,7 +59,11 @@ async function run() {
 
     // 1. Create or Find Application
     const appName = 'AILIVE_INBOUND';
-    const answerUrl = 'https://backend.callkardo.com/api/v1/vobiz/answer'; // Placed the live backend server callback URL
+    
+    // Resolve host dynamically
+    const host = defaults.ws.host;
+    const answerUrl = `https://${host}/api/v1/vobiz/answer`;
+    
     console.log(`Checking applications for name "${appName}"...`);
     
     let appId = null;
@@ -65,13 +72,7 @@ async function run() {
       const listResponse = await client.get(`/Account/${authId}/Application/`);
       apps = listResponse.data?.objects || listResponse.data || [];
     } catch (listErr) {
-      console.log(`List via /Application/ failed (${listErr.message}), trying /applications/`);
-      try {
-        const listResponse = await client.get(`/Account/${authId}/applications/`);
-        apps = listResponse.data?.objects || listResponse.data || [];
-      } catch (listErr2) {
-        console.error('Failed to list applications:', listErr2.message);
-      }
+      console.log(`List via /Application/ failed: ${listErr.response ? JSON.stringify(listErr.response.data) : listErr.message}`);
     }
 
     if (Array.isArray(apps)) {
@@ -93,13 +94,20 @@ async function run() {
           answer_method: 'POST'
         });
       } catch (createErr) {
-        console.log(`Create via /Application/ failed (${createErr.message}), trying /applications/`);
-        createAppResponse = await client.post(`/Account/${authId}/applications/`, {
-          name: appName,
-          app_name: appName,
-          answer_url: answerUrl,
-          answer_method: 'POST'
-        });
+        console.log(`Create via /Application/ failed: ${createErr.response ? JSON.stringify(createErr.response.data) : createErr.message}`);
+        
+        console.log('Trying fallback route /applications/ ...');
+        try {
+          createAppResponse = await client.post(`/Account/${authId}/applications/`, {
+            name: appName,
+            app_name: appName,
+            answer_url: answerUrl,
+            answer_method: 'POST'
+          });
+        } catch (createErr2) {
+          console.error(`Create via /applications/ failed: ${createErr2.response ? JSON.stringify(createErr2.response.data) : createErr2.message}`);
+          throw createErr; // throw original
+        }
       }
       
       appId = createAppResponse.data?.app_id || createAppResponse.data?.id;
@@ -117,13 +125,13 @@ async function run() {
         app_id: appId
       });
     } catch (err1) {
-      console.log(`Link via /Number/ failed (${err1.message}), trying /numbers/`);
+      console.log(`Link via /Number/ failed (${err1.response ? JSON.stringify(err1.response.data) : err1.message}), trying /numbers/`);
       try {
         linkResponse = await client.post(`/Account/${authId}/numbers/${encodeURIComponent(targetNumber)}/`, {
           app_id: appId
         });
       } catch (err2) {
-        console.log(`Link via /numbers/ failed (${err2.message}), trying sub-resource assign`);
+        console.log(`Link via /numbers/ failed (${err2.response ? JSON.stringify(err2.response.data) : err2.message}), trying sub-resource assign`);
         linkResponse = await client.post(`/Account/${authId}/Application/${appId}/`, {
           numbers: [targetNumber]
         });
