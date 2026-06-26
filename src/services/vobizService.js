@@ -39,7 +39,7 @@ class VobizService {
       const answerUrl = `https://${defaults.ws.host}/api/v1/vobiz/answer?token=${wsToken}`;
 
       const data = {
-        from: fromNumber,
+        from: fromNumber.startsWith('+') ? fromNumber.substring(1) : fromNumber,
         to: toNumber.startsWith('+') ? toNumber.substring(1) : toNumber,
         answer_url: answerUrl,
         answer_method: 'POST',
