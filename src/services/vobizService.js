@@ -345,19 +345,19 @@ class VobizService {
       
       let linkResponse;
       try {
-        linkResponse = await client.post(`/Account/${authId}/Number/${encodeURIComponent(e164)}/`, {
-          app_id: appId
+        linkResponse = await client.post(`/Account/${authId}/Application/${appId}/`, {
+          numbers: [e164]
         });
       } catch (err1) {
-        console.warn(`[VoBiz Service] Link via /Number/ failed (${err1.message}), trying /numbers/`);
+        console.warn(`[VoBiz Service] Link via Application sub-resource failed (${err1.message}), trying /Number/`);
         try {
-          linkResponse = await client.post(`/Account/${authId}/numbers/${encodeURIComponent(e164)}/`, {
+          linkResponse = await client.post(`/Account/${authId}/Number/${encodeURIComponent(e164)}/`, {
             app_id: appId
           });
         } catch (err2) {
-          console.warn(`[VoBiz Service] Link via /numbers/ failed (${err2.message}), trying sub-resource assign`);
-          linkResponse = await client.post(`/Account/${authId}/Application/${appId}/`, {
-            numbers: [e164]
+          console.warn(`[VoBiz Service] Link via /Number/ failed (${err2.message}), trying /numbers/`);
+          linkResponse = await client.post(`/Account/${authId}/numbers/${encodeURIComponent(e164)}/`, {
+            app_id: appId
           });
         }
       }
