@@ -163,6 +163,7 @@ class VoicePipeline {
     this.accumulatedTranscript = '';
     this.transcriptionSilenceTimer = null;
     this.SILENCE_TIMEOUT_MS = 1050;
+    this.pendingCustomerTranscript = '';
 
     this.sarvamSttStream = null;
     this.sarvamTtsStream = null;
@@ -387,11 +388,20 @@ class VoicePipeline {
     this._ttsGeneration++;
     this._activeTtsGeneration = null;
     this.isAgentSpeaking = false;
-    if (this.speakingTimeout) clearTimeout(this.speakingTimeout);
+    if (this.speakingTimeout) {
+      clearTimeout(this.speakingTimeout);
+      this.speakingTimeout = null;
+    }
     this._clearPacingQueue();
     if (this.onClearAudio) this.onClearAudio();
     if (this.geminiSession && typeof this.geminiSession.cancelStream === 'function') {
       this.geminiSession.cancelStream();
+    }
+    if (this.pendingCustomerTranscript && this.pendingCustomerTranscript.trim()) {
+      const queuedText = this.pendingCustomerTranscript.trim();
+      this.pendingCustomerTranscript = '';
+      this._log('info', `[Interruption resumed] Processing queued customer speech after cancel: "${queuedText}"`);
+      this._handleRealtimeTranscript(queuedText);
     }
   }
 
@@ -507,6 +517,12 @@ class VoicePipeline {
     if (this.speakingTimeout) clearTimeout(this.speakingTimeout);
     this.speakingTimeout = setTimeout(() => {
       this.isAgentSpeaking = false;
+      if (this.pendingCustomerTranscript && this.pendingCustomerTranscript.trim()) {
+        const queuedText = this.pendingCustomerTranscript.trim();
+        this.pendingCustomerTranscript = '';
+        this._log('info', `[Interruption resumed] Processing queued customer speech: "${queuedText}"`);
+        this._handleRealtimeTranscript(queuedText);
+      }
     }, durationMs);
   }
 
@@ -677,7 +693,8 @@ class VoicePipeline {
     }
 
     if (this.isAgentSpeaking && !isSubstantialInterruption(finalTranscript)) {
-      this._log('info', `[Interruption Ignored] Too short while agent speaking: "${finalTranscript}"`);
+      this.pendingCustomerTranscript = mergeTranscript(this.pendingCustomerTranscript, finalTranscript);
+      this._log('info', `[Interruption queued] Short speech while agent speaking; will process after agent finishes: "${finalTranscript}"`);
       return;
     }
 
