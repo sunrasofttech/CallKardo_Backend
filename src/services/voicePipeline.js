@@ -401,7 +401,7 @@ class VoicePipeline {
       const queuedText = this.pendingCustomerTranscript.trim();
       this.pendingCustomerTranscript = '';
       this._log('info', `[Interruption resumed] Processing queued customer speech after cancel: "${queuedText}"`);
-      this._handleRealtimeTranscript(queuedText);
+      this._processFinalTranscript(queuedText);
     }
   }
 
@@ -521,7 +521,7 @@ class VoicePipeline {
         const queuedText = this.pendingCustomerTranscript.trim();
         this.pendingCustomerTranscript = '';
         this._log('info', `[Interruption resumed] Processing queued customer speech: "${queuedText}"`);
-        this._handleRealtimeTranscript(queuedText);
+        this._processFinalTranscript(queuedText);
       }
     }, durationMs);
   }
@@ -671,31 +671,28 @@ class VoicePipeline {
     }, this.SILENCE_TIMEOUT_MS);
   }
 
-  _flushRealtimeTranscript() {
-    const finalTranscript = (this.accumulatedTranscript || '').trim();
+  _processFinalTranscript(transcript) {
+    const finalTranscript = normalizeTranscript(transcript);
     if (!finalTranscript) {
-      if (this.transcriptionSilenceTimer) {
-        clearTimeout(this.transcriptionSilenceTimer);
-        this.transcriptionSilenceTimer = null;
-      }
-      return;
+      return false;
     }
 
     if (!this.agent.allowInterruption && this.isAgentSpeaking) {
       this._log('info', `[Interruption Blocked] Customer spoke: "${finalTranscript}" — agent still speaking, waiting.`);
-      return;
+      return false;
     }
 
-    this.accumulatedTranscript = '';
     if (this.transcriptionSilenceTimer) {
       clearTimeout(this.transcriptionSilenceTimer);
       this.transcriptionSilenceTimer = null;
     }
 
+    this.accumulatedTranscript = '';
+
     if (this.isAgentSpeaking && !isSubstantialInterruption(finalTranscript)) {
       this.pendingCustomerTranscript = mergeTranscript(this.pendingCustomerTranscript, finalTranscript);
       this._log('info', `[Interruption queued] Short speech while agent speaking; will process after agent finishes: "${finalTranscript}"`);
-      return;
+      return false;
     }
 
     if (this.isAgentSpeaking) {
@@ -705,6 +702,11 @@ class VoicePipeline {
     this._log('info', `Customer spoke (real-time WSS): ${finalTranscript}`);
     if (this.onCustomerTranscription) this.onCustomerTranscription(finalTranscript);
     this.geminiSession.sendUserTurn(finalTranscript);
+    return true;
+  }
+
+  _flushRealtimeTranscript() {
+    return this._processFinalTranscript(this.accumulatedTranscript);
   }
 
   async handleAudioInput(pcmBuffer) {
@@ -732,6 +734,12 @@ class VoicePipeline {
       this.sarvamSttStream.flush();
     }
     this._flushRealtimeTranscript();
+    if (this.pendingCustomerTranscript && this.pendingCustomerTranscript.trim()) {
+      const queuedText = this.pendingCustomerTranscript.trim();
+      this.pendingCustomerTranscript = '';
+      this._log('info', `[Interruption resumed] Processing queued customer speech during flush: "${queuedText}"`);
+      this._processFinalTranscript(queuedText);
+    }
   }
 
   async close() {
