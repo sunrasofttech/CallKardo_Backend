@@ -5,7 +5,7 @@ const { authenticate, isMerchant } = require('../middleware/auth');
 const router = express.Router();
 
 // Webhook for VoBiz to answer the call and connect the stream
-router.post('/answer', VobizController.answerCallWebhook);
+router.all('/answer', VobizController.answerCallWebhook);
 
 // Merchant scope only
 router.use(authenticate, isMerchant);
