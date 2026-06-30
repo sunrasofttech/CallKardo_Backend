@@ -136,11 +136,17 @@ class GeminiLiveSession {
     }, 15000);
 
     try {
-      // Add user turn to conversation history
-      this.conversationHistory.push({
-        role: 'user',
-        parts: [{ text: userText }],
-      });
+      // Add user turn to conversation history, merging if the last turn was also from the user
+      const lastTurn = this.conversationHistory[this.conversationHistory.length - 1];
+      if (lastTurn && lastTurn.role === 'user') {
+        lastTurn.parts[0].text = `${lastTurn.parts[0].text} ${userText}`;
+        console.log(`[Gemini Live] Merged consecutive user turn. Updated text: "${lastTurn.parts[0].text.substring(0, 80)}..."`);
+      } else {
+        this.conversationHistory.push({
+          role: 'user',
+          parts: [{ text: userText }],
+        });
+      }
 
       const ttsGeneration = this.onStartResponse ? this.onStartResponse() : undefined;
 

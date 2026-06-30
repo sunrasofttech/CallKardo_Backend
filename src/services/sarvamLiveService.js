@@ -122,11 +122,17 @@ class SarvamLiveSession {
    */
   async _sendToSarvam(userText) {
     try {
-      // Add user turn to conversation history
-      this.conversationHistory.push({
-        role: 'user',
-        content: userText,
-      });
+      // Add user turn to conversation history, merging if the last turn was also from the user
+      const lastTurn = this.conversationHistory[this.conversationHistory.length - 1];
+      if (lastTurn && lastTurn.role === 'user') {
+        lastTurn.content = `${lastTurn.content} ${userText}`;
+        console.log(`[Sarvam Live] Merged consecutive user turn. Updated text: "${lastTurn.content.substring(0, 80)}..."`);
+      } else {
+        this.conversationHistory.push({
+          role: 'user',
+          content: userText,
+        });
+      }
 
       const ttsGeneration = this.onStartResponse ? this.onStartResponse() : undefined;
 
