@@ -793,10 +793,10 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
    * Returns true if the transcript seems valid enough to process.
    */
   _isValidTranscript(transcript) {
-    if (!transcript || transcript.length < 2) return false;
+    if (!transcript || transcript.length < 1) return false;
 
-    // Reject if >60% of characters are non-alpha (likely noise, not speech)
-    const alphaChars = (transcript.match(/[a-zA-Z\u00C0-\u024F\u0900-\u097F\u0B00-\u0B7F\u0C00-\u0C7F\u0D00-\u0D7F\u0B80-\u0BFF\u0C80-\u0CFF\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF]/g) || []);
+    // Reject if >60% of characters are non-alphanumeric (likely noise, not speech)
+    const alphaChars = (transcript.match(/[a-zA-Z0-9\u00C0-\u024F\u0900-\u097F\u0B00-\u0B7F\u0C00-\u0C7F\u0D00-\u0D7F\u0B80-\u0BFF\u0C80-\u0CFF\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF]/g) || []);
     const ratio = transcript.length > 0 ? alphaChars.length / transcript.length : 0;
     if (ratio < 0.3) {
       this._log('info', `[STT filter] Rejected low-alpha transcript (ratio: ${ratio.toFixed(2)}): "${transcript}"`);
