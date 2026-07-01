@@ -116,7 +116,7 @@ class VobizController {
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial>
-        <Sip>sip:${sipEndpoint}</Sip>
+        <User>sip:${sipEndpoint}</User>
     </Dial>
 </Response>`;
         res.set('Content-Type', 'text/xml');
@@ -137,7 +137,7 @@ class VobizController {
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Dial>
-        <Sip>${sipEndpoint}</Sip>
+        <User>${sipEndpoint}</User>
     </Dial>
 </Response>`;
         res.set('Content-Type', 'text/xml');
