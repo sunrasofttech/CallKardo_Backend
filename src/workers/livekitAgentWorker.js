@@ -20,7 +20,7 @@ function startLivekitWorker() {
 
   const opts = new ServerOptions({
     agent: voiceAgentPath,
-    initializeProcessTimeout: 60, // Set timeout to 60s (from default 10s) to allow VAD to initialize on low-CPU servers
+    initializeProcessTimeout: 60000, // 60 seconds (Node.js SDK uses milliseconds, not seconds!)
   });
 
   cli.runApp(opts);
