@@ -251,7 +251,7 @@ class LivekitController {
       // but web browsers need the public hostname to connect from the outside.
       if (livekitUrl.includes('127.0.0.1') || livekitUrl.includes('localhost')) {
         const hostname = req.hostname; // e.g., api.callkardo.com
-        livekitUrl = livekitUrl.replace('127.0.0.1', hostname).replace('localhost', hostname);
+        livekitUrl = `wss://${hostname}`;
       }
 
       res.json({
