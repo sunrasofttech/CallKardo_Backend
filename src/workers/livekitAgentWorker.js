@@ -21,6 +21,7 @@ function startLivekitWorker() {
   const opts = new ServerOptions({
     agent: voiceAgentPath,
     initializeProcessTimeout: 60000, // 60 seconds (Node.js SDK uses milliseconds, not seconds!)
+    port: 0, // Pick a random open port for the health check server to avoid EADDRINUSE
   });
 
   cli.runApp(opts);
