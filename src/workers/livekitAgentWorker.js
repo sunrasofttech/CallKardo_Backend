@@ -25,7 +25,6 @@ function startLivekitWorker() {
     agent: voiceAgentPath,
     initializeProcessTimeout: 120000, // 120 seconds for slow 1-vCPU servers
     port: 0, // Random open port for the health-check server
-    numIdleProcesses: 1, // Pre-warm 1 process so it's ready instantly for room dispatch
   });
 
   cli.runApp(opts);
