@@ -9,7 +9,6 @@
     "worker:scheduler": "node src/workers/schedulerWorker.js",
     "worker:call": "node src/workers/callWorker.js",
     "worker:ai": "node src/workers/aiWorker.js",
-    "worker:livekit": "node src/workers/livekitAgentWorker.js",
     "ws-server": "node src/websocket/wsServer.js"
   },
   "dependencies": {

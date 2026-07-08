@@ -40,17 +40,22 @@
     <div id="transcript"></div>
   </div>
 
-  <audio id="agentAudio" autoplay></audio>
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
   <script>
-    const agentId = '<%= agentId %>';
-    let room = null;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/webcall?agentId=<%= agentId %>`;
+    let ws = null;
+    let audioContext = null;
+    let microphone = null;
+    let processor = null;
+    let silentGain = null;
+    let nextPlayTime = 0;
+    let speechHangoverFrames = 0;
+    let playbackSources = [];
 
     const btnStart = document.getElementById('btnStart');
     const btnStop = document.getElementById('btnStop');
     const statusDiv = document.getElementById('status');
     const transcriptDiv = document.getElementById('transcript');
-    const agentAudio = document.getElementById('agentAudio');
 
     function logMessage(role, text) {
       const div = document.createElement('div');
@@ -60,78 +65,178 @@
       transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
     }
 
+    // Downsample microphone Float32 buffer to Int16 PCM 16000Hz
+    function downsampleBuffer(buffer, sampleRate) {
+      if (sampleRate === 16000) {
+        return convertFloat32ToInt16(buffer);
+      }
+      const sampleRateRatio = sampleRate / 16000;
+      const newLength = Math.round(buffer.length / sampleRateRatio);
+      const result = new Float32Array(newLength);
+      let offsetResult = 0;
+      let offsetBuffer = 0;
+      while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+          accum += buffer[i];
+          count++;
+        }
+        result[offsetResult] = accum / count;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+      }
+      return convertFloat32ToInt16(result);
+    }
+
+    function convertFloat32ToInt16(buffer) {
+      let l = buffer.length;
+      let buf = new Int16Array(l);
+      while (l--) {
+        buf[l] = Math.min(1, buffer[l]) * 0x7FFF;
+      }
+      return buf.buffer;
+    }
+
+    // Playback incoming Int16 PCM 16000Hz audio
+    function playAudioData(int16Array) {
+      if (!audioContext) return;
+      const float32Array = new Float32Array(int16Array.length);
+      for (let i = 0; i < int16Array.length; i++) {
+        float32Array[i] = int16Array[i] / 0x7FFF;
+      }
+      
+      const audioBuffer = audioContext.createBuffer(1, float32Array.length, 16000);
+      audioBuffer.getChannelData(0).set(float32Array);
+      
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      playbackSources.push(source);
+      source.onended = () => {
+        playbackSources = playbackSources.filter((item) => item !== source);
+      };
+      
+      const currentTime = audioContext.currentTime;
+      if (nextPlayTime < currentTime) nextPlayTime = currentTime;
+      source.start(nextPlayTime);
+      nextPlayTime += audioBuffer.duration;
+    }
+
+    function clearPlaybackQueue() {
+      if (audioContext) {
+        nextPlayTime = audioContext.currentTime;
+      }
+      playbackSources.forEach((source) => {
+        try {
+          source.stop();
+        } catch (err) {}
+      });
+      playbackSources = [];
+    }
+
     async function startCall() {
       try {
-        btnStart.disabled = true;
-        statusDiv.textContent = 'Status: Fetching Token...';
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         
-        // 1. Fetch Token
-        const res = await fetch(`/api/v1/livekit/web-token?agentId=${agentId}`);
-        const data = await res.json();
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
-        if (!data.success) {
-          throw new Error(data.message || 'Failed to fetch token');
-        }
+        ws = new WebSocket(wsUrl);
+        ws.binaryType = "arraybuffer";
+        
+        ws.onopen = () => {
+          statusDiv.textContent = 'Status: Connected';
+          statusDiv.className = 'status connected';
+          btnStart.disabled = true;
+          btnStop.disabled = false;
+          logMessage('system', 'Call connected. Connecting to Agent AI...');
+          
+          microphone = audioContext.createMediaStreamSource(stream);
+          processor = audioContext.createScriptProcessor(4096, 1, 1);
+          
+          processor.onaudioprocess = (e) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              const inputBuffer = e.inputBuffer.getChannelData(0);
+              
+              // Compute RMS volume for basic Voice Activity Detection (VAD)
+              let sum = 0;
+              for (let i = 0; i < inputBuffer.length; i++) {
+                sum += inputBuffer[i] * inputBuffer[i];
+              }
+              const rms = Math.sqrt(sum / inputBuffer.length);
+              
+              // Keep sending a short tail after speech so STT does not lose quiet word endings.
+              if (rms > 0.006) {
+                speechHangoverFrames = 12;
+              }
 
-        // 2. Connect to LiveKit Room
-        statusDiv.textContent = 'Status: Connecting to Agent...';
-        room = new LivekitClient.Room({
-          adaptiveStream: true,
-          dynacast: true,
-        });
-
-        // Handle incoming audio tracks
-        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-          if (track.kind === LivekitClient.Track.Kind.Audio) {
-            logMessage('system', 'Agent audio connected.');
-            track.attach(agentAudio);
-          }
-        });
-
-        // Handle data channel messages (transcripts)
-        room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
-          try {
-            const strData = new TextDecoder().decode(payload);
-            const msg = JSON.parse(strData);
-            // Check for transcript messages, if available
-            if (msg && msg.text) {
-               logMessage(participant ? 'agent' : 'system', msg.text);
-            } else if (msg && msg.message) {
-               logMessage(participant ? 'agent' : 'system', msg.message);
+              if (rms > 0.003 || speechHangoverFrames > 0) {
+                const pcm16Buffer = downsampleBuffer(inputBuffer, audioContext.sampleRate);
+                ws.send(pcm16Buffer);
+                if (speechHangoverFrames > 0) speechHangoverFrames--;
+              }
             }
-          } catch (e) {
-            // Ignore non-json data
+          };
+          
+          microphone.connect(processor);
+          silentGain = audioContext.createGain();
+          silentGain.gain.value = 0;
+          processor.connect(silentGain);
+          silentGain.connect(audioContext.destination);
+        };
+        
+        ws.onmessage = (event) => {
+          if (event.data instanceof ArrayBuffer) {
+            // Incoming Audio
+            const int16Array = new Int16Array(event.data);
+            playAudioData(int16Array);
+          } else {
+            // Incoming Text/JSON
+            if (event.data === 'CLEAR') {
+              clearPlaybackQueue();
+            } else {
+              try {
+                const msg = JSON.parse(event.data);
+                logMessage(msg.type, msg.text);
+              } catch (e) {}
+            }
           }
-        });
-
-        room.on(LivekitClient.RoomEvent.Disconnected, () => {
+        };
+        
+        ws.onclose = () => {
           stopCall();
           logMessage('system', 'Call disconnected.');
-        });
-
-        await room.connect(data.livekitUrl, data.token);
-        
-        statusDiv.textContent = 'Status: Connected';
-        statusDiv.className = 'status connected';
-        btnStop.disabled = false;
-        logMessage('system', 'Connected to LiveKit. Starting microphone...');
-
-        // 3. Publish Microphone
-        await room.localParticipant.setMicrophoneEnabled(true);
-        logMessage('system', 'Microphone enabled. You can speak now!');
+        };
 
       } catch (err) {
-        console.error(err);
-        alert('Error starting call: ' + err.message);
-        btnStart.disabled = false;
-        statusDiv.textContent = 'Status: Disconnected';
+        alert('Could not access microphone: ' + err.message);
       }
     }
 
-    async function stopCall() {
-      if (room) {
-        await room.disconnect();
-        room = null;
+    function stopCall() {
+      if (ws) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send('stop');
+          ws.close();
+        }
+        ws = null;
+      }
+      if (processor) {
+        processor.disconnect();
+        processor = null;
+      }
+      if (silentGain) {
+        silentGain.disconnect();
+        silentGain = null;
+      }
+      if (microphone) {
+        microphone.disconnect();
+        microphone = null;
+      }
+      clearPlaybackQueue();
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
       }
       
       statusDiv.textContent = 'Status: Disconnected';

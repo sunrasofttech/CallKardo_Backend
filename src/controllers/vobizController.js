@@ -137,27 +137,6 @@ class VobizController {
         return res.send(xml);
       }
 
-      if (vobizNumber.agent.aiProvider === 'custom' || vobizNumber.agent.aiProvider === 'customv2') {
-        // Route to local/self-hosted LiveKit Server SIP Trunk
-        // Formatting exactly like working ElevenLabs URI (host-only without username and @)
-        const sipEndpoint = `sip:${defaults.livekit.sipHost};transport=tcp`;
-        
-        await CallLog.create({
-          callSessionId: session.id,
-          logLevel: 'info',
-          message: `Routing inbound call to LiveKit SIP trunk: ${sipEndpoint}`,
-        });
-
-        const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Dial>
-        <User>${sipEndpoint}</User>
-    </Dial>
-</Response>`;
-        console.log('[VoBiz Webhook] Returning LiveKit XML:', xml);
-        res.set('Content-Type', 'text/xml');
-        return res.send(xml);
-      }
 
       // Default fallback: Custom WebSocket server stream
       const streamUrl = `wss://${defaults.ws.host}/ws/vobiz?token=${wsToken}`;

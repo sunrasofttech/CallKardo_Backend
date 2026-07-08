@@ -14,13 +14,6 @@ function startWebSocketServer(server = null) {
     console.log('Attaching WebSocket server to existing HTTP server...');
     wss = new WebSocketServer({ noServer: true });
 
-    const { createProxyMiddleware } = require('http-proxy-middleware');
-    const liveKitProxy = createProxyMiddleware({
-      target: 'http://127.0.0.1:7880',
-      ws: true,
-      logLevel: 'error',
-    });
-
     server.on('upgrade', (request, socket, head) => {
       const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
 
@@ -34,9 +27,6 @@ function startWebSocketServer(server = null) {
           ws.isWebcall = true;
           wss.emit('connection', ws, request);
         });
-      } else if (pathname.startsWith('/rtc')) {
-        // Forward LiveKit WebRTC signaling via Proxy
-        liveKitProxy.upgrade(request, socket, head);
       } else {
         socket.destroy();
       }

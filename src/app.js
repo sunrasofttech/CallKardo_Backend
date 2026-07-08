@@ -17,7 +17,6 @@ const reportRoutes = require('./routes/reportRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const voiceRoutes = require('./routes/voiceRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const livekitRoutes = require('./routes/livekitRoutes');
 
 // Swagger Spec
 const swaggerSpec = require('./utils/swagger');
@@ -25,18 +24,6 @@ const swaggerSpec = require('./utils/swagger');
 const path = require('path');
 
 const app = express();
-const { createProxyMiddleware } = require('http-proxy-middleware');
-
-// Proxy LiveKit WebRTC and API routes to the internal LiveKit Server
-const liveKitProxy = createProxyMiddleware({
-  target: 'http://127.0.0.1:7880',
-  ws: true, // proxy websockets
-  changeOrigin: true,
-  logLevel: 'debug',
-});
-
-app.use('/rtc', liveKitProxy);
-app.use('/twirp', liveKitProxy);
 
 
 // View Engine Setup for Web Tester
@@ -162,7 +149,6 @@ app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/voices', voiceRoutes);
 app.use('/api/v1/admin', adminRoutes);
-app.use('/api/v1/livekit', livekitRoutes);
 
 // Web Tester UI Route
 app.get('/test-call', (req, res) => {
