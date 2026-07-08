@@ -12,7 +12,7 @@ User.init(
     },
     email: {
       type: DataTypes.STRING(100),
-      allowNull: false,
+      allowNull: true,
       unique: true,
       validate: {
         isEmail: true,
@@ -30,8 +30,13 @@ User.init(
     },
     businessName: {
       type: DataTypes.STRING(100),
-      allowNull: false,
+      allowNull: true,
       field: 'business_name',
+    },
+    businessUrl: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'business_url',
     },
     categoryId: {
       type: DataTypes.UUID,

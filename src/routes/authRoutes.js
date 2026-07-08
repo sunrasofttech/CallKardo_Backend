@@ -24,4 +24,8 @@ router.post('/forgot-password', AuthController.forgotPassword);
 // Reset Password Flow
 router.post('/reset-password', AuthController.resetPassword);
 
+// Onboarding/Setup Business Profile
+const { authenticate, isMerchant } = require('../middleware/auth');
+router.post('/setup-business', authenticate, isMerchant, AuthController.setupBusiness);
+
 module.exports = router;

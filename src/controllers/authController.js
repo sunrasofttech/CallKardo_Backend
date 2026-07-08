@@ -14,6 +14,7 @@ const {
   merchantRegisterSchema,
   adminRegisterSchema,
   loginSchema,
+  setupBusinessSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   verifyOtpSchema,
@@ -30,18 +31,14 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, mobile, password, businessName, categoryId } = value;
+      const { email, mobile, password } = value;
 
-      // 1. Check if category exists
-      const category = await Category.findByPk(categoryId);
-      if (!category) {
-        return ResponseBuilder.error(res, 'Selected business category does not exist', 400);
-      }
-
-      // 2. Check if user already exists
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        return ResponseBuilder.error(res, 'Email address already registered', 400);
+      // 1. Check if user already exists
+      if (email) {
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+          return ResponseBuilder.error(res, 'Email address already registered', 400);
+        }
       }
 
       const existingMobile = await User.findOne({ where: { mobile } });
@@ -49,24 +46,22 @@ class AuthController {
         return ResponseBuilder.error(res, 'Mobile number already registered', 400);
       }
 
-      // 3. Hash Password
+      // 2. Hash Password
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(password, salt);
 
-      // 4. Generate 6-digit verification OTP
+      // 3. Generate 6-digit verification OTP
       const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // 5. Create Merchant User
+      // 4. Create Merchant User
       const merchant = await User.create({
-        email,
+        email: email || null,
         mobile,
         passwordHash,
-        businessName,
-        categoryId,
         verificationToken,
       });
 
-      // 6. Setup Initial Starter Subscription Plan
+      // 5. Setup Initial Starter Subscription Plan
       let starterPlan = await Plan.findOne({ where: { name: 'Starter' } });
       if (!starterPlan) {
         // Seed default Starter plan if it doesn't exist
@@ -101,8 +96,6 @@ class AuthController {
         id: merchant.id,
         email: merchant.email,
         mobile: merchant.mobile,
-        businessName: merchant.businessName,
-        categoryId: merchant.categoryId,
         isVerified: merchant.isVerified,
       };
 
@@ -129,9 +122,11 @@ class AuthController {
 
       const { email, mobile, password, firstName, lastName } = value;
 
-      const existingAdmin = await Admin.findOne({ where: { email } });
-      if (existingAdmin) {
-        return ResponseBuilder.error(res, 'Admin email already registered', 400);
+      if (email) {
+        const existingAdmin = await Admin.findOne({ where: { email } });
+        if (existingAdmin) {
+          return ResponseBuilder.error(res, 'Admin email already registered', 400);
+        }
       }
 
       const existingAdminMobile = await Admin.findOne({ where: { mobile } });
@@ -145,7 +140,7 @@ class AuthController {
       const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
 
       const admin = await Admin.create({
-        email,
+        email: email || null,
         mobile,
         passwordHash,
         firstName,
@@ -158,6 +153,7 @@ class AuthController {
       const adminResponse = {
         id: admin.id,
         email: admin.email,
+        mobile: admin.mobile,
         firstName: admin.firstName,
         lastName: admin.lastName,
         role: admin.role,
@@ -184,33 +180,41 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, password, role } = value;
+      const { email, mobile, password, role } = value;
 
       let account = null;
 
       if (role === 'super_admin') {
-        account = await Admin.findOne({ where: { email } });
+        if (email) {
+          account = await Admin.findOne({ where: { email } });
+        } else if (mobile) {
+          account = await Admin.findOne({ where: { mobile } });
+        }
       } else {
-        account = await User.findOne({ where: { email } });
+        if (email) {
+          account = await User.findOne({ where: { email } });
+        } else if (mobile) {
+          account = await User.findOne({ where: { mobile } });
+        }
       }
 
       if (!account) {
-        return ResponseBuilder.error(res, 'Invalid email or password', 401);
+        return ResponseBuilder.error(res, 'Invalid credentials', 401);
       }
 
       // Check Password
       const isMatch = await bcrypt.compare(password, account.passwordHash);
       if (!isMatch) {
-        return ResponseBuilder.error(res, 'Invalid email or password', 401);
+        return ResponseBuilder.error(res, 'Invalid credentials', 401);
       }
 
       // Check Verification
       if (!account.isVerified && role !== 'super_admin') {
-        return ResponseBuilder.error(res, 'Please verify your email before logging in', 403);
+        return ResponseBuilder.error(res, 'Please verify your account before logging in', 403);
       }
 
       // Tokens
-      const tokenPayload = { id: account.id, email: account.email, role };
+      const tokenPayload = { id: account.id, email: account.email || null, mobile: account.mobile, role };
       const accessToken = generateAccessToken(tokenPayload);
       const refreshToken = generateRefreshToken(tokenPayload);
 
@@ -223,8 +227,15 @@ class AuthController {
       const profile = {
         id: account.id,
         email: account.email,
+        mobile: account.mobile,
         role,
-        ...(role === 'merchant' ? { businessName: account.businessName } : { firstName: account.firstName, lastName: account.lastName }),
+        ...(role === 'merchant'
+          ? {
+              businessName: account.businessName,
+              businessUrl: account.businessUrl,
+              categoryId: account.categoryId,
+            }
+          : { firstName: account.firstName, lastName: account.lastName }),
       };
 
       return ResponseBuilder.success(
@@ -404,6 +415,51 @@ class AuthController {
       await account.save();
 
       return ResponseBuilder.success(res, null, 'Password reset successfully. You can now login.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Setup business details for merchant
+   */
+  async setupBusiness(req, res, next) {
+    try {
+      const { error, value } = setupBusinessSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { businessName, businessUrl, categoryId } = value;
+
+      // 1. Verify category exists
+      const category = await Category.findByPk(categoryId);
+      if (!category) {
+        return ResponseBuilder.error(res, 'Selected business category does not exist', 400);
+      }
+
+      // 2. Update current authenticated user
+      const user = req.user;
+      user.businessName = businessName;
+      user.businessUrl = businessUrl || null;
+      user.categoryId = categoryId;
+      await user.save();
+
+      const profile = {
+        id: user.id,
+        email: user.email,
+        mobile: user.mobile,
+        businessName: user.businessName,
+        businessUrl: user.businessUrl,
+        categoryId: user.categoryId,
+        role: req.userRole,
+      };
+
+      return ResponseBuilder.success(
+        res,
+        { profile },
+        'Business profile updated successfully'
+      );
     } catch (err) {
       next(err);
     }
