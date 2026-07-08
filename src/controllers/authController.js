@@ -91,17 +91,28 @@ class AuthController {
       // Send verification SMS in the background
       await sendSMSVerification(mobile, verificationToken);
 
-      // Response (Excludes password hash)
-      const userResponse = {
+      // Generate login tokens
+      const tokenPayload = { id: merchant.id, email: merchant.email || null, mobile: merchant.mobile, role: 'merchant' };
+      const accessToken = generateAccessToken(tokenPayload);
+      const refreshToken = generateRefreshToken(tokenPayload);
+
+      // Save Refresh Token for validation (hashed)
+      merchant.refreshToken = hashToken(refreshToken);
+      await merchant.save();
+
+      const profile = {
         id: merchant.id,
         email: merchant.email,
         mobile: merchant.mobile,
-        isVerified: merchant.isVerified,
+        role: 'merchant',
+        businessName: merchant.businessName,
+        businessUrl: merchant.businessUrl,
+        categoryId: merchant.categoryId,
       };
 
       return ResponseBuilder.success(
         res,
-        { user: userResponse },
+        { profile, accessToken, refreshToken },
         'Merchant registered successfully. Please verify your mobile number with the OTP sent.',
         201
       );
@@ -150,7 +161,12 @@ class AuthController {
         verificationToken,
       });
 
-      const adminResponse = {
+      // Generate login tokens
+      const tokenPayload = { id: admin.id, email: admin.email || null, mobile: admin.mobile, role: 'super_admin' };
+      const accessToken = generateAccessToken(tokenPayload);
+      const refreshToken = generateRefreshToken(tokenPayload);
+
+      const profile = {
         id: admin.id,
         email: admin.email,
         mobile: admin.mobile,
@@ -161,7 +177,7 @@ class AuthController {
 
       return ResponseBuilder.success(
         res,
-        { admin: adminResponse },
+        { profile, accessToken, refreshToken },
         'Super Admin registered successfully',
         201
       );
