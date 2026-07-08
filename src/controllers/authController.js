@@ -480,6 +480,37 @@ class AuthController {
       next(err);
     }
   }
+
+  /**
+   * Get current authenticated user profile
+   */
+  async getMe(req, res, next) {
+    try {
+      const user = req.user;
+      const role = req.userRole;
+
+      const profile = {
+        id: user.id,
+        email: user.email,
+        mobile: user.mobile,
+        role,
+        ...(role === 'merchant'
+          ? {
+              businessName: user.businessName,
+              businessUrl: user.businessUrl,
+              categoryId: user.categoryId,
+            }
+          : {
+              firstName: user.firstName,
+              lastName: user.lastName,
+            }),
+      };
+
+      return ResponseBuilder.success(res, { profile }, 'Profile retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new AuthController();

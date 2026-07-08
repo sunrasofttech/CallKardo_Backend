@@ -28,4 +28,7 @@ router.post('/reset-password', AuthController.resetPassword);
 const { authenticate, isMerchant } = require('../middleware/auth');
 router.post('/setup-business', authenticate, isMerchant, AuthController.setupBusiness);
 
+// Get User Profile
+router.get('/me', authenticate, AuthController.getMe);
+
 module.exports = router;
