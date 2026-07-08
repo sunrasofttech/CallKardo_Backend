@@ -73,7 +73,7 @@ const globalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 115, // Max 15 attempts for registration/login
+  max: 15, // Max 15 attempts for registration/login
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again later',
