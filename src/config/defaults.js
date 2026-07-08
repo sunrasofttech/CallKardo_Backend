@@ -91,7 +91,7 @@ module.exports = {
   // Database Configuration
   db: {
     get name() {
-      return process.env.DB_NAME || 'ailive_backend';
+      return process.env.DB_NAME || 'callkardo_db';
     },
     get user() {
       return process.env.DB_USER || 'root';
