@@ -490,11 +490,22 @@ class AuthController {
       const role = req.userRole;
 
       let subscription = null;
+      let isTrial = false;
+
       if (role === 'merchant') {
-        subscription = await Subscription.findOne({
+        const subRecord = await Subscription.findOne({
           where: { userId: user.id },
           include: [{ model: Plan, as: 'plan' }],
         });
+
+        if (subRecord) {
+          isTrial = subRecord.plan
+            ? parseFloat(subRecord.plan.price) === 0 || subRecord.plan.name.toLowerCase() === 'starter'
+            : false;
+
+          subscription = subRecord.toJSON();
+          subscription.isTrial = isTrial;
+        }
       }
 
       const profile = {
@@ -508,6 +519,7 @@ class AuthController {
               businessUrl: user.businessUrl,
               categoryId: user.categoryId,
               subscription,
+              isTrial,
             }
           : {
               firstName: user.firstName,
