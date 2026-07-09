@@ -223,14 +223,19 @@ class VobizService {
       
       const response = await client.post(`/accounts/${defaults.vobiz.parentAuthId}/sub-accounts/`, payload);
       
-      if (response.data && response.data.auth_id) {
+      const resData = response.data;
+      const authId = resData?.auth_credentials?.auth_id || resData?.sub_account?.auth_id || resData?.auth_id;
+      const authToken = resData?.auth_credentials?.auth_token || resData?.sub_account?.auth_token || resData?.auth_token;
+      const subAccountName = resData?.sub_account?.name || resData?.name;
+      
+      if (authId) {
          return {
-           authId: response.data.auth_id,
-           authToken: response.data.auth_token,
-           name: response.data.name
+           authId: authId,
+           authToken: authToken,
+           name: subAccountName
          };
       }
-      return response.data;
+      return resData;
     } catch (err) {
       console.error('Vobiz createSubAccount Error:', err.response?.data || err.message);
       throw new Error(this._getErrorMessage(err, 'Failed to create Vobiz Sub-Account'));
