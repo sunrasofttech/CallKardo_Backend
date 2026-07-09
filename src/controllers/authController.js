@@ -519,7 +519,6 @@ class AuthController {
               businessUrl: user.businessUrl,
               categoryId: user.categoryId,
               subscription,
-              isTrial,
             }
           : {
               firstName: user.firstName,
