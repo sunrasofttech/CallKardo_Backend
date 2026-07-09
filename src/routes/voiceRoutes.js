@@ -10,5 +10,6 @@ router.use(authenticate, isMerchant);
 // Voice routes
 router.get('/', VoiceController.getAll);
 router.post('/preview', VoiceController.preview);
+router.get('/preview/:filename', VoiceController.servePreview);
 
 module.exports = router;

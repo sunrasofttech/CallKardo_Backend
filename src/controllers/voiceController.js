@@ -109,12 +109,12 @@ class VoiceController {
       const fileName = `preview-${hash}.wav`;
       const filePath = path.join(previewsDir, fileName);
 
+      const previewUrl = `${req.protocol}://${req.get('host')}/api/v1/voices/preview/${fileName}`;
+
       // Check if preview already cached on disk
       if (fs.existsSync(filePath)) {
-        console.log(`Serving cached voice preview: ${fileName}`);
-        const cachedBuffer = fs.readFileSync(filePath);
-        res.setHeader('Content-Type', 'audio/wav');
-        return res.send(cachedBuffer);
+        console.log(`Serving cached voice preview URL: ${previewUrl}`);
+        return ResponseBuilder.success(res, { previewUrl }, 'Voice preview retrieved from cache');
       }
 
       let audioBuffer;
@@ -178,9 +178,34 @@ class VoiceController {
       fs.writeFileSync(filePath, audioBuffer);
       console.log(`Saved voice preview to cache: ${fileName}`);
 
-      // Stream binary response
+      return ResponseBuilder.success(res, { previewUrl }, 'Voice preview generated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Serve a previously synthesized voice preview audio file
+   * GET /api/v1/voices/preview/:filename
+   */
+  async servePreview(req, res, next) {
+    try {
+      const { filename } = req.params;
+      
+      // Basic security check to prevent directory traversal
+      if (!/^[a-zA-Z0-9\-_]+\.wav$/.test(filename)) {
+        return ResponseBuilder.error(res, 'Invalid preview filename', 400);
+      }
+      
+      const previewsDir = path.join(__dirname, '../../uploads/previews');
+      const filePath = path.join(previewsDir, filename);
+      
+      if (!fs.existsSync(filePath)) {
+        return ResponseBuilder.error(res, 'Preview file not found or expired', 404);
+      }
+      
       res.setHeader('Content-Type', 'audio/wav');
-      return res.send(audioBuffer);
+      return res.sendFile(filePath);
     } catch (err) {
       next(err);
     }
