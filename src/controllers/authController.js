@@ -503,8 +503,25 @@ class AuthController {
             ? parseFloat(subRecord.plan.price) === 0 || subRecord.plan.name.toLowerCase() === 'starter'
             : false;
 
-          subscription = subRecord.toJSON();
-          subscription.isTrial = isTrial;
+          subscription = {
+            id: subRecord.id,
+            activePlan: subRecord.activePlan,
+            startDate: subRecord.startDate,
+            expiryDate: subRecord.expiryDate,
+            callsUsed: subRecord.callsUsed,
+            callsRemaining: subRecord.callsRemaining,
+            status: subRecord.status,
+            isTrial,
+            plan: subRecord.plan
+              ? {
+                  id: subRecord.plan.id,
+                  name: subRecord.plan.name,
+                  price: subRecord.plan.price,
+                  callLimit: subRecord.plan.callLimit,
+                  maxConcurrentCalls: subRecord.plan.maxConcurrentCalls,
+                }
+              : null,
+          };
         }
       }
 
