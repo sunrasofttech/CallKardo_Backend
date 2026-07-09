@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const defaults = require('../config/defaults');
 
 const createAgentSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
@@ -12,7 +13,7 @@ const createAgentSchema = Joi.object({
   pace: Joi.number().min(0.5).max(2.0).default(1.00),
   temperature: Joi.number().min(0.01).max(2.0).default(0.60),
   firstMessage: Joi.string().max(1000).optional().allow(null, ''),
-  aiProvider: Joi.string().valid('custom', 'geminilive', 'customv2', 'elevenlabs').default('custom'),
+  aiProvider: Joi.string().valid('custom', 'geminilive', 'customv2', 'elevenlabs').default(() => defaults.defaultAiProvider),
 });
 
 const updateAgentSchema = Joi.object({

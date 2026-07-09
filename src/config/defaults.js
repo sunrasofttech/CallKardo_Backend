@@ -1,6 +1,11 @@
 require('dotenv').config();
 
 module.exports = {
+  // AI Provider Configuration
+  get defaultAiProvider() {
+    return process.env.DEFAULT_AI_PROVIDER || 'geminilive';
+  },
+
   // Server Configuration
   get port() {
     return parseInt(process.env.PORT || '3000', 10);

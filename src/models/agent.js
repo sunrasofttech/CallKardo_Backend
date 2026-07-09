@@ -1,5 +1,6 @@
 const { DataTypes, Model } = require('sequelize');
 const sequelize = require('../config/database');
+const defaults = require('../config/defaults');
 
 class Agent extends Model {}
 
@@ -54,7 +55,7 @@ Agent.init(
     },
     aiProvider: {
       type: DataTypes.STRING(50),
-      defaultValue: 'custom',
+      defaultValue: defaults.defaultAiProvider || 'geminilive',
       field: 'ai_provider',
     },
     isCustom: {
