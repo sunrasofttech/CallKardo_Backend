@@ -489,6 +489,14 @@ class AuthController {
       const user = req.user;
       const role = req.userRole;
 
+      let subscription = null;
+      if (role === 'merchant') {
+        subscription = await Subscription.findOne({
+          where: { userId: user.id },
+          include: [{ model: Plan, as: 'plan' }],
+        });
+      }
+
       const profile = {
         id: user.id,
         email: user.email,
@@ -499,6 +507,7 @@ class AuthController {
               businessName: user.businessName,
               businessUrl: user.businessUrl,
               categoryId: user.categoryId,
+              subscription,
             }
           : {
               firstName: user.firstName,
@@ -506,7 +515,7 @@ class AuthController {
             }),
       };
 
-      return ResponseBuilder.success(res, { profile }, 'Profile retrieved successfully');
+      return ResponseBuilder.success(res, { profile, subscription }, 'Profile retrieved successfully');
     } catch (err) {
       next(err);
     }
