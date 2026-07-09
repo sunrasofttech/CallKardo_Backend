@@ -4,12 +4,14 @@ const { authenticate, isMerchant } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Public route - accessible without auth
+router.get('/preview/:filename', VoiceController.servePreview);
+
 // Merchant authentication middleware
 router.use(authenticate, isMerchant);
 
-// Voice routes
+// Authenticated voice routes
 router.get('/', VoiceController.getAll);
 router.post('/preview', VoiceController.preview);
-router.get('/preview/:filename', VoiceController.servePreview);
 
 module.exports = router;
