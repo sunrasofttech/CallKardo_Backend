@@ -246,7 +246,7 @@ class VobizService {
    * List available phone numbers to purchase
    * GET /Account/{auth_id}/inventory/numbers
    */
-  async listAvailableNumbers(countryISO = 'IN', type = 'local', pattern = '') {
+  async listAvailableNumbers(countryISO = 'IN', type = 'local', pattern = '', page = 1, perPage = 25) {
     if (this._isParentMock()) {
       console.log(`[VoBiz Service Mock] Listing available numbers for ${countryISO}`);
       return [
@@ -260,8 +260,8 @@ class VobizService {
       const params = {
         country_iso: countryISO,
         type: type,
-        page: 1,
-        per_page: 25
+        page: page,
+        per_page: perPage
       };
       if (pattern) {
         params.pattern = pattern;

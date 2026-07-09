@@ -405,8 +405,17 @@ class VobizController {
    */
   async listAvailableNumbers(req, res, next) {
     try {
-      const { countryISO, type, pattern } = req.query;
-      const numbers = await vobizService.listAvailableNumbers(countryISO, type, pattern);
+      const { countryISO, type, pattern, page, per_page } = req.query;
+      const parsedPage = parseInt(page, 10) || 1;
+      const parsedPerPage = parseInt(per_page, 10) || 25;
+      
+      const numbers = await vobizService.listAvailableNumbers(
+        countryISO, 
+        type, 
+        pattern, 
+        parsedPage, 
+        parsedPerPage
+      );
       return ResponseBuilder.success(res, numbers, 'Available numbers retrieved successfully');
     } catch (err) {
       next(err);
