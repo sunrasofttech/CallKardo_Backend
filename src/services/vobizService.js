@@ -19,10 +19,7 @@ class VobizService {
    */
   async initiateCall({ apiKey, apiSecret, fromNumber, toNumber, wsToken }) {
     // If credentials are mocks/unset, trigger a local mock simulation
-    const isMock = !apiKey || 
-                   apiKey.includes('your_') || 
-                   apiKey.includes('mock') || 
-                   (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
+    const isMock = this._isMock(apiKey);
 
     if (isMock) {
       this._simulateIncomingCall(wsToken);
@@ -184,10 +181,39 @@ class VobizService {
   }
 
   /**
+   * Helper to check if mock/simulation mode should be used
+   */
+  _isMock(apiKey) {
+    return !apiKey || 
+           apiKey.includes('your_') || 
+           apiKey.includes('mock') || 
+           process.env.VOBIZ_FORCE_MOCK === 'true' ||
+           (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
+  }
+
+  /**
+   * Helper to check if mock/simulation mode should be used for parent operations
+   */
+  _isParentMock() {
+    const parentAuthId = defaults.vobiz.parentAuthId;
+    return this._isMock(parentAuthId);
+  }
+
+  /**
    * Create a SubAccount for a merchant
-   * POST /Account/{auth_id}/Subaccount/
+   * POST /accounts/{auth_id}/sub-accounts/
    */
   async createSubAccount(name) {
+    if (this._isParentMock()) {
+      const mockAuthId = `mock-auth-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      const mockAuthToken = `mock-token-${Math.random().toString(36).substring(2, 15)}`;
+      console.log(`[VoBiz Service Mock] Creating sub-account: ${name} (authId: ${mockAuthId})`);
+      return {
+        authId: mockAuthId,
+        authToken: mockAuthToken,
+        name: name
+      };
+    }
     const client = this._getParentClient();
     try {
       const payload = {
@@ -195,7 +221,7 @@ class VobizService {
         enabled: true
       };
       
-      const response = await client.post(`/Account/${defaults.vobiz.parentAuthId}/Subaccount/`, payload);
+      const response = await client.post(`/accounts/${defaults.vobiz.parentAuthId}/sub-accounts/`, payload);
       
       if (response.data && response.data.auth_id) {
          return {
@@ -213,20 +239,30 @@ class VobizService {
 
   /**
    * List available phone numbers to purchase
-   * GET /Account/{auth_id}/PhoneNumber/
+   * GET /Account/{auth_id}/inventory/numbers
    */
   async listAvailableNumbers(countryISO = 'IN', type = 'local', pattern = '') {
+    if (this._isParentMock()) {
+      console.log(`[VoBiz Service Mock] Listing available numbers for ${countryISO}`);
+      return [
+        { number: '+919999900001', country_iso: countryISO, type },
+        { number: '+919999900002', country_iso: countryISO, type },
+        { number: '+919999900003', country_iso: countryISO, type }
+      ];
+    }
     const client = this._getParentClient();
     try {
       const params = {
         country_iso: countryISO,
-        type: type
+        type: type,
+        page: 1,
+        per_page: 25
       };
       if (pattern) {
         params.pattern = pattern;
       }
       
-      const response = await client.get(`/Account/${defaults.vobiz.parentAuthId}/PhoneNumber/`, { params });
+      const response = await client.get(`/Account/${defaults.vobiz.parentAuthId}/inventory/numbers`, { params });
       return response.data;
     } catch (err) {
       console.error('Vobiz listAvailableNumbers Error:', err.response?.data || err.message);
@@ -236,13 +272,19 @@ class VobizService {
 
   /**
    * Buy a specific phone number under the parent account
-   * POST /Account/{auth_id}/PhoneNumber/{number}/
+   * POST /Account/{auth_id}/numbers/purchase-from-inventory
    */
   async buyNumber(number) {
+    if (this._isParentMock()) {
+      console.log(`[VoBiz Service Mock] Buying number ${number}`);
+      return { success: true, number };
+    }
     const client = this._getParentClient();
     try {
       const e164 = number.startsWith('+') ? number : `+${number}`;
-      const response = await client.post(`/Account/${defaults.vobiz.parentAuthId}/PhoneNumber/${encodeURIComponent(e164)}/`);
+      const response = await client.post(`/Account/${defaults.vobiz.parentAuthId}/numbers/purchase-from-inventory`, {
+        e164: e164
+      });
       return response.data;
     } catch (err) {
       console.error('Vobiz buyNumber Error:', err.response?.data || err.message);
@@ -255,6 +297,10 @@ class VobizService {
    * POST /Account/{auth_id}/Number/{e164}/
    */
   async assignNumberToSubAccount(number, subAccountAuthId) {
+    if (this._isParentMock()) {
+      console.log(`[VoBiz Service Mock] Assigning number ${number} to subaccount ${subAccountAuthId}`);
+      return { success: true };
+    }
     const client = this._getParentClient();
     try {
       const e164 = number.startsWith('+') ? number : `+${number}`;
@@ -275,6 +321,10 @@ class VobizService {
    * DELETE /Account/{auth_id}/Number/{e164}/
    */
   async unrentNumber(number) {
+    if (this._isParentMock()) {
+      console.log(`[VoBiz Service Mock] Unrenting number ${number}`);
+      return { success: true };
+    }
     const client = this._getParentClient();
     try {
       const e164 = number.startsWith('+') ? number : `+${number}`;
@@ -291,10 +341,7 @@ class VobizService {
    * in the merchant sub-account, and links the phone number to it.
    */
   async setupInboundRouting({ authId, authToken, number }) {
-    const isMock = !authId || 
-                   authId.includes('your_') || 
-                   authId.includes('mock') || 
-                   (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
+    const isMock = this._isMock(authId);
 
     if (isMock) {
       console.log(`[VoBiz Service Mock] Setup inbound routing for number ${number} with mock authId ${authId}`);
