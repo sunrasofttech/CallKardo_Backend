@@ -527,7 +527,7 @@ class AuthController {
             }),
       };
 
-      return ResponseBuilder.success(res, { profile, subscription }, 'Profile retrieved successfully');
+      return ResponseBuilder.success(res, { profile }, 'Profile retrieved successfully');
     } catch (err) {
       next(err);
     }
