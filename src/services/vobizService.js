@@ -164,6 +164,26 @@ class VobizService {
   }
 
   /**
+   * Helper to parse error messages from VoBiz API responses
+   */
+  _getErrorMessage(err, defaultMsg) {
+    if (err.response?.data) {
+      if (typeof err.response.data === 'string') {
+        return err.response.data;
+      }
+      if (err.response.data.message) {
+        return err.response.data.message;
+      }
+      if (err.response.data.error) {
+        return typeof err.response.data.error === 'string'
+          ? err.response.data.error
+          : (err.response.data.error.message || JSON.stringify(err.response.data.error));
+      }
+    }
+    return err.message || defaultMsg;
+  }
+
+  /**
    * Create a SubAccount for a merchant
    * POST /Account/{auth_id}/Subaccount/
    */
@@ -187,7 +207,7 @@ class VobizService {
       return response.data;
     } catch (err) {
       console.error('Vobiz createSubAccount Error:', err.response?.data || err.message);
-      throw new Error(err.response?.data?.message || 'Failed to create Vobiz Sub-Account');
+      throw new Error(this._getErrorMessage(err, 'Failed to create Vobiz Sub-Account'));
     }
   }
 
@@ -210,7 +230,7 @@ class VobizService {
       return response.data;
     } catch (err) {
       console.error('Vobiz listAvailableNumbers Error:', err.response?.data || err.message);
-      throw new Error(err.response?.data?.message || 'Failed to list available phone numbers');
+      throw new Error(this._getErrorMessage(err, 'Failed to list available phone numbers'));
     }
   }
 
@@ -226,7 +246,7 @@ class VobizService {
       return response.data;
     } catch (err) {
       console.error('Vobiz buyNumber Error:', err.response?.data || err.message);
-      throw new Error(err.response?.data?.message || 'Failed to purchase phone number');
+      throw new Error(this._getErrorMessage(err, 'Failed to purchase phone number'));
     }
   }
 
@@ -246,7 +266,7 @@ class VobizService {
       return response.data;
     } catch (err) {
       console.error('Vobiz assignNumberToSubAccount Error:', err.response?.data || err.message);
-      throw new Error(err.response?.data?.message || 'Failed to assign phone number to sub-account');
+      throw new Error(this._getErrorMessage(err, 'Failed to assign phone number to sub-account'));
     }
   }
 
@@ -262,7 +282,7 @@ class VobizService {
       return response.data;
     } catch (err) {
       console.error('Vobiz unrentNumber Error:', err.response?.data || err.message);
-      throw new Error(err.response?.data?.message || 'Failed to unrent phone number');
+      throw new Error(this._getErrorMessage(err, 'Failed to unrent phone number'));
     }
   }
 
