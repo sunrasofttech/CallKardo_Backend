@@ -1,4 +1,4 @@
-const { CallReport, Customer, Campaign, VobizNumber } = require('../models');
+const { CallReport, Customer, Campaign, VobizNumber, CallSession } = require('../models');
 const ResponseBuilder = require('../utils/response');
 
 class ReportController {
@@ -31,6 +31,68 @@ class ReportController {
   }
 
   /**
+   * Get recent call sessions for current merchant
+   */
+  async getRecentCalls(req, res, next) {
+    try {
+      const { vobizNumberId, limit } = req.query;
+      const limitVal = parseInt(limit || 10, 10);
+
+      const filter = { userId: req.user.id };
+      if (vobizNumberId) {
+        filter.vobizNumberId = vobizNumberId;
+      }
+
+      const sessions = await CallSession.findAll({
+        where: filter,
+        include: [
+          { model: Customer, as: 'customer', attributes: ['name', 'mobile'] }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: limitVal,
+      });
+
+      const recentCalls = sessions.map(session => {
+        let duration = null;
+        if (session.startTime && session.endTime) {
+          const diffMs = new Date(session.endTime) - new Date(session.startTime);
+          const durationSecs = Math.max(0, Math.round(diffMs / 1000));
+          const mins = Math.floor(durationSecs / 60);
+          const secs = durationSecs % 60;
+          duration = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Map status humanly:
+        // Picked: completed, connected
+        // Missed: no-answer
+        // Declined: busy
+        // Failed: failed
+        let mappedStatus = 'Missed';
+        if (session.status === 'completed' || session.status === 'connected') {
+          mappedStatus = 'Picked';
+        } else if (session.status === 'busy') {
+          mappedStatus = 'Declined';
+        } else if (session.status === 'failed') {
+          mappedStatus = 'Failed';
+        }
+
+        return {
+          id: session.id,
+          customerName: session.customer ? session.customer.name : 'Unknown',
+          mobile: session.customer ? session.customer.mobile : 'Unknown',
+          status: mappedStatus,
+          duration,
+          createdAt: session.createdAt,
+        };
+      });
+
+      return ResponseBuilder.success(res, recentCalls, 'Recent calls retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Get call report details by session ID
    */
   async getReportBySession(req, res, next) {
@@ -49,6 +111,38 @@ class ReportController {
       }
 
       return ResponseBuilder.success(res, report, 'Call report details retrieved');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get all call reports for a specific customer mobile number
+   */
+  async getReportsByMobile(req, res, next) {
+    try {
+      const { mobile } = req.params;
+
+      if (!mobile) {
+        return ResponseBuilder.error(res, 'Mobile number is required', 400);
+      }
+
+      const reports = await CallReport.findAll({
+        where: { userId: req.user.id },
+        include: [
+          {
+            model: Customer,
+            as: 'customer',
+            where: { mobile },
+            attributes: ['name', 'mobile', 'tags', 'notes'],
+          },
+          { model: Campaign, as: 'campaign', attributes: ['name', 'startTime'] },
+          { model: VobizNumber, as: 'vobizNumber', attributes: ['number'] },
+        ],
+        order: [['createdAt', 'DESC']],
+      });
+
+      return ResponseBuilder.success(res, reports, 'Call reports retrieved successfully');
     } catch (err) {
       next(err);
     }

@@ -1,4 +1,4 @@
-const { CallReport, Subscription, Campaign, CampaignCustomer, sequelize } = require('../models');
+const { CallReport, Subscription, Campaign, CampaignCustomer, VobizNumber, CallSession, Customer, sequelize } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { Op } = require('sequelize');
 
@@ -161,6 +161,163 @@ class AnalyticsController {
         planExpiry: subscription.expiryDate,
         utilizationPercentage: utilization,
       }, 'Plan utilization analytics retrieved');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get dashboard report grouped by Vobiz number, along with aggregate total ("all")
+   */
+  async getVobizStats(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { vobizNumberId } = req.query;
+
+      // Date bounds
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+      const yesterdayEnd = new Date(todayEnd);
+      yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+
+      const filter = { userId };
+      const sessionFilter = { userId, status: ['initiated', 'connected'] };
+      if (vobizNumberId) {
+        filter.vobizNumberId = vobizNumberId;
+        sessionFilter.vobizNumberId = vobizNumberId;
+      }
+
+      // 1. Active Calls count
+      const activeCalls = await CallSession.count({ where: sessionFilter });
+
+      // 2. Calls Today & Yesterday
+      const callsToday = await CallReport.count({
+        where: {
+          ...filter,
+          createdAt: { [Op.between]: [todayStart, todayEnd] },
+        },
+      });
+      const callsYesterday = await CallReport.count({
+        where: {
+          ...filter,
+          createdAt: { [Op.between]: [yesterdayStart, yesterdayEnd] },
+        },
+      });
+
+      // 3. Connected Today & Yesterday
+      const connectedToday = await CallReport.count({
+        where: {
+          ...filter,
+          outcome: { [Op.notIn]: ['Wrong Number', 'No Answer'] },
+          createdAt: { [Op.between]: [todayStart, todayEnd] },
+        },
+      });
+      const connectedYesterday = await CallReport.count({
+        where: {
+          ...filter,
+          outcome: { [Op.notIn]: ['Wrong Number', 'No Answer'] },
+          createdAt: { [Op.between]: [yesterdayStart, yesterdayEnd] },
+        },
+      });
+
+      // 4. Meetings Today & Yesterday
+      const meetingsToday = await CallReport.count({
+        where: {
+          ...filter,
+          outcome: 'Appointment Booked',
+          createdAt: { [Op.between]: [todayStart, todayEnd] },
+        },
+      });
+      const meetingsYesterday = await CallReport.count({
+        where: {
+          ...filter,
+          outcome: 'Appointment Booked',
+          createdAt: { [Op.between]: [yesterdayStart, yesterdayEnd] },
+        },
+      });
+
+      // 5. Success Rate Today & Yesterday
+      const successRateToday = callsToday > 0 ? (connectedToday / callsToday) * 100 : 0;
+      const successRateYesterday = callsYesterday > 0 ? (connectedYesterday / callsYesterday) * 100 : 0;
+
+      // 6. Contacts Total & Today
+      let contacts = 0;
+      let contactsToday = 0;
+      if (vobizNumberId) {
+        contacts = await CallReport.count({
+          distinct: true,
+          col: 'customer_id',
+          where: filter,
+        });
+        contactsToday = await CallReport.count({
+          distinct: true,
+          col: 'customer_id',
+          where: {
+            ...filter,
+            createdAt: { [Op.between]: [todayStart, todayEnd] },
+          },
+        });
+      } else {
+        contacts = await Customer.count({ where: { userId } });
+        contactsToday = await Customer.count({
+          where: {
+            userId,
+            createdAt: { [Op.between]: [todayStart, todayEnd] },
+          },
+        });
+      }
+
+      // 7. Credits Left
+      const subscription = await Subscription.findOne({ where: { userId } });
+      const creditsLeft = subscription ? subscription.callsRemaining : 0;
+
+      // Trends helper
+      const calculateTrend = (todayVal, yesterdayVal) => {
+        if (yesterdayVal === 0) {
+          return todayVal > 0 ? '+100%' : '0%';
+        }
+        const pct = ((todayVal - yesterdayVal) / yesterdayVal) * 100;
+        const sign = pct >= 0 ? '+' : '';
+        return `${sign}${pct.toFixed(1)}%`;
+      };
+
+      const callsTodayTrend = calculateTrend(callsToday, callsYesterday);
+      const connectedTrend = calculateTrend(connectedToday, connectedYesterday);
+      const meetingsTrend = calculateTrend(meetingsToday, meetingsYesterday);
+      const successRateTrend = calculateTrend(successRateToday, successRateYesterday);
+      const contactsTrend = `+${contactsToday}`;
+
+      // Vobiz Numbers reference list
+      const vobizNumbers = await VobizNumber.findAll({
+        where: { userId },
+        attributes: ['id', 'number'],
+        order: [['number', 'ASC']],
+      });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          activeCalls,
+          callsToday,
+          callsTodayTrend,
+          connected: connectedToday,
+          connectedTrend,
+          meetings: meetingsToday,
+          meetingsTrend,
+          successRate: `${successRateToday.toFixed(1)}%`,
+          successRateTrend,
+          contacts,
+          contactsTrend,
+          creditsLeft,
+          vobizNumbers,
+        },
+        'Vobiz dashboard statistics retrieved successfully'
+      );
     } catch (err) {
       next(err);
     }

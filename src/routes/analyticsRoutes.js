@@ -10,5 +10,6 @@ router.use(authenticate, isMerchant);
 router.get('/campaign', AnalyticsController.getCampaignStats);
 router.get('/leads', AnalyticsController.getLeadStats);
 router.get('/plan', AnalyticsController.getPlanUtilization);
+router.get('/vobiz', AnalyticsController.getVobizStats);
 
 module.exports = router;

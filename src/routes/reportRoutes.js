@@ -8,6 +8,8 @@ router.use(authenticate, isMerchant);
 
 // Fetch reports
 router.get('/', ReportController.getAllReports);
+router.get('/recent', ReportController.getRecentCalls);
 router.get('/session/:sessionId', ReportController.getReportBySession);
+router.get('/mobile/:mobile', ReportController.getReportsByMobile);
 
 module.exports = router;
