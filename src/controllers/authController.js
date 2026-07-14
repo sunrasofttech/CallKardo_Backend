@@ -466,35 +466,39 @@ class AuthController {
 
       // 2. Update current authenticated user
       const user = req.user;
+      const isFirstSetup = !user.categoryId;
+
       user.businessName = businessName;
       user.businessUrl = businessUrl || null;
       user.categoryId = categoryId;
       await user.save();
 
-      // 3. Auto-assign/create the category's default test agent to their demo number
-      const defaultAgent = await Agent.findOne({
-        where: {
-          isCustom: false,
-          categoryId: categoryId,
-        },
-      });
-
-      if (defaultAgent) {
-        const [demoNumRecord, created] = await VobizNumber.findOrCreate({
+      // 3. Auto-assign/create the category's default test agent to their demo number (only on first setup)
+      if (isFirstSetup) {
+        const defaultAgent = await Agent.findOne({
           where: {
-            userId: user.id,
-            number: defaults.vobiz.demoNumber,
-          },
-          defaults: {
-            status: 'active',
-            providerData: { isDemo: true },
-            agentId: defaultAgent.id,
+            isCustom: false,
+            categoryId: categoryId,
           },
         });
 
-        if (!created && demoNumRecord.agentId !== defaultAgent.id) {
-          demoNumRecord.agentId = defaultAgent.id;
-          await demoNumRecord.save();
+        if (defaultAgent) {
+          const [demoNumRecord, created] = await VobizNumber.findOrCreate({
+            where: {
+              userId: user.id,
+              number: defaults.vobiz.demoNumber,
+            },
+            defaults: {
+              status: 'active',
+              providerData: { isDemo: true },
+              agentId: defaultAgent.id,
+            },
+          });
+
+          if (!created && demoNumRecord.agentId !== defaultAgent.id) {
+            demoNumRecord.agentId = defaultAgent.id;
+            await demoNumRecord.save();
+          }
         }
       }
 
