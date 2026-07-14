@@ -1,4 +1,4 @@
-const { Voice, Category, Plan, User, Admin, Subscription } = require('../models');
+const { Voice, Category, Plan, User, Admin, Subscription, Agent } = require('../models');
 const bcrypt = require('bcryptjs');
 
 const bulbulVoices = [
@@ -145,10 +145,11 @@ async function seedVoices() {
   console.log('Seeding Merchant...');
   const merchantEmail = 'merchant@example.com';
   const existingMerchant = await User.findOne({ where: { email: merchantEmail } });
+  let merchantUser = existingMerchant;
   if (!existingMerchant) {
     const salt = await bcrypt.genSalt(10);
     const merchantPasswordHash = await bcrypt.hash('merchant123', salt);
-    const merchantUser = await User.create({
+    merchantUser = await User.create({
       email: merchantEmail,
       mobile: '+919876543211',
       passwordHash: merchantPasswordHash,
@@ -181,6 +182,81 @@ async function seedVoices() {
   } else {
     console.log('Merchant user already exists.');
   }
+
+  // 6. Seed Default Category Agents
+  console.log('Seeding default category agents...');
+  const supportCat = categories['Customer Support'];
+  const salesCat = categories['Sales & Marketing'];
+  const bookingCat = categories['Appointment Booking'];
+  const feedbackCat = categories['Feedback Collection'];
+
+  const supportVoice = await Voice.findOne({ where: { voiceId: 'shubh' } });
+  const salesVoice = await Voice.findOne({ where: { voiceId: 'aditya' } });
+
+  const defaultAgentsToSeed = [
+    {
+      id: 'g0000000-0000-0000-0000-000000000001',
+      userId: merchantUser ? merchantUser.id : null,
+      name: 'Default Support Agent',
+      description: 'Pre-configured test agent for Customer Support',
+      systemPrompt: 'You are a helpful customer service assistant.',
+      firstMessage: 'Hello! How can I help you today?',
+      language: 'en-IN',
+      voiceId: supportVoice ? supportVoice.id : null,
+      categoryId: supportCat ? supportCat.id : null,
+      isCustom: false,
+      approvalStatus: 'approved',
+    },
+    {
+      id: 'g0000000-0000-0000-0000-000000000002',
+      userId: merchantUser ? merchantUser.id : null,
+      name: 'Default Sales Agent',
+      description: 'Pre-configured test agent for Sales & Marketing',
+      systemPrompt: 'You are an enthusiastic sales agent representing our product. Pitch the product and try to schedule a demo.',
+      firstMessage: "Hello! Interested in boosting your sales with AI? Let's discuss.",
+      language: 'en-IN',
+      voiceId: salesVoice ? salesVoice.id : null,
+      categoryId: salesCat ? salesCat.id : null,
+      isCustom: false,
+      approvalStatus: 'approved',
+    },
+    {
+      id: 'g0000000-0000-0000-0000-000000000003',
+      userId: merchantUser ? merchantUser.id : null,
+      name: 'Default Booking Agent',
+      description: 'Pre-configured test agent for Appointment Booking',
+      systemPrompt: 'You are a receptionist scheduling appointments. Ask the caller for their preferred date and time, and confirm availability.',
+      firstMessage: 'Hello! I can help you schedule your next appointment. What date and time works for you?',
+      language: 'en-IN',
+      voiceId: supportVoice ? supportVoice.id : null,
+      categoryId: bookingCat ? bookingCat.id : null,
+      isCustom: false,
+      approvalStatus: 'approved',
+    },
+    {
+      id: 'g0000000-0000-0000-0000-000000000004',
+      userId: merchantUser ? merchantUser.id : null,
+      name: 'Default Feedback Agent',
+      description: 'Pre-configured test agent for Feedback Collection',
+      systemPrompt: 'You are a feedback collector. Ask the caller about their recent experience with our service and rate it from 1 to 5.',
+      firstMessage: "Hello! I'd love to collect your quick feedback on our service. Can you rate us from 1 to 5?",
+      language: 'en-IN',
+      voiceId: salesVoice ? salesVoice.id : null,
+      categoryId: feedbackCat ? feedbackCat.id : null,
+      isCustom: false,
+      approvalStatus: 'approved',
+    },
+  ];
+
+  for (const agentData of defaultAgentsToSeed) {
+    if (agentData.userId && agentData.voiceId && agentData.categoryId) {
+      const existingAgent = await Agent.findByPk(agentData.id);
+      if (!existingAgent) {
+        await Agent.create(agentData);
+      }
+    }
+  }
+  console.log('Default category agents seeded successfully.');
 }
 
 module.exports = { seedVoices, bulbulVoices };

@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS `agents` (
   `category_id` VARCHAR(36) NULL,
   `is_custom` TINYINT(1) DEFAULT 1,
   `active_status` TINYINT(1) DEFAULT 1,
+  `approval_status` VARCHAR(20) DEFAULT 'approved',
   `allow_interruption` TINYINT(1) DEFAULT 1,
   `pace` DECIMAL(3, 2) DEFAULT 1.00,
   `temperature` DECIMAL(3, 2) DEFAULT 0.60,
@@ -440,6 +441,13 @@ INSERT INTO `users` (`id`, `email`, `mobile`, `password_hash`, `business_name`, 
 -- Seed Merchant Subscription
 INSERT INTO `subscriptions` (`id`, `user_id`, `plan_id`, `active_plan`, `start_date`, `expiry_date`, `calls_used`, `calls_remaining`, `status`) VALUES
 ('s0000000-0000-0000-0000-000000000001', 'u0000000-0000-0000-0000-000000000001', 'p0000000-0000-0000-0000-000000000001', 'Starter', NOW(), DATE_ADD(NOW(), INTERVAL 1 YEAR), 0, 5, 'active');
+
+-- Seed default test agents for each category
+INSERT INTO `agents` (`id`, `user_id`, `name`, `description`, `system_prompt`, `first_message`, `language`, `voice_id`, `category_id`, `is_custom`, `approval_status`, `allow_interruption`, `pace`, `temperature`) VALUES
+('g0000000-0000-0000-0000-000000000001', 'u0000000-0000-0000-0000-000000000001', 'Default Support Agent', 'Pre-configured test agent for Customer Support', 'You are a helpful customer service assistant.', 'Hello! How can I help you today?', 'en-IN', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 0, 'approved', 1, 1.00, 0.60),
+('g0000000-0000-0000-0000-000000000002', 'u0000000-0000-0000-0000-000000000001', 'Default Sales Agent', 'Pre-configured test agent for Sales & Marketing', 'You are an enthusiastic sales agent representing our product. Pitch the product and try to schedule a demo.', 'Hello! Interested in boosting your sales with AI? Let\'s discuss.', 'en-IN', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', 0, 'approved', 1, 1.00, 0.60),
+('g0000000-0000-0000-0000-000000000003', 'u0000000-0000-0000-0000-000000000001', 'Default Booking Agent', 'Pre-configured test agent for Appointment Booking', 'You are a receptionist scheduling appointments. Ask the caller for their preferred date and time, and confirm availability.', 'Hello! I can help you schedule your next appointment. What date and time works for you?', 'en-IN', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000003', 0, 'approved', 1, 1.00, 0.60),
+('g0000000-0000-0000-0000-000000000004', 'u0000000-0000-0000-0000-000000000001', 'Default Feedback Agent', 'Pre-configured test agent for Feedback Collection', 'You are a feedback collector. Ask the caller about their recent experience with our service and rate it from 1 to 5.', 'Hello! I\'d love to collect your quick feedback on our service. Can you rate us from 1 to 5?', 'en-IN', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000004', 0, 'approved', 1, 1.00, 0.60);
 
 -- Add new columns for pre-generated first message audio
 ALTER TABLE `agents` ADD COLUMN IF NOT EXISTS `first_message` TEXT NULL;

@@ -78,6 +78,9 @@ module.exports = {
     get parentAuthToken() {
       return process.env.VOBIZ_PARENT_AUTH_TOKEN;
     },
+    get demoNumber() {
+      return process.env.VOBIZ_DEMO_NUMBER || '+919999999999';
+    },
   },
 
   // Redis Configuration

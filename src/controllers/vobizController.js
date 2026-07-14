@@ -190,6 +190,14 @@ class VobizController {
         apiKey: `${apiKey.substring(0, 4)}...`,
       };
 
+      // Remove trial demo number upon successful onboarding of real account
+      await VobizNumber.destroy({
+        where: {
+          userId: req.user.id,
+          number: defaults.vobiz.demoNumber,
+        },
+      });
+
       return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account connected successfully');
     } catch (err) {
       next(err);
@@ -342,6 +350,10 @@ class VobizController {
         return ResponseBuilder.error(res, 'VoBiz number record not found', 404);
       }
 
+      if (vobizNumber.providerData && vobizNumber.providerData.isDemo) {
+        return ResponseBuilder.error(res, 'Cannot delete system-provided demo number', 400);
+      }
+
       // Unrent the number from Vobiz
       await vobizService.unrentNumber(vobizNumber.number);
 
@@ -393,6 +405,14 @@ class VobizController {
         customerId: account.customerId,
         apiKey: `${subAccountData.authId.substring(0, 4)}...`,
       };
+
+      // Remove trial demo number upon successful creation of sub-account
+      await VobizNumber.destroy({
+        where: {
+          userId: user.id,
+          number: defaults.vobiz.demoNumber,
+        },
+      });
 
       return ResponseBuilder.success(res, sanitizedResponse, 'Vobiz sub-account created successfully', 201);
     } catch (err) {

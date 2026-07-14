@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { User, Admin, Subscription, Plan, Category } = require('../models');
+const { User, Admin, Subscription, Plan, Category, VobizNumber, Agent } = require('../models');
+const defaults = require('../config/defaults');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/token');
 const ResponseBuilder = require('../utils/response');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
@@ -86,6 +87,15 @@ class AuthController {
         callsUsed: 0,
         callsRemaining: starterPlan.callLimit,
         status: 'active',
+      });
+
+      // 6. Setup demo number for trial testing
+      await VobizNumber.create({
+        userId: merchant.id,
+        number: defaults.vobiz.demoNumber,
+        status: 'active',
+        providerData: { isDemo: true },
+        agentId: null,
       });
 
       // Send verification SMS in the background
@@ -460,6 +470,33 @@ class AuthController {
       user.businessUrl = businessUrl || null;
       user.categoryId = categoryId;
       await user.save();
+
+      // 3. Auto-assign/create the category's default test agent to their demo number
+      const defaultAgent = await Agent.findOne({
+        where: {
+          isCustom: false,
+          categoryId: categoryId,
+        },
+      });
+
+      if (defaultAgent) {
+        const [demoNumRecord, created] = await VobizNumber.findOrCreate({
+          where: {
+            userId: user.id,
+            number: defaults.vobiz.demoNumber,
+          },
+          defaults: {
+            status: 'active',
+            providerData: { isDemo: true },
+            agentId: defaultAgent.id,
+          },
+        });
+
+        if (!created && demoNumRecord.agentId !== defaultAgent.id) {
+          demoNumRecord.agentId = defaultAgent.id;
+          await demoNumRecord.save();
+        }
+      }
 
       const profile = {
         id: user.id,
