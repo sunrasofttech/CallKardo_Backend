@@ -1,6 +1,7 @@
 const { Subscription, Plan, User } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { upgradeSubscriptionSchema } = require('../validators/subscription');
+const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 
 class SubscriptionController {
   /**
@@ -71,6 +72,8 @@ class SubscriptionController {
           status: 'active',
         });
       }
+
+      await removeTrialDemoNumber(req.user.id);
 
       return ResponseBuilder.success(res, subscription, `Successfully subscribed to ${targetPlan.name} plan`);
     } catch (err) {

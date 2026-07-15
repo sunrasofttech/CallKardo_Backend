@@ -4,6 +4,8 @@ const { redisClient } = require('../config/redis');
 const SubscriptionService = require('../services/subscriptionService');
 const { Op } = require('sequelize');
 
+let lastSubscriptionExpiryCheck = 0;
+
 async function startScheduler() {
   console.log('Scheduler Worker started.');
 
@@ -11,6 +13,12 @@ async function startScheduler() {
   while (true) {
     try {
       const now = Date.now();
+
+      if (now - lastSubscriptionExpiryCheck >= 60 * 1000) {
+        await SubscriptionService.expireDueSubscriptions();
+        lastSubscriptionExpiryCheck = now;
+      }
+
       const readyJobs = await QueueService.fetchReadyScheduledJobs(now);
 
       for (const job of readyJobs) {

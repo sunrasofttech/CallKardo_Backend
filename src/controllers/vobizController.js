@@ -5,6 +5,7 @@ const { connectAccountSchema, addNumberSchema, updateNumberSchema, buyNumberSche
 const { encrypt, decrypt } = require('../utils/crypto');
 const vobizService = require('../services/vobizService');
 const defaults = require('../config/defaults');
+const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 const crypto = require('crypto');
 class VobizController {
   /**
@@ -191,12 +192,7 @@ class VobizController {
       };
 
       // Remove trial demo number upon successful onboarding of real account
-      await VobizNumber.destroy({
-        where: {
-          userId: req.user.id,
-          number: defaults.vobiz.demoNumber,
-        },
-      });
+      await removeTrialDemoNumber(req.user.id);
 
       return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account connected successfully');
     } catch (err) {
@@ -407,12 +403,7 @@ class VobizController {
       };
 
       // Remove trial demo number upon successful creation of sub-account
-      await VobizNumber.destroy({
-        where: {
-          userId: user.id,
-          number: defaults.vobiz.demoNumber,
-        },
-      });
+      await removeTrialDemoNumber(user.id);
 
       return ResponseBuilder.success(res, sanitizedResponse, 'Vobiz sub-account created successfully', 201);
     } catch (err) {

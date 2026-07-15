@@ -1,6 +1,25 @@
+const { Op } = require('sequelize');
 const { Subscription, Plan, User } = require('../models');
+const { removeTrialDemoNumber } = require('./trialDemoNumberService');
 
 class SubscriptionService {
+  async expireDueSubscriptions() {
+    const expiredSubscriptions = await Subscription.findAll({
+      where: {
+        status: 'active',
+        expiryDate: { [Op.lt]: new Date() },
+      },
+    });
+
+    for (const subscription of expiredSubscriptions) {
+      subscription.status = 'expired';
+      await subscription.save();
+      await removeTrialDemoNumber(subscription.userId);
+    }
+
+    return expiredSubscriptions.length;
+  }
+
   /**
    * Validates if a merchant user has active call credits and is within plan expiration limits
    * @param {string} userId - The Merchant User UUID
@@ -25,6 +44,7 @@ class SubscriptionService {
       // Mark as expired in DB
       subscription.status = 'expired';
       await subscription.save();
+      await removeTrialDemoNumber(userId);
       return { isValid: false, reason: 'Subscription plan has expired.' };
     }
 

@@ -1,0 +1,663 @@
+{
+  "info": {
+    "name": "CallKardo Admin API",
+    "description": "Complete admin API collection for CallKardo / AI Live Platform.\n\nAll endpoints require:\n- Bearer token authentication (Super Admin)\n- Base URL: {{baseUrl}}/api/v1/admin\n\nSet the `baseUrl` and `accessToken` variables before use.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.callkardo.com",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "merchantId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "numberId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "voiceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "dashboard"]
+            },
+            "description": "Returns aggregate dashboard statistics: total merchants, active subscriptions, agents, virtual numbers, running campaigns, and completed calls."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Management",
+      "item": [
+        {
+          "name": "List All Admins",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "admins"]
+            },
+            "description": "Retrieve all registered super admin accounts."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newadmin@callkardo.com\",\n  \"mobile\": \"+919876543210\",\n  \"password\": \"securePassword123\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/admins",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "admins"]
+            },
+            "description": "Register a new super admin account."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Admin",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/admins/{{adminId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "admins", "{{adminId}}"]
+            },
+            "description": "Update an existing admin's first and last name."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Merchant Management",
+      "item": [
+        {
+          "name": "List All Merchants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants"]
+            },
+            "description": "Retrieve all merchant accounts with their categories, subscriptions, and virtual numbers."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Merchant by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants/{{merchantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants", "{{merchantId}}"]
+            },
+            "description": "Retrieve a single merchant's full profile including category, subscription, virtual numbers, and assigned agents."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Merchant",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"businessName\": \"Updated Business Name\",\n  \"businessUrl\": \"https://updated-business.com\",\n  \"categoryId\": \"uuid-of-category\",\n  \"isVerified\": true,\n  \"kycStatus\": \"full\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants/{{merchantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants", "{{merchantId}}"]
+            },
+            "description": "Update a merchant's business info, verification status, or KYC status. KYC status must be one of: none, pending, full."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Merchant Subscription",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"uuid-of-plan\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants/{{merchantId}}/subscription",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants", "{{merchantId}}", "subscription"]
+            },
+            "description": "Assign or change a merchant's subscription plan. Resets call counters and sets a 1-month expiry from now."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Merchant Virtual Numbers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants/{{merchantId}}/numbers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants", "{{merchantId}}", "numbers"]
+            },
+            "description": "List all virtual numbers assigned to a specific merchant, including their agent assignments."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Merchant Virtual Number",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"agentId\": \"uuid-of-agent-or-null\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants/{{merchantId}}/numbers/{{numberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants", "{{merchantId}}", "numbers", "{{numberId}}"]
+            },
+            "description": "Update a merchant's virtual number status (active/inactive) or reassign it to a different agent."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Merchant Virtual Number",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/merchants/{{merchantId}}/numbers/{{numberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "merchants", "{{merchantId}}", "numbers", "{{numberId}}"]
+            },
+            "description": "Permanently remove a virtual number from a merchant's account."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Agent Approval",
+      "item": [
+        {
+          "name": "List All Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "agents"]
+            },
+            "description": "Retrieve all AI agents across all merchants with their associated user info."
+          },
+          "response": []
+        },
+        {
+          "name": "List Pending Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/agents/pending",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "agents", "pending"]
+            },
+            "description": "Retrieve only AI agents that are awaiting admin approval."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Agent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/agents/{{agentId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "agents", "{{agentId}}", "approve"]
+            },
+            "description": "Approve a pending agent. Sets approvalStatus to 'approved' and activeStatus to true."
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Agent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/agents/{{agentId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "agents", "{{agentId}}", "reject"]
+            },
+            "description": "Reject a pending agent. Sets approvalStatus to 'rejected' and activeStatus to false."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "System Settings",
+      "item": [
+        {
+          "name": "Get Sensitive Words",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/sensitive-words",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "sensitive-words"]
+            },
+            "description": "Retrieve the current list of sensitive/flagged words used for call transcript monitoring."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Sensitive Words",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"words\": [\"scam\", \"fraud\", \"hack\", \"abuse\", \"illegal\", \"terror\", \"bomb\", \"kill\", \"phishing\", \"spam\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/sensitive-words",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "sensitive-words"]
+            },
+            "description": "Replace the entire sensitive words list. Provide the full array of words."
+          },
+          "response": []
+        },
+        {
+          "name": "Get KYC Rate Limit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/kyc-rate-limit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "kyc-rate-limit"]
+            },
+            "description": "Retrieve the current 48-hour KYC rate limit for calls."
+          },
+          "response": []
+        },
+        {
+          "name": "Update KYC Rate Limit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/kyc-rate-limit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "kyc-rate-limit"]
+            },
+            "description": "Set the maximum number of calls allowed within a 48-hour window for unverified KYC merchants."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Voice Library",
+      "item": [
+        {
+          "name": "List All Voices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/voices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "voices"],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "sarvam",
+                  "description": "Filter by provider: sarvam, cartesia, bulbul, elevenlabs, google",
+                  "disabled": true
+                },
+                {
+                  "key": "gender",
+                  "value": "Male",
+                  "description": "Filter by gender: Male, Female, Neutral",
+                  "disabled": true
+                },
+                {
+                  "key": "language",
+                  "value": "en-IN",
+                  "description": "Filter by language code",
+                  "disabled": true
+                },
+                {
+                  "key": "isCustom",
+                  "value": "false",
+                  "description": "Filter by custom/system voices",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List all voices in the system. Supports optional filters: provider, gender, language, isCustom."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Voice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Priya\",\n  \"provider\": \"sarvam\",\n  \"voiceId\": \"priya\",\n  \"language\": \"en-IN\",\n  \"gender\": \"Female\",\n  \"sampleText\": \"Hello, I am Priya. How can I help you today?\",\n  \"isCustom\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/voices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "voices"]
+            },
+            "description": "Create a new system or custom voice entry."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Voice",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Priya Updated\",\n  \"sampleText\": \"Hi there! I am Priya, your updated assistant.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/voices/{{voiceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "voices", "{{voiceId}}"]
+            },
+            "description": "Update an existing voice's metadata. All fields are optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Voice",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/voices/{{voiceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "voices", "{{voiceId}}"]
+            },
+            "description": "Soft-delete a voice from the system."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Audit Logs",
+      "item": [
+        {
+          "name": "Get Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/audit-logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "audit-logs"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (default: 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page (default: 20, max: 100)"
+                },
+                {
+                  "key": "action",
+                  "value": "",
+                  "description": "Filter by action type",
+                  "disabled": true
+                },
+                {
+                  "key": "userId",
+                  "value": "",
+                  "description": "Filter by user UUID",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve paginated audit trail logs. Supports filtering by action type and userId."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Call Reports",
+      "item": [
+        {
+          "name": "Get Global Call Reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reports",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "reports"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (default: 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page (default: 20, max: 100)"
+                },
+                {
+                  "key": "merchantId",
+                  "value": "",
+                  "description": "Filter by merchant UUID",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Filter by report status",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by customer name or mobile",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve paginated call reports across all merchants. Supports filtering by merchantId, status, and search by customer name/mobile."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Call Session Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reports/session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "reports", "session", "{{sessionId}}"]
+            },
+            "description": "Retrieve full details of a specific call session including transcript logs, agent info, recording URL, and the associated call report."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Virtual Numbers",
+      "item": [
+        {
+          "name": "Get Global Virtual Numbers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/virtual-numbers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "virtual-numbers"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (default: 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page (default: 20, max: 100)"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Filter by status: active, inactive",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve paginated inventory of all virtual numbers registered on the platform, with assigned merchant and agent details."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

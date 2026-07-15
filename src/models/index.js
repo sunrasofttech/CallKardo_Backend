@@ -173,6 +173,11 @@ CallReport.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
 Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// User <-> AuditLog
+User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
+AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+
 module.exports = {
   sequelize,
   Admin,

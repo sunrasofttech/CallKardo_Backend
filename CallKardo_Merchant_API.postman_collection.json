@@ -1,0 +1,1229 @@
+{
+  "info": {
+    "name": "CallKardo Merchant API",
+    "description": "Complete merchant API collection for CallKardo / AI Live Platform.\n\n## Working Flow Order\nFollow the numbered folders in sequence for a complete end-to-end merchant onboarding and campaign execution flow:\n\n1. **Auth** → Register → Verify OTP → Login → Setup Business\n2. **Categories & Plans** → Browse available categories and plans\n3. **Subscription** → View current plan, upgrade if needed\n4. **VoBiz Setup** → Connect telephony account → Buy/add numbers\n5. **Voices** → Browse and preview voices\n6. **Agents** → Create AI voice agents\n7. **Customers** → Add contacts manually or via CSV upload\n8. **Campaigns** → Create and launch outbound campaigns\n9. **Reports & Analytics** → View call results and dashboard stats\n\nSet the `baseUrl` and `accessToken` variables before use.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.callkardo.com",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "categoryId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "planId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "voiceId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerListId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vobizNumberId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "campaignId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth (Start Here)",
+      "description": "**FLOW:** Register → Verify OTP → Login → Get Profile → Setup Business",
+      "item": [
+        {
+          "name": "1.1 Register Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "  console.log('✅ Tokens saved from registration');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"merchant@example.com\",\n  \"mobile\": \"+919876543210\",\n  \"password\": \"securePass123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Register a new merchant. Returns access & refresh tokens immediately. An OTP is sent via SMS for verification.\n\n**Auto-saves:** `accessToken`, `refreshToken`"
+          },
+          "response": []
+        },
+        {
+          "name": "1.2 Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"123456\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "verify-otp"]
+            },
+            "description": "Verify the 6-digit OTP sent via SMS. Must be called with a valid accessToken (from registration)."
+          },
+          "response": []
+        },
+        {
+          "name": "1.3 Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "  console.log('✅ Tokens saved from login');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"password\": \"securePass123\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Login with email/mobile and password. Use `role: merchant` or `role: super_admin`.\n\n**Auto-saves:** `accessToken`, `refreshToken`"
+          },
+          "response": []
+        },
+        {
+          "name": "1.4 Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Get the authenticated user's full profile including subscription info, business details, and KYC status."
+          },
+          "response": []
+        },
+        {
+          "name": "1.5 Setup Business Profile",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"businessName\": \"My AI Call Center\",\n  \"businessUrl\": \"https://mycompany.com\",\n  \"categoryId\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/setup-business",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "setup-business"]
+            },
+            "description": "Complete business onboarding. Set the business name, website URL, and business category.\n\n**Prerequisite:** Get a `categoryId` from the Categories endpoints first."
+          },
+          "response": []
+        },
+        {
+          "name": "1.6 Refresh Access Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  if (json.data.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "  console.log('✅ Access token refreshed');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "refresh-token"]
+            },
+            "description": "Exchange a valid refresh token for a new access token.\n\n**Auto-saves:** `accessToken`"
+          },
+          "response": []
+        },
+        {
+          "name": "1.7 Forgot Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"merchant@example.com\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/forgot-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "forgot-password"]
+            },
+            "description": "Request a password reset link. An email with a reset token will be sent."
+          },
+          "response": []
+        },
+        {
+          "name": "1.8 Reset Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"paste-reset-token-here\",\n  \"password\": \"newSecurePass456\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "reset-password"]
+            },
+            "description": "Reset password using the token received via email from forgot-password."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Categories & Plans",
+      "description": "**FLOW:** Browse categories to pick one for business setup → Browse plans to know available tiers.",
+      "item": [
+        {
+          "name": "2.1 List Categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.length > 0) {",
+                  "    pm.collectionVariables.set('categoryId', json.data[0].id);",
+                  "    console.log('✅ categoryId saved:', json.data[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "categories"]
+            },
+            "description": "List all business categories (e.g. Lawyer, Real Estate, Healthcare).\n\n**Auto-saves:** `categoryId` from first result."
+          },
+          "response": []
+        },
+        {
+          "name": "2.2 Get Category by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "categories", "{{categoryId}}"]
+            },
+            "description": "Get details of a specific category including its default prompt and voice."
+          },
+          "response": []
+        },
+        {
+          "name": "2.3 List Plans",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.length > 0) {",
+                  "    const paid = json.data.find(p => p.name !== 'Starter');",
+                  "    if (paid) pm.collectionVariables.set('planId', paid.id);",
+                  "    console.log('✅ planId saved:', paid ? paid.id : json.data[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "plans"]
+            },
+            "description": "List all subscription plans (Starter, Basic, Pro, Enterprise).\n\n**Auto-saves:** `planId` from first paid plan."
+          },
+          "response": []
+        },
+        {
+          "name": "2.4 Get Plan by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/plans/{{planId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "plans", "{{planId}}"]
+            },
+            "description": "Get details of a specific plan including price, call limit, and max concurrent calls."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Subscription",
+      "description": "**FLOW:** Check current subscription → Upgrade to a paid plan.",
+      "item": [
+        {
+          "name": "3.1 Get My Subscription",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "my"]
+            },
+            "description": "Get the currently authenticated merchant's subscription status, plan details, and usage counters."
+          },
+          "response": []
+        },
+        {
+          "name": "3.2 Upgrade Subscription",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/upgrade",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "upgrade"]
+            },
+            "description": "Upgrade to a different plan. Resets call counters and extends expiry by 1 month."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. VoBiz Telephony Setup",
+      "description": "**FLOW:** Connect your VoBiz account OR create a sub-account → Search and buy phone numbers → Manage numbers.",
+      "item": [
+        {
+          "name": "4.1 Connect VoBiz Account",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"VOBIZ_CUSTOMER_ID\",\n  \"apiKey\": \"your_vobiz_api_key\",\n  \"apiSecret\": \"your_vobiz_api_secret\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/connect",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "connect"]
+            },
+            "description": "Connect an existing VoBiz telephony account using API credentials. This enables outbound calling."
+          },
+          "response": []
+        },
+        {
+          "name": "4.2 Create VoBiz Sub-Account",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/create-subaccount",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "create-subaccount"]
+            },
+            "description": "Auto-create a new VoBiz sub-account under the platform's parent account. Alternative to connecting an existing account."
+          },
+          "response": []
+        },
+        {
+          "name": "4.3 Get VoBiz Account Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "account"]
+            },
+            "description": "Get the connected VoBiz account details and credentials status."
+          },
+          "response": []
+        },
+        {
+          "name": "4.4 Search Available Numbers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/available-numbers?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "available-numbers"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Search for available phone numbers to purchase from VoBiz inventory. Supports pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "4.5 Buy a Number",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": \"+911234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/buy-number",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "buy-number"]
+            },
+            "description": "Purchase a phone number from the available inventory. The number will be registered to your VoBiz account."
+          },
+          "response": []
+        },
+        {
+          "name": "4.6 List My Numbers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.length > 0) {",
+                  "    pm.collectionVariables.set('vobizNumberId', json.data[0].id);",
+                  "    console.log('✅ vobizNumberId saved:', json.data[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/numbers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "numbers"]
+            },
+            "description": "List all phone numbers registered to your account.\n\n**Auto-saves:** `vobizNumberId` from first result."
+          },
+          "response": []
+        },
+        {
+          "name": "4.7 Add Number Manually",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"number\": \"+919876543210\",\n  \"status\": \"active\",\n  \"agentId\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/numbers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "numbers"]
+            },
+            "description": "Manually register a phone number to your account. Optionally assign an agent immediately."
+          },
+          "response": []
+        },
+        {
+          "name": "4.8 Update Number",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"agentId\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/numbers/{{vobizNumberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "numbers", "{{vobizNumberId}}"]
+            },
+            "description": "Update a number's status or reassign it to a different agent."
+          },
+          "response": []
+        },
+        {
+          "name": "4.9 Delete Number",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vobiz/numbers/{{vobizNumberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "vobiz", "numbers", "{{vobizNumberId}}"]
+            },
+            "description": "Remove a phone number from your account."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Voices",
+      "description": "**FLOW:** Browse available voices → Preview a voice to hear it.",
+      "item": [
+        {
+          "name": "5.1 List All Voices",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  if (json.data && json.data.length > 0) {",
+                  "    pm.collectionVariables.set('voiceId', json.data[0].id);",
+                  "    console.log('✅ voiceId saved:', json.data[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/voices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "voices"]
+            },
+            "description": "Get all available system voices and your custom voices.\n\n**Auto-saves:** `voiceId` from first result."
+          },
+          "response": []
+        },
+        {
+          "name": "5.2 Preview a Voice",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"voiceId\": \"{{voiceId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/voices/preview",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "voices", "preview"]
+            },
+            "description": "Generate a voice preview audio file. Returns a URL to stream the .wav sample."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. AI Agents",
+      "description": "**FLOW:** Create an AI agent → List agents → Update agent config → Assign agent to a VoBiz number.",
+      "item": [
+        {
+          "name": "6.1 Create Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('agentId', json.data.id);",
+                  "  console.log('✅ agentId saved:', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales Assistant\",\n  \"description\": \"Qualifies leads and books appointments\",\n  \"systemPrompt\": \"You are a professional sales assistant. Your goal is to qualify leads by asking about their budget, timeline, and needs. Be friendly and concise. Keep responses under 30 words.\",\n  \"language\": \"en\",\n  \"voiceId\": \"{{voiceId}}\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"activeStatus\": true,\n  \"allowInterruption\": true,\n  \"pace\": 1.0,\n  \"temperature\": 0.6,\n  \"firstMessage\": \"Hello! Thanks for taking my call. I'm calling from AI Live. Do you have a moment to chat?\",\n  \"aiProvider\": \"geminilive\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "agents"]
+            },
+            "description": "Create a new AI voice agent with a system prompt, voice, and configuration.\n\n**Auto-saves:** `agentId`\n\n**aiProvider options:** `geminilive`, `custom`, `customv2`, `elevenlabs`"
+          },
+          "response": []
+        },
+        {
+          "name": "6.2 List All Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "agents"]
+            },
+            "description": "List all AI agents belonging to the authenticated merchant."
+          },
+          "response": []
+        },
+        {
+          "name": "6.3 Get Agent by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "agents", "{{agentId}}"]
+            },
+            "description": "Get full details of a specific agent."
+          },
+          "response": []
+        },
+        {
+          "name": "6.4 Update Agent",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales Assistant v2\",\n  \"systemPrompt\": \"You are an upgraded sales assistant. Be even more concise. Qualify leads in under 3 questions.\",\n  \"temperature\": 0.7\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "agents", "{{agentId}}"]
+            },
+            "description": "Update any agent configuration fields. All fields are optional."
+          },
+          "response": []
+        },
+        {
+          "name": "6.5 Delete Agent",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "agents", "{{agentId}}"]
+            },
+            "description": "Soft-delete an agent. The agent will no longer be available for campaigns."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. Customers & Lists",
+      "description": "**FLOW:** Add customers manually or via CSV → Create customer lists → Use lists to launch campaigns.",
+      "item": [
+        {
+          "name": "7.1 Create Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('customerId', json.data.id);",
+                  "  console.log('✅ customerId saved:', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma\",\n  \"mobile\": \"+919123456789\",\n  \"tags\": \"lead,premium\",\n  \"notes\": \"Interested in enterprise plan\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers"]
+            },
+            "description": "Add a single customer contact.\n\n**Auto-saves:** `customerId`"
+          },
+          "response": []
+        },
+        {
+          "name": "7.2 List All Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers"]
+            },
+            "description": "List all customers belonging to the authenticated merchant."
+          },
+          "response": []
+        },
+        {
+          "name": "7.3 Get Customer by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "{{customerId}}"]
+            },
+            "description": "Get details of a specific customer."
+          },
+          "response": []
+        },
+        {
+          "name": "7.4 Update Customer",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Sharma (Updated)\",\n  \"tags\": \"lead,premium,hot\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "{{customerId}}"]
+            },
+            "description": "Update a customer's info. All fields are optional."
+          },
+          "response": []
+        },
+        {
+          "name": "7.5 Delete Customer",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/{{customerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "{{customerId}}"]
+            },
+            "description": "Soft-delete a customer contact."
+          },
+          "response": []
+        },
+        {
+          "name": "7.6 Upload Customers CSV",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "CSV file with columns: name, mobile, tags (optional), notes (optional)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "upload"]
+            },
+            "description": "Bulk import customers from a CSV file. Max 5MB.\n\n**CSV columns:** `name`, `mobile`, `tags` (optional), `notes` (optional)"
+          },
+          "response": []
+        },
+        {
+          "name": "7.7 Create Customer List",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('customerListId', json.data.id);",
+                  "  console.log('✅ customerListId saved:', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hot Leads - July\",\n  \"description\": \"Premium leads for Q3 campaign\",\n  \"customerIds\": [\"{{customerId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/lists",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "lists"]
+            },
+            "description": "Create a customer list and optionally pre-populate it with customer IDs.\n\n**Auto-saves:** `customerListId`"
+          },
+          "response": []
+        },
+        {
+          "name": "7.8 List All Customer Lists",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/lists/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "lists", "all"]
+            },
+            "description": "Get all customer lists with their member counts."
+          },
+          "response": []
+        },
+        {
+          "name": "7.9 Delete Customer List",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/lists/{{customerListId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "customers", "lists", "{{customerListId}}"]
+            },
+            "description": "Delete a customer list. Does not delete the customers themselves."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8. Campaigns",
+      "description": "**FLOW:** Create a campaign → Start it → Monitor/Pause/Resume → Stop → Retry failed calls.",
+      "item": [
+        {
+          "name": "8.1 Create Campaign",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('campaignId', json.data.id);",
+                  "  console.log('✅ campaignId saved:', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"July Outbound Campaign\",\n  \"vobizNumberId\": \"{{vobizNumberId}}\",\n  \"agentId\": \"{{agentId}}\",\n  \"customerListId\": \"{{customerListId}}\",\n  \"startTime\": \"2026-07-16T10:00:00.000Z\",\n  \"intervalBetweenCalls\": 5,\n  \"maxConcurrentCalls\": 1,\n  \"status\": \"scheduled\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns"]
+            },
+            "description": "Create a new outbound calling campaign.\n\n**Prerequisites:** You need a `vobizNumberId`, `agentId`, and `customerListId`.\n\n**Status options:** `draft` or `scheduled`\n\n**Auto-saves:** `campaignId`"
+          },
+          "response": []
+        },
+        {
+          "name": "8.2 List All Campaigns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns"]
+            },
+            "description": "List all campaigns for the authenticated merchant."
+          },
+          "response": []
+        },
+        {
+          "name": "8.3 Get Campaign by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}"]
+            },
+            "description": "Get full campaign details including customer mappings and progress."
+          },
+          "response": []
+        },
+        {
+          "name": "8.4 Update Campaign",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"July Outbound Campaign (Updated)\",\n  \"intervalBetweenCalls\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}"]
+            },
+            "description": "Update campaign settings. Can only be modified before the campaign starts."
+          },
+          "response": []
+        },
+        {
+          "name": "8.5 ▶ Start Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/start",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}", "start"]
+            },
+            "description": "Start executing the campaign. The scheduler worker will begin making calls."
+          },
+          "response": []
+        },
+        {
+          "name": "8.6 ⏸ Pause Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/pause",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}", "pause"]
+            },
+            "description": "Pause a running campaign. In-progress calls will complete, but no new calls will be initiated."
+          },
+          "response": []
+        },
+        {
+          "name": "8.7 ▶ Resume Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/resume",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}", "resume"]
+            },
+            "description": "Resume a paused campaign."
+          },
+          "response": []
+        },
+        {
+          "name": "8.8 ⏹ Stop Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/stop",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}", "stop"]
+            },
+            "description": "Permanently stop a campaign. Cannot be resumed after stopping."
+          },
+          "response": []
+        },
+        {
+          "name": "8.9 🔄 Retry Failed Calls",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/retry",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}", "retry"]
+            },
+            "description": "Re-queue all failed calls in the campaign for another attempt."
+          },
+          "response": []
+        },
+        {
+          "name": "8.10 Delete Campaign",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "campaigns", "{{campaignId}}"]
+            },
+            "description": "Soft-delete a campaign. Only possible for draft or completed campaigns."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "9. Reports & Analytics",
+      "description": "**FLOW:** After campaigns run, check call reports → View individual session transcripts → Get analytics dashboards.",
+      "item": [
+        {
+          "name": "9.1 Get All Call Reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reports",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reports"]
+            },
+            "description": "Get all call reports for the authenticated merchant. Includes transcript summaries, sentiment, lead scores, and outcomes."
+          },
+          "response": []
+        },
+        {
+          "name": "9.2 Get Recent Calls",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reports/recent",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reports", "recent"]
+            },
+            "description": "Get the most recent calls with status and basic details."
+          },
+          "response": []
+        },
+        {
+          "name": "9.3 Get Report by Session ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reports/session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reports", "session", "{{sessionId}}"]
+            },
+            "description": "Get the full report for a specific call session including full transcript, summary, sentiment analysis, and recording URL."
+          },
+          "response": []
+        },
+        {
+          "name": "9.4 Get Reports by Mobile Number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/reports/mobile/+919123456789",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "reports", "mobile", "+919123456789"]
+            },
+            "description": "Get all call reports for a specific customer mobile number. Useful for viewing call history with a contact."
+          },
+          "response": []
+        },
+        {
+          "name": "9.5 Campaign Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/campaign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "analytics", "campaign"]
+            },
+            "description": "Get aggregated campaign performance stats: total campaigns, calls made, success rates, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "9.6 Lead Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "analytics", "leads"]
+            },
+            "description": "Get lead qualification analytics: hot/warm/cold lead breakdown, average lead score, sentiment distribution."
+          },
+          "response": []
+        },
+        {
+          "name": "9.7 Plan Utilization",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/plan",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "analytics", "plan"]
+            },
+            "description": "Get subscription plan utilization: calls used vs remaining, days until expiry."
+          },
+          "response": []
+        },
+        {
+          "name": "9.8 VoBiz Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/analytics/vobiz",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "analytics", "vobiz"]
+            },
+            "description": "Get VoBiz telephony dashboard stats: total numbers, active calls, call duration summaries."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
