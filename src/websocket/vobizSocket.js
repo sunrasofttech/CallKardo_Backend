@@ -177,12 +177,7 @@ class VobizSocketHandler {
               outputContentType = 'audio/x-mulaw';
             } else {
               // Resample from targetRate to negotiated sample rate (L16)
-              const resampled = resamplePCM(pcmBuffer, targetRate || 16000, format.sampleRate || 16000);
-              // Swap bytes to convert little-endian PCM to big-endian L16
-              if (resampled.length % 2 === 0) {
-                resampled.swap16();
-              }
-              payloadBuffer = resampled;
+              payloadBuffer = resamplePCM(pcmBuffer, targetRate || 16000, format.sampleRate || 16000);
               outputContentType = 'audio/x-l16';
             }
 
@@ -296,6 +291,17 @@ class VobizSocketHandler {
           }
 
           if (frame.event === 'media' && frame.media?.payload) {
+            if (!ws.receivedFirstMedia) {
+              ws.receivedFirstMedia = true;
+              console.log('[VoBiz Stream] Received first media event');
+              try {
+                await CallLog.create({
+                  callSessionId: session.id,
+                  logLevel: 'info',
+                  message: `[VoBiz Stream] Received first media event. Payload size: ${frame.media.payload.length} chars`,
+                });
+              } catch (_) {}
+            }
             const base64Payload = frame.media.payload;
             const inputBuffer = Buffer.from(base64Payload, 'base64');
             
@@ -310,10 +316,6 @@ class VobizSocketHandler {
               // Resample 8kHz PCM to 16kHz PCM
               pcm16k = resamplePCM(pcm8k, format.sampleRate || 8000, 16000);
             } else {
-              // Swap bytes to convert big-endian L16 to little-endian PCM
-              if (inputBuffer.length % 2 === 0) {
-                inputBuffer.swap16();
-              }
               // It is already raw PCM (L16), resample to 16kHz PCM
               pcm16k = resamplePCM(inputBuffer, format.sampleRate || 16000, 16000);
             }
