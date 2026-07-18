@@ -445,8 +445,27 @@ class VobizSocketHandler {
             }
             fileName = `recording-${session.id}.wav`;
             const filePath = path.join(uploadsDir, fileName);
-            const recordingBuffer = Buffer.concat(ws.audioChunks);
-            fs.writeFileSync(filePath, recordingBuffer);
+            
+            const rawRecordingBuffer = Buffer.concat(ws.audioChunks);
+            
+            // Generate standard 16kHz, 16-bit, mono WAV header
+            const header = Buffer.alloc(44);
+            header.write('RIFF', 0);
+            header.writeUInt32LE(36 + rawRecordingBuffer.length, 4);
+            header.write('WAVE', 8);
+            header.write('fmt ', 12);
+            header.writeUInt32LE(16, 16);
+            header.writeUInt16LE(1, 20); // PCM
+            header.writeUInt16LE(1, 22); // 1 Channel (Mono)
+            header.writeUInt32LE(16000, 24); // 16kHz sample rate
+            header.writeUInt32LE((16000 * 16 * 1) / 8, 28); // byte rate
+            header.writeUInt16LE((16 * 1) / 8, 32); // block align
+            header.writeUInt16LE(16, 34); // bits per sample
+            header.write('data', 36);
+            header.writeUInt32LE(rawRecordingBuffer.length, 40);
+            
+            const wavBuffer = Buffer.concat([header, rawRecordingBuffer]);
+            fs.writeFileSync(filePath, wavBuffer);
             console.log(`Saved call recording to ${filePath}`);
           } catch (recordErr) {
             console.error('Failed to save call recording:', recordErr);
