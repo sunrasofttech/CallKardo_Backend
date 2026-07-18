@@ -23,6 +23,10 @@ Customer.init(
       type: DataTypes.STRING(20),
       allowNull: false,
     },
+    email: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     tags: {
       type: DataTypes.STRING(255),
       allowNull: true, // Could be comma-separated or stored as string

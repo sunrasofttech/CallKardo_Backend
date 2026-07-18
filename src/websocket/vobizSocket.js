@@ -1,5 +1,5 @@
 const url = require('url');
-const { CallSession, Agent, Voice, CallLog, Campaign, Customer, VobizAccount } = require('../models');
+const { CallSession, Agent, Voice, CallLog, Campaign, Customer, VobizAccount, User } = require('../models');
 const QueueService = require('../services/queueService');
 const VoicePipeline = require('../services/voicePipeline');
 const VobizService = require('../services/vobizService');
@@ -122,6 +122,10 @@ class VobizSocketHandler {
             model: Customer,
             as: 'customer',
           },
+          {
+            model: User,
+            as: 'user',
+          },
         ],
       });
 
@@ -159,6 +163,7 @@ class VobizSocketHandler {
       const pipeline = new VoicePipeline({
         agent: session.agent,
         customer: session.customer,
+        merchant: session.user,
         direction: session.direction,
         onAudioOutput: (pcmBuffer, targetRate) => {
           if (ws.readyState === ws.OPEN) {

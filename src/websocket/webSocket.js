@@ -1,5 +1,5 @@
 const url = require('url');
-const { Agent, Voice, Customer } = require('../models');
+const { Agent, Voice, Customer, User } = require('../models');
 const VoicePipeline = require('../services/voicePipeline');
 
 class WebSocketHandler {
@@ -18,9 +18,12 @@ class WebSocketHandler {
     }
 
     try {
-      // Authenticate agent
+      // Authenticate agent and include merchant User info
       const agent = await Agent.findByPk(agentId, {
-        include: [{ model: Voice, as: 'voice' }],
+        include: [
+          { model: Voice, as: 'voice' },
+          { model: User, as: 'user' }
+        ],
       });
 
       if (!agent) {
@@ -48,6 +51,7 @@ class WebSocketHandler {
       const pipeline = new VoicePipeline({
         agent: agent,
         customer: customer,
+        merchant: agent.user,
         direction: 'inbound',
         onAudioOutput: (pcmBuffer, targetRate) => {
           if (ws.readyState === ws.OPEN) {

@@ -16,7 +16,7 @@ async function bootServer() {
     if (defaults.nodeEnv !== 'production') {
       console.log('Syncing database models...');
       // Note: sync() creates tables if they do not exist
-      await sequelize.sync();
+      await sequelize.sync({ alter: true });
       console.log('All database models synced successfully.');
 
       const { seedVoices } = require('./utils/seeder');

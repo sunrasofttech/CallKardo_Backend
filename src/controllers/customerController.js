@@ -46,7 +46,7 @@ class CustomerController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { name, mobile, tags, notes } = value;
+      const { name, mobile, email, tags, notes } = value;
 
       // Check if mobile number exists for this merchant (soft-delete safe)
       const existing = await Customer.findOne({
@@ -60,6 +60,7 @@ class CustomerController {
         userId: req.user.id,
         name,
         mobile,
+        email: email || null,
         tags,
         notes,
       });
@@ -88,7 +89,7 @@ class CustomerController {
         return ResponseBuilder.error(res, 'Customer not found', 404);
       }
 
-      const { name, mobile, tags, notes } = value;
+      const { name, mobile, email, tags, notes } = value;
 
       // Check mobile unique constraint if changing mobile
       if (mobile && mobile !== customer.mobile) {
@@ -103,6 +104,7 @@ class CustomerController {
       await customer.update({
         name: name !== undefined ? name : customer.name,
         mobile: mobile !== undefined ? mobile : customer.mobile,
+        email: email !== undefined ? email : customer.email,
         tags: tags !== undefined ? tags : customer.tags,
         notes: notes !== undefined ? notes : customer.notes,
       });
@@ -155,12 +157,13 @@ class CustomerController {
       const dbMobileNumbers = new Set(existingCustomers.map((c) => c.mobile));
 
       fs.createReadStream(filePath)
-        .pipe(csv(['name', 'mobile', 'tags', 'notes']))
+        .pipe(csv(['name', 'mobile', 'tags', 'notes', 'email']))
         .on('data', (row) => {
           const name = row.name ? row.name.trim() : '';
           const mobile = row.mobile ? row.mobile.trim() : '';
           const tags = row.tags ? row.tags.trim() : '';
           const notes = row.notes ? row.notes.trim() : '';
+          const email = row.email ? row.email.trim() : '';
 
           if (!name || !mobile) {
             validationErrors.push(`Row omitted: Missing name or mobile. (${JSON.stringify(row)})`);
@@ -191,6 +194,7 @@ class CustomerController {
             userId: req.user.id,
             name,
             mobile,
+            email: email || null,
             tags,
             notes,
           });

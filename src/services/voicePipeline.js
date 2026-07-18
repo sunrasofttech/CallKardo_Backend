@@ -207,6 +207,7 @@ class VoicePipeline {
     this.isConnected = true;
     this.direction = options.direction || 'outbound';
     this.customer = options.customer;
+    this.merchant = options.merchant || options.agent?.user;
 
     // Determine agent gender from voice
     let gender = 'neutral';
@@ -757,16 +758,16 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       
       switch (actionName) {
         case 'send_join_link':
-          await ActionService.sendJoinLink(this.customer, this.agent);
+          await ActionService.sendJoinLink(this.customer, this.agent, this.merchant);
           break;
         case 'send_whatsapp_hi':
           await ActionService.sendWhatsAppHi(this.customer);
           break;
         case 'send_email':
-          await ActionService.sendCustomerEmail(this.customer, this.agent);
+          await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant);
           break;
         case 'schedule_meeting':
-          await ActionService.scheduleMeeting(this.customer, this.agent);
+          await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant);
           break;
         default:
           this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);

@@ -5,7 +5,7 @@ const defaults = require('../config/defaults');
  * Send general email.
  * If SMTP configuration is missing, prints to console (useful in local dev).
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, cc, bcc, subject, text, html }) {
   const { host, port, user, pass, from } = defaults.smtp;
 
   if (host && user && pass) {
@@ -23,6 +23,8 @@ async function sendEmail({ to, subject, text, html }) {
       const info = await transporter.sendMail({
         from,
         to,
+        cc,
+        bcc,
         subject,
         text,
         html,
