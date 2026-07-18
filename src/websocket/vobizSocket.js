@@ -157,7 +157,9 @@ class VobizSocketHandler {
 
       // Keep transcript and audio for CallLog/QueueService when call ends
       const transcriptChunks = [];
-      const audioChunks = [];
+      const customerChunks = [];
+      const agentChunks = [];
+      const callStartTime = Date.now();
 
       // 2. Instantiate generic Voice Pipeline
       const pipeline = new VoicePipeline({
@@ -195,7 +197,10 @@ class VobizSocketHandler {
               },
             });
             ws.send(playAudioEvent);
-            audioChunks.push(pcmBuffer);
+            
+            // Save agent chunk with offset (16kHz 16-bit mono = 32000 bytes/sec)
+            const offset = (Date.now() - callStartTime) * 32;
+            agentChunks.push({ offset, buffer: pcmBuffer });
           }
         },
         onClearAudio: () => {
@@ -282,7 +287,9 @@ class VobizSocketHandler {
       ws.session = session;
       ws.pipeline = pipeline;
       ws.transcriptChunks = transcriptChunks;
-      ws.audioChunks = audioChunks;
+      ws.customerChunks = customerChunks;
+      ws.agentChunks = agentChunks;
+      ws.callStartTime = callStartTime;
 
       // 3. Define the main frame handler
       const handleFrame = async (message) => {
@@ -347,7 +354,9 @@ class VobizSocketHandler {
               pcm16k = resamplePCM(inputBuffer, format.sampleRate || 16000, 16000);
             }
 
-            audioChunks.push(pcm16k);
+            // Save customer chunk with offset (16kHz 16-bit mono = 32000 bytes/sec)
+            const offset = (Date.now() - callStartTime) * 32;
+            customerChunks.push({ offset, buffer: pcm16k });
             pipeline.handleAudioInput(pcm16k);
           }
         } catch (msgErr) {
@@ -435,7 +444,7 @@ class VobizSocketHandler {
 
         // Compile conversation recording
         let fileName = null;
-        if (ws.audioChunks && ws.audioChunks.length > 0) {
+        if ((ws.customerChunks && ws.customerChunks.length > 0) || (ws.agentChunks && ws.agentChunks.length > 0)) {
           try {
             const fs = require('fs');
             const path = require('path');
@@ -446,12 +455,46 @@ class VobizSocketHandler {
             fileName = `recording-${session.id}.wav`;
             const filePath = path.join(uploadsDir, fileName);
             
-            const rawRecordingBuffer = Buffer.concat(ws.audioChunks);
+            // Calculate total duration in bytes (16kHz, 16-bit, mono PCM = 32000 bytes/sec)
+            const totalDurationBytes = Math.max(1, (Date.now() - ws.callStartTime) * 32);
+            
+            const customerTimeline = Buffer.alloc(totalDurationBytes);
+            const agentTimeline = Buffer.alloc(totalDurationBytes);
+            
+            // Write customer chunks to their offsets
+            if (ws.customerChunks) {
+              for (const chunk of ws.customerChunks) {
+                if (chunk.offset < totalDurationBytes) {
+                  const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
+                  chunk.buffer.copy(customerTimeline, chunk.offset, 0, copyLen);
+                }
+              }
+            }
+            // Write agent chunks to their offsets
+            if (ws.agentChunks) {
+              for (const chunk of ws.agentChunks) {
+                if (chunk.offset < totalDurationBytes) {
+                  const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
+                  chunk.buffer.copy(agentTimeline, chunk.offset, 0, copyLen);
+                }
+              }
+            }
+            
+            // Mix customer and agent timelines sample-by-sample
+            const mixedBuffer = Buffer.alloc(totalDurationBytes);
+            const sampleCount = Math.floor(totalDurationBytes / 2);
+            for (let i = 0; i < sampleCount; i++) {
+              const s1 = customerTimeline.readInt16LE(i * 2);
+              const s2 = agentTimeline.readInt16LE(i * 2);
+              // Mix and clamp to signed 16-bit integer range
+              const mixed = Math.max(-32768, Math.min(32767, s1 + s2));
+              mixedBuffer.writeInt16LE(mixed, i * 2);
+            }
             
             // Generate standard 16kHz, 16-bit, mono WAV header
             const header = Buffer.alloc(44);
             header.write('RIFF', 0);
-            header.writeUInt32LE(36 + rawRecordingBuffer.length, 4);
+            header.writeUInt32LE(36 + mixedBuffer.length, 4);
             header.write('WAVE', 8);
             header.write('fmt ', 12);
             header.writeUInt32LE(16, 16);
@@ -462,11 +505,11 @@ class VobizSocketHandler {
             header.writeUInt16LE((16 * 1) / 8, 32); // block align
             header.writeUInt16LE(16, 34); // bits per sample
             header.write('data', 36);
-            header.writeUInt32LE(rawRecordingBuffer.length, 40);
+            header.writeUInt32LE(mixedBuffer.length, 40);
             
-            const wavBuffer = Buffer.concat([header, rawRecordingBuffer]);
+            const wavBuffer = Buffer.concat([header, mixedBuffer]);
             fs.writeFileSync(filePath, wavBuffer);
-            console.log(`Saved call recording to ${filePath}`);
+            console.log(`Saved mixed call recording to ${filePath}`);
           } catch (recordErr) {
             console.error('Failed to save call recording:', recordErr);
           }
@@ -490,7 +533,8 @@ class VobizSocketHandler {
         await QueueService.enqueueReport(completionEvent);
 
         // Clear memory references to prevent socket memory leaks
-        ws.audioChunks = null;
+        ws.customerChunks = null;
+        ws.agentChunks = null;
         ws.transcriptChunks = null;
       }
     } catch (cleanError) {
