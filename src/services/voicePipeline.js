@@ -691,12 +691,12 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     // Synthesize and play warning
     await this._synthesizeAndPlay(warningText, ttsGen);
     
-    // Wait for the warning speech to finish (approx 4 seconds) before hanging up
+    // Wait for the warning speech to finish (approx 2 seconds) before hanging up
     this.silenceWarningTimeout = setTimeout(() => {
       if (!this.isConnected) return;
       this._log('warn', `[Silence Timeout Warning Complete] Hanging up call.`);
       this._endCall('Silence timeout (no customer response after warning)');
-    }, 4000);
+    }, 2000);
   }
 
   /**
@@ -736,6 +736,9 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         'phone rakh', 'call end', 'end call', 'disconnect',
         'i\'m done', 'i am done', 'all done', 'ho gaya',
         'baat khatam', 'baat khtam', 'nikal lo', 'nice talking',
+        'cut the call', 'cut call', 'disconnect call', 'hang up', 
+        'hangup', 'stop call', 'stop the call', 'close call', 
+        'alvida', 'tata'
       ];
       for (const phrase of endPhrases) {
         if (lower.includes(phrase)) {
