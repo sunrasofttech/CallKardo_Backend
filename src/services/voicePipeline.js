@@ -607,10 +607,6 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     this._resetSilenceTimer();
   }
 
-  /**
-   * Reset the silence/inactivity monitor. Called whenever the agent or customer speaks.
-   * If neither speaks for `silenceTimeoutMs`, the call is ended automatically.
-   */
   _resetSilenceTimer() {
     if (!this.isConnected || !this.silenceTimeoutMs) return;
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
@@ -625,13 +621,12 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     this.silenceTimer = setTimeout(() => {
       if (!this.isConnected) return;
       
-      // If we haven't warned yet, say the warning and schedule the actual hangup
+      // If we haven't warned yet, say the warning message
       if (!this.hasWarnedSilence) {
         this._sayWarningAndEndCall();
       } else {
-        // If we already warned, end the call
-        this._log('warn', `[Silence Timeout] Final silence timeout reached — ending call.`);
-        this._endCall('Silence timeout (no customer response after warning)');
+        // We already warned. As per instructions, do not cut the call.
+        this._log('info', `[Silence Timeout] Final silence timeout reached, but not ending call as requested.`);
       }
     }, this.silenceTimeoutMs);
   }
@@ -664,13 +659,6 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     
     // Synthesize and play warning
     await this._synthesizeAndPlay(warningText, ttsGen);
-    
-    // Wait for the warning speech to finish (approx 4 seconds) before hanging up
-    this.silenceWarningTimeout = setTimeout(() => {
-      if (!this.isConnected) return;
-      this._log('warn', `[Silence Timeout Warning Complete] Hanging up call.`);
-      this._endCall('Silence timeout (no customer response after warning)');
-    }, 4000);
   }
 
   /**
