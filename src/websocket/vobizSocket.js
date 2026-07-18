@@ -198,9 +198,20 @@ class VobizSocketHandler {
             });
             ws.send(playAudioEvent);
             
-            // Save agent chunk with offset (16kHz 16-bit mono = 32000 bytes/sec)
-            const offset = (Date.now() - callStartTime) * 32;
+            // Calculate sequential offset for agent audio to prevent overwrite collisions from API buffering
+            const now = Date.now();
+            const elapsedBytes = (now - callStartTime) * 32;
+            
+            // If the agent has been silent for more than 500ms, synchronize offset to real-time
+            if (!ws.lastAgentWriteTime || (now - ws.lastAgentWriteTime) > 500) {
+              ws.nextAgentWriteOffset = elapsedBytes;
+            }
+            
+            const offset = ws.nextAgentWriteOffset;
             agentChunks.push({ offset, buffer: pcmBuffer });
+            
+            ws.nextAgentWriteOffset = offset + pcmBuffer.length;
+            ws.lastAgentWriteTime = now;
           }
         },
         onClearAudio: () => {
