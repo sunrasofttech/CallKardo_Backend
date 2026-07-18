@@ -8,6 +8,31 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeConversationalText } = require('../utils/naturalConversation');
 
+const SILENCE_WARNING_MESSAGES = {
+  'en': 'I am going to cut the call.',
+  'en-in': 'I am going to cut the call.',
+  'hi': 'मैं कॉल काटने जा रहा हूँ।',
+  'hi-in': 'मैं कॉल काटने जा रहा हूँ।',
+  'bn': 'আমি কলটি কেটে দিচ্ছি।',
+  'bn-in': 'আমি কলটি কেটে দিচ্ছি।',
+  'ta': 'நான் அழைப்பைத் துண்டிக்கப் போகிறேன்.',
+  'ta-in': 'நான் அழைப்பைத் துண்டிக்கப் போகிறேன்.',
+  'te': 'నేను కాల్ కట్ చేయబోతున్నాను.',
+  'te-in': 'నేను కాల్ కట్ చేయబోతున్నాను.',
+  'gu': 'હું કોલ કાપી રહ્યો છું.',
+  'gu-in': 'હું કોલ કાપી રહ્યો છું.',
+  'kn': 'ನಾನು ಕರೆಯನ್ನು ಕಡಿತಗೊಳಿಸುತ್ತಿದ್ದೇನೆ.',
+  'kn-in': 'ನಾನು ಕರೆಯನ್ನು ಕಡಿತಗೊಳಿಸುತ್ತಿದ್ದೇನೆ.',
+  'ml': 'ഞാൻ കോൾ കട്ട് ചെയ്യാൻ പോകുന്നു.',
+  'ml-in': 'ഞാൻ കോൾ കട്ട് ചെയ്യാൻ പോകുന്നു.',
+  'mr': 'मी कॉल कट करणार आहे.',
+  'mr-in': 'मी कॉल कट करणार आहे.',
+  'pa': 'ਮੈਂ ਕਾਲ ਕੱਟਣ ਜਾ ਰਿਹਾ ਹਾਂ।',
+  'pa-in': 'ਮੈਂ ਕਾਲ ਕੱਟਣ ਜਾ ਰਿਹਾ ਹਾਂ।',
+  'od': 'ମୁଁ କଲ୍ କାଟିବାକୁ ଯାଉଛି।',
+  'od-in': 'ମୁଁ କଲ୍ କାଟିବାକୁ ଯାଉଛି।',
+};
+
 /**
  * Downsample 16-bit mono PCM from inputRate to outputRate using linear interpolation.
  */
@@ -621,12 +646,13 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     this.silenceTimer = setTimeout(() => {
       if (!this.isConnected) return;
       
-      // If we haven't warned yet, say the warning message
+      // If we haven't warned yet, say the warning and schedule the actual hangup
       if (!this.hasWarnedSilence) {
         this._sayWarningAndEndCall();
       } else {
-        // We already warned. As per instructions, do not cut the call.
-        this._log('info', `[Silence Timeout] Final silence timeout reached, but not ending call as requested.`);
+        // If we already warned, end the call
+        this._log('warn', `[Silence Timeout] Final silence timeout reached — ending call.`);
+        this._endCall('Silence timeout (no customer response after warning)');
       }
     }, this.silenceTimeoutMs);
   }
@@ -647,8 +673,13 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     if (!this.isConnected) return;
     this.hasWarnedSilence = true;
     
-    const warningText = "I am going to cut the call.";
-    this._log('info', `[Silence Warning] Customer inactive. Speaking: "${warningText}"`);
+    // Resolve user's active/detected language
+    const activeLang = (this.sarvamTtsStream ? this.sarvamTtsStream.languageCode : null) || this.agent.language || 'en-IN';
+    const normalizedLang = activeLang.toLowerCase().trim();
+    
+    // Fallback to English if the language is not mapped
+    const warningText = SILENCE_WARNING_MESSAGES[normalizedLang] || SILENCE_WARNING_MESSAGES['en-in'];
+    this._log('info', `[Silence Warning] Customer inactive in language "${activeLang}". Speaking: "${warningText}"`);
     
     if (this.onAgentTranscription) {
       this.onAgentTranscription(warningText);
@@ -659,6 +690,13 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     
     // Synthesize and play warning
     await this._synthesizeAndPlay(warningText, ttsGen);
+    
+    // Wait for the warning speech to finish (approx 4 seconds) before hanging up
+    this.silenceWarningTimeout = setTimeout(() => {
+      if (!this.isConnected) return;
+      this._log('warn', `[Silence Timeout Warning Complete] Hanging up call.`);
+      this._endCall('Silence timeout (no customer response after warning)');
+    }, 4000);
   }
 
   /**

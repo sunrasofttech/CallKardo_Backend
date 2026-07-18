@@ -219,19 +219,41 @@ class VobizSocketHandler {
           // 1. Call VoBiz REST API to hang up the call (terminates both legs, generates CDR)
           if (session.vobizCallUuid) {
             try {
+              const defaults = require('../config/defaults');
               const vobizAccount = await VobizAccount.findOne({ where: { userId: session.userId } });
-              if (vobizAccount) {
-                let authId = vobizAccount.apiKey;
-                let authToken = vobizAccount.apiSecret;
+              let authId = defaults.vobiz.parentAuthId;
+              let authToken = defaults.vobiz.parentAuthToken;
+
+              if (vobizAccount && vobizAccount.apiKey && vobizAccount.apiSecret) {
+                let decryptedId = vobizAccount.apiKey;
+                let decryptedToken = vobizAccount.apiSecret;
                 try {
                   const crypto = require('../utils/crypto');
-                  authId = crypto.decrypt(authId) || authId;
-                  authToken = crypto.decrypt(authToken) || authToken;
+                  decryptedId = crypto.decrypt(decryptedId) || decryptedId;
+                  decryptedToken = crypto.decrypt(decryptedToken) || decryptedToken;
                 } catch (_) {}
-                VobizService.hangupCall({ authId, authToken, callUuid: session.vobizCallUuid });
+
+                // Use sub-account keys if they look valid and are not placeholders
+                if (decryptedId && !decryptedId.includes('your_') && !decryptedId.includes('mock') && decryptedId !== 'YOUR_AUTH_ID') {
+                  authId = decryptedId;
+                  authToken = decryptedToken;
+                }
+              }
+
+              console.log(`[VoBiz Call] Triggering hangup for call ${session.vobizCallUuid} with Auth ID: ${authId}`);
+              const res = await VobizService.hangupCall({ authId, authToken, callUuid: session.vobizCallUuid });
+
+              // Fallback: If sub-account keys failed with 401 (unauthorized), retry with parent keys
+              if (!res.success && authId !== defaults.vobiz.parentAuthId) {
+                console.log(`[VoBiz Call] Sub-account hangup failed. Retrying with parent credentials...`);
+                await VobizService.hangupCall({
+                  authId: defaults.vobiz.parentAuthId,
+                  authToken: defaults.vobiz.parentAuthToken,
+                  callUuid: session.vobizCallUuid
+                });
               }
             } catch (err) {
-              console.warn(`[VoBiz Call] Failed to look up VoBiz account for hangup: ${err.message}`);
+              console.warn(`[VoBiz Call] Failed to resolve VoBiz credentials for hangup: ${err.message}`);
             }
           }
 
