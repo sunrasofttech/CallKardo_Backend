@@ -1,5 +1,5 @@
 const url = require('url');
-const { Agent, Voice } = require('../models');
+const { Agent, Voice, Customer } = require('../models');
 const VoicePipeline = require('../services/voicePipeline');
 
 class WebSocketHandler {
@@ -9,6 +9,7 @@ class WebSocketHandler {
   async handleConnection(ws, req) {
     const parameters = url.parse(req.url, true).query;
     const agentId = parameters.agentId;
+    const customerId = parameters.customerId;
 
     if (!agentId) {
       console.error('WS Connection rejected: Missing agentId');
@@ -28,11 +29,25 @@ class WebSocketHandler {
         return;
       }
 
+      // Fetch customer context from DB if customerId is provided
+      let customer = null;
+      if (customerId) {
+        try {
+          customer = await Customer.findByPk(customerId);
+          if (customer) {
+            console.log(`[WebTester] Loaded customer context for: ${customer.name}`);
+          }
+        } catch (dbErr) {
+          console.warn(`[WebTester] Failed to load customer context: ${dbErr.message}`);
+        }
+      }
+
       console.log(`WebTester Connection established for Agent: ${agent.id}`);
 
       // Instantiate Voice Pipeline
       const pipeline = new VoicePipeline({
         agent: agent,
+        customer: customer,
         direction: 'inbound',
         onAudioOutput: (pcmBuffer, targetRate) => {
           if (ws.readyState === ws.OPEN) {

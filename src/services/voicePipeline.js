@@ -257,8 +257,19 @@ class VoicePipeline {
 - Name: ${this.customer.name || 'there'}
 - Mobile: ${this.customer.mobile || 'Unknown'}
 - Tags: ${this.customer.tags || 'None'}
-- Notes: ${this.customer.notes || 'None'}]`;
+- Notes: ${this.customer.notes || 'None'}
+IMPORTANT: Address the customer by their name (${this.customer.name || 'there'}) naturally during the conversation where appropriate (e.g. in the greeting or when confirming details) to make the call feel personalized and professional.]`;
     }
+
+    // Actions and Tool Triggers instruction
+    const actionsInstruction = `
+\n\n[ACTION AND TOOL TRIGGERS:
+If the customer explicitly asks you to perform a specific action, acknowledge their request politely (e.g., "Sure, I have sent you the link" or "I've scheduled a meeting and sent you the details"), and at the VERY END of your response text, append the exact corresponding token:
+- Customer asks for the join link / link to join -> append {{action:send_join_link}} at the end of your response.
+- Customer asks to send a "hi" or greeting on WhatsApp -> append {{action:send_whatsapp_hi}} at the end of your response.
+- Customer asks to email them info/details -> append {{action:send_email}} at the end of your response.
+- Customer asks to schedule a meeting -> append {{action:schedule_meeting}} at the end of your response.
+Do not say these tokens aloud. Only append them as text at the very end of your response.]`;
 
     // Call-ending instruction
     const endCallInstruction = `
@@ -268,7 +279,7 @@ Do NOT add {{hangup}} anywhere except the very end when the customer clearly wan
 Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad mein", "rakh do phone".
 ]`;
 
-    this.combinedSystemPrompt = `${baseSystemPrompt}\n\n[System Call Context: ${directionContext} ${genderContext} Maintain this awareness throughout the conversation and speak/respond accordingly.]${conversationalGuidelines}${endCallInstruction}${customerInfoContext}`;
+    this.combinedSystemPrompt = `${baseSystemPrompt}\n\n[System Call Context: ${directionContext} ${genderContext} Maintain this awareness throughout the conversation and speak/respond accordingly.]${conversationalGuidelines}${endCallInstruction}${actionsInstruction}${customerInfoContext}`;
 
     this.activeProvider = ['geminilive', 'custom', 'customv2', 'elevenlabs'].includes(this.agent.aiProvider)
       ? this.agent.aiProvider
@@ -495,9 +506,12 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       model: defaults.gemini.liveModel,
       onResponseText: async (text) => {
         try {
+          // Process and strip action tokens
+          const textAfterActions = this._processActionTriggers(text);
+          
           // Check for AI hangup signal and strip it
-          this._checkForCallEndRequest(text, 'agent');
-          const cleanText = text.replace(/\{\{hangup\}\}/g, '').trim();
+          this._checkForCallEndRequest(textAfterActions, 'agent');
+          const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
           if (!cleanText) return; // Only {{hangup}} — nothing to say, just end
           this._log('info', `Agent completed response: ${cleanText}`);
           if (this.onAgentTranscription) this.onAgentTranscription(cleanText);
@@ -506,8 +520,9 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         }
       },
       onResponseSentence: async (sentenceText, ttsGeneration) => {
-        // Strip {{hangup}} from individual sentences before TTS
-        const cleanSentence = sentenceText.replace(/\{\{hangup\}\}/g, '').trim();
+        // Strip action tokens and {{hangup}} from individual sentences before TTS
+        const sentenceAfterActions = sentenceText.replace(/\{\{action:[a-zA-Z0-9_]+\}\}/g, '').trim();
+        const cleanSentence = sentenceAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
         if (cleanSentence) {
           this._enqueueTtsPhrase(cleanSentence, ttsGeneration);
         }
@@ -534,9 +549,12 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       model: defaults.sarvam.chatModel || 'sarvam-2b',
       onResponseText: async (text) => {
         try {
+          // Process and strip action tokens
+          const textAfterActions = this._processActionTriggers(text);
+          
           // Check for AI hangup signal and strip it
-          this._checkForCallEndRequest(text, 'agent');
-          const cleanText = text.replace(/\{\{hangup\}\}/g, '').trim();
+          this._checkForCallEndRequest(textAfterActions, 'agent');
+          const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
           if (!cleanText) return; // Only {{hangup}} — nothing to say, just end
           this._log('info', `Agent completed response: ${cleanText}`);
           if (this.onAgentTranscription) this.onAgentTranscription(cleanText);
@@ -545,8 +563,9 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         }
       },
       onResponseSentence: async (sentenceText, ttsGeneration) => {
-        // Strip {{hangup}} from individual sentences before TTS
-        const cleanSentence = sentenceText.replace(/\{\{hangup\}\}/g, '').trim();
+        // Strip action tokens and {{hangup}} from individual sentences before TTS
+        const sentenceAfterActions = sentenceText.replace(/\{\{action:[a-zA-Z0-9_]+\}\}/g, '').trim();
+        const cleanSentence = sentenceAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
         if (cleanSentence) {
           this._enqueueTtsPhrase(cleanSentence, ttsGeneration);
         }
@@ -709,6 +728,51 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     this._clearSilenceTimer();
     if (this.onSilenceTimeout) {
       this.onSilenceTimeout();
+    }
+  }
+
+  _processActionTriggers(text) {
+    if (!text) return text;
+    
+    // Regular expression to match {{action:xyz}}
+    const actionRegex = /\{\{action:([a-zA-Z0-9_]+)\}\}/g;
+    let match;
+    
+    while ((match = actionRegex.exec(text)) !== null) {
+      const actionName = match[1];
+      this._log('info', `[Action Triggered] Detected action token: ${actionName}`);
+      this._executeAction(actionName).catch(err => {
+        this._log('error', `Failed to execute action ${actionName}: ${err.message}`);
+      });
+    }
+    
+    // Return text with all action tokens stripped
+    return text.replace(actionRegex, '').trim();
+  }
+
+  async _executeAction(actionName) {
+    try {
+      const ActionService = require('./actionService');
+      this._log('info', `[Action Execute] Running handler for: ${actionName}`);
+      
+      switch (actionName) {
+        case 'send_join_link':
+          await ActionService.sendJoinLink(this.customer, this.agent);
+          break;
+        case 'send_whatsapp_hi':
+          await ActionService.sendWhatsAppHi(this.customer);
+          break;
+        case 'send_email':
+          await ActionService.sendCustomerEmail(this.customer, this.agent);
+          break;
+        case 'schedule_meeting':
+          await ActionService.scheduleMeeting(this.customer, this.agent);
+          break;
+        default:
+          this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);
+      }
+    } catch (err) {
+      this._log('error', `[Action Error] Failed executing action ${actionName}: ${err.message}`);
     }
   }
 

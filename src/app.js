@@ -153,10 +153,11 @@ app.use('/api/v1/admin', adminRoutes);
 // Web Tester UI Route
 app.get('/test-call', (req, res) => {
   const agentId = req.query.agentId;
+  const customerId = req.query.customerId || '';
   if (!agentId) {
     return res.status(400).send('Missing agentId query parameter.');
   }
-  const wsUrl = `ws://${req.headers.host}/ws/webcall?agentId=${agentId}`;
+  const wsUrl = `ws://${req.headers.host}/ws/webcall?agentId=${agentId}${customerId ? `&customerId=${customerId}` : ''}`;
   res.render('test-call', { agentId, wsUrl });
 });
 
