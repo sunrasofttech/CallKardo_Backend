@@ -79,7 +79,7 @@ module.exports = {
       return process.env.VOBIZ_PARENT_AUTH_TOKEN;
     },
     get demoNumber() {
-      return process.env.VOBIZ_DEMO_NUMBER || '+919999999999';
+      return process.env.VOBIZ_DEMO_NUMBER || '+918071583805';
     },
   },
 

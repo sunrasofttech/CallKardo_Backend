@@ -60,6 +60,13 @@ class WebSocketHandler {
         onLog: (level, message) => {
           console.log(`[WebTester] ${level.toUpperCase()}: ${message}`);
         },
+        onSilenceTimeout: () => {
+          console.log(`[WebTester] Ending call due to silence timeout.`);
+          if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+            ws.send(JSON.stringify({ type: 'system', text: 'Call ended due to silence timeout.' }));
+            ws.close(1000, 'Silence timeout');
+          }
+        },
       });
 
       ws.pipeline = pipeline;
