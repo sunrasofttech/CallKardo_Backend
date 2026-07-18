@@ -434,7 +434,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
   _updateTtsLanguage(newLanguageCode) {
     if (!this.isConnected) return;
 
-    const targetTtsLanguage = SARVAM_LOCALE_MAP[newLanguageCode] || newLanguageCode || 'en-IN';
+    const targetTtsLanguage = SARVAM_LOCALE_MAP[newLanguageCode] || newLanguageCode || defaults.sarvam.defaultLanguageCode;
     const currentTtsLanguage = this.sarvamTtsStream ? this.sarvamTtsStream.languageCode : null;
 
     if (currentTtsLanguage === targetTtsLanguage) {
@@ -693,7 +693,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     this.hasWarnedSilence = true;
     
     // Resolve user's active/detected language
-    const activeLang = (this.sarvamTtsStream ? this.sarvamTtsStream.languageCode : null) || this.agent.language || 'en-IN';
+    const activeLang = (this.sarvamTtsStream ? this.sarvamTtsStream.languageCode : null) || this.agent.language || defaults.sarvam.defaultLanguageCode;
     const normalizedLang = activeLang.toLowerCase().trim();
     
     // Fallback to English if the language is not mapped

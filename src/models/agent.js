@@ -41,7 +41,7 @@ Agent.init(
     },
     language: {
       type: DataTypes.STRING(10),
-      defaultValue: 'en',
+      defaultValue: 'hi',
     },
     voiceId: {
       type: DataTypes.UUID,

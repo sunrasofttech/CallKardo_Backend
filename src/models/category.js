@@ -27,7 +27,7 @@ Category.init(
     },
     defaultLanguage: {
       type: DataTypes.STRING(10),
-      defaultValue: 'en',
+      defaultValue: 'hi',
       field: 'default_language',
     },
     defaultAgentConfig: {

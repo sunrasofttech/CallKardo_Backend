@@ -54,7 +54,7 @@ module.exports = {
       return process.env.SARVAM_CHAT_MODEL || 'sarvam-105b';
     },
     get defaultLanguageCode() {
-      return 'en-IN';
+      return 'hi-IN';
     },
     get defaultVoiceId() {
       return 'amrit';
