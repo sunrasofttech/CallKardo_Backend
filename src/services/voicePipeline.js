@@ -265,11 +265,11 @@ IMPORTANT: Address the customer by their name (${this.customer.name || 'there'})
     // Actions and Tool Triggers instruction
     const actionsInstruction = `
 \n\n[ACTION AND TOOL TRIGGERS:
-If the customer explicitly asks you to perform a specific action, acknowledge their request politely (e.g., "Sure, I have sent you the link" or "I've scheduled a meeting and sent you the details"), and at the VERY END of your response text, append the exact corresponding token:
+If the customer explicitly asks you to perform a specific action, acknowledge their request politely (e.g., "Sure, I have sent you the link" or "I've scheduled a meeting for tomorrow at 5 PM and emailed you the details"), and at the VERY END of your response text, append the exact corresponding token:
 - Customer asks for the join link / link to join -> append {{action:send_join_link}} at the end of your response.
 - Customer asks to send a "hi" or greeting on WhatsApp -> append {{action:send_whatsapp_hi}} at the end of your response.
 - Customer asks to email them info/details -> append {{action:send_email}} at the end of your response.
-- Customer asks to schedule a meeting -> append {{action:schedule_meeting}} at the end of your response.
+- Customer asks to schedule a meeting -> append {{action:schedule_meeting:requested_date_and_time}} at the end of your response (e.g. {{action:schedule_meeting:tomorrow at 5pm}} or {{action:schedule_meeting:Friday 10am}} or {{action:schedule_meeting}}).
 Do not say these tokens aloud. Only append them as text at the very end of your response.]`;
 
     // Call-ending instruction
@@ -301,8 +301,13 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           if (this.onAudioOutput) this.onAudioOutput(resampledPcm, 16000);
         },
         onTranscription: (text, role) => {
-          if (role === 'agent' && this.onAgentTranscription) {
-            this.onAgentTranscription(text);
+          if (role === 'agent') {
+            const textAfterActions = this._processActionTriggers(text);
+            this._checkForCallEndRequest(textAfterActions, 'agent');
+            const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+            if (cleanText && this.onAgentTranscription) {
+              this.onAgentTranscription(cleanText);
+            }
           } else if (role === 'user' && this.onCustomerTranscription) {
             this.onCustomerTranscription(text);
           }
@@ -330,8 +335,13 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           if (this.onAudioOutput) this.onAudioOutput(resampledPcm, 16000);
         },
         onTranscription: (text, role) => {
-          if (role === 'agent' && this.onAgentTranscription) {
-            this.onAgentTranscription(text);
+          if (role === 'agent') {
+            const textAfterActions = this._processActionTriggers(text);
+            this._checkForCallEndRequest(textAfterActions, 'agent');
+            const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+            if (cleanText && this.onAgentTranscription) {
+              this.onAgentTranscription(cleanText);
+            }
           } else if (role === 'user' && this.onCustomerTranscription) {
             this.onCustomerTranscription(text);
           }
@@ -735,14 +745,15 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
   _processActionTriggers(text) {
     if (!text) return text;
     
-    // Regular expression to match {{action:xyz}}
-    const actionRegex = /\{\{action:([a-zA-Z0-9_]+)\}\}/g;
+    // Regular expression to match {{action:xyz}} or {{action:xyz:payload}}
+    const actionRegex = /\{\{action:([a-zA-Z0-9_]+)(?::([^}]+))?\}\}/g;
     let match;
     
     while ((match = actionRegex.exec(text)) !== null) {
       const actionName = match[1];
-      this._log('info', `[Action Triggered] Detected action token: ${actionName}`);
-      this._executeAction(actionName).catch(err => {
+      const actionPayload = match[2] ? match[2].trim() : null;
+      this._log('info', `[Action Triggered] Detected action token: ${actionName}${actionPayload ? ` (Payload: "${actionPayload}")` : ''}`);
+      this._executeAction(actionName, actionPayload).catch(err => {
         this._log('error', `Failed to execute action ${actionName}: ${err.message}`);
       });
     }
@@ -751,10 +762,10 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     return text.replace(actionRegex, '').trim();
   }
 
-  async _executeAction(actionName) {
+  async _executeAction(actionName, actionPayload) {
     try {
       const ActionService = require('./actionService');
-      this._log('info', `[Action Execute] Running handler for: ${actionName}`);
+      this._log('info', `[Action Execute] Running handler for: ${actionName}${actionPayload ? ` with payload: "${actionPayload}"` : ''}`);
       
       switch (actionName) {
         case 'send_join_link':
@@ -767,7 +778,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant);
           break;
         case 'schedule_meeting':
-          await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant);
+          await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload);
           break;
         default:
           this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);
