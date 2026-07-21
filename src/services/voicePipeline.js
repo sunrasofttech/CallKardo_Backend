@@ -532,7 +532,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       },
       onResponseSentence: async (sentenceText, ttsGeneration) => {
         // Strip action tokens and {{hangup}} from individual sentences before TTS
-        const sentenceAfterActions = sentenceText.replace(/\{\{action:[a-zA-Z0-9_]+\}\}/g, '').trim();
+        const sentenceAfterActions = this._processActionTriggers(sentenceText);
         const cleanSentence = sentenceAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
         if (cleanSentence) {
           this._enqueueTtsPhrase(cleanSentence, ttsGeneration);
@@ -575,7 +575,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       },
       onResponseSentence: async (sentenceText, ttsGeneration) => {
         // Strip action tokens and {{hangup}} from individual sentences before TTS
-        const sentenceAfterActions = sentenceText.replace(/\{\{action:[a-zA-Z0-9_]+\}\}/g, '').trim();
+        const sentenceAfterActions = this._processActionTriggers(sentenceText);
         const cleanSentence = sentenceAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
         if (cleanSentence) {
           this._enqueueTtsPhrase(cleanSentence, ttsGeneration);
@@ -750,12 +750,21 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     let match;
     
     while ((match = actionRegex.exec(text)) !== null) {
+      const fullToken = match[0];
       const actionName = match[1];
       const actionPayload = match[2] ? match[2].trim() : null;
-      this._log('info', `[Action Triggered] Detected action token: ${actionName}${actionPayload ? ` (Payload: "${actionPayload}")` : ''}`);
-      this._executeAction(actionName, actionPayload).catch(err => {
-        this._log('error', `Failed to execute action ${actionName}: ${err.message}`);
-      });
+
+      const now = Date.now();
+      if (!this._recentActions) this._recentActions = new Map();
+      const lastRun = this._recentActions.get(fullToken) || 0;
+
+      if (now - lastRun > 3000) {
+        this._recentActions.set(fullToken, now);
+        this._log('info', `[Action Triggered] Detected action token: ${actionName}${actionPayload ? ` (Payload: "${actionPayload}")` : ''}`);
+        this._executeAction(actionName, actionPayload).catch(err => {
+          this._log('error', `Failed to execute action ${actionName}: ${err.message}`);
+        });
+      }
     }
     
     // Return text with all action tokens stripped
