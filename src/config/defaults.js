@@ -6,6 +6,13 @@ module.exports = {
     return process.env.DEFAULT_AI_PROVIDER || 'geminilive';
   },
 
+  get defaultMeetingLink() {
+    return process.env.DEFAULT_MEETING_LINK || 'https://meet.google.com/abc-defg-hij';
+  },
+  get defaultJoinLink() {
+    return process.env.DEFAULT_JOIN_LINK || 'https://meet.callkardo.com/join/session-xyz';
+  },
+
   // Server Configuration
   get port() {
     return parseInt(process.env.PORT || '3000', 10);

@@ -10,7 +10,7 @@ class ActionService {
     const name = customer?.name || 'Customer';
     const customerEmail = customer?.email;
     const merchantEmail = merchant?.email || defaults.smtp.from || 'alerts@callkardo.com';
-    const joinLink = 'https://meet.callkardo.com/join/session-xyz';
+    const joinLink = defaults.defaultJoinLink || 'https://meet.callkardo.com/join/session-xyz';
     
     if (customerEmail) {
       console.log(`[Action: send_join_link] Sending join link to customer ${name} (${customerEmail}), CC: ${merchantEmail}`);
@@ -86,17 +86,8 @@ class ActionService {
     const customerEmail = customer?.email;
     const merchantEmail = merchant?.email || defaults.smtp.from || 'alerts@callkardo.com';
     
-    // Generate a random meeting code (e.g. abc-defg-hij)
-    const generateMeetingCode = () => {
-      const chars = 'abcdefghijklmnopqrstuvwxyz';
-      const part1 = Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      const part2 = Array.from({length: 4}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      const part3 = Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      return `${part1}-${part2}-${part3}`;
-    };
-    
-    const meetingCode = generateMeetingCode();
-    const meetingLink = `https://meet.google.com/${meetingCode}`;
+    // Use configured meeting link or default link
+    const meetingLink = process.env.DEFAULT_MEETING_LINK || defaults.defaultMeetingLink;
     
     if (customerEmail) {
       console.log(`[Action: schedule_meeting] Scheduling meeting for ${name}. Link: ${meetingLink}. Target: ${customerEmail}, CC: ${merchantEmail}`);
