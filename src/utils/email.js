@@ -20,15 +20,22 @@ async function sendEmail({ to, cc, bcc, subject, text, html, icalEvent }) {
         },
       });
 
+      const isValidEmail = (addr) => addr && typeof addr === 'string' && addr.includes('@') && !addr.includes('example.com');
+
       const mailOptions = {
         from,
         to,
-        cc,
-        bcc,
         subject,
         text,
         html,
       };
+
+      if (isValidEmail(cc) && cc !== to) {
+        mailOptions.cc = cc;
+      }
+      if (isValidEmail(bcc) && bcc !== to) {
+        mailOptions.bcc = bcc;
+      }
 
       if (icalEvent) {
         mailOptions.icalEvent = icalEvent;
