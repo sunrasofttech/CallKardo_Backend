@@ -155,6 +155,41 @@ class VobizSocketHandler {
         message: 'VoBiz WebSocket connected and call established',
       });
 
+      // Auto-resolve customer context if missing on session
+      let customer = session.customer;
+      if (!customer) {
+        try {
+          const { Op } = require('sequelize');
+          const cleanFrom = (session.fromNumber || '').replace(/^\+91/, '').replace(/\D/g, '');
+          const cleanTo = (session.toNumber || '').replace(/^\+91/, '').replace(/\D/g, '');
+
+          const searchConditions = [];
+          if (session.fromNumber) searchConditions.push({ mobile: session.fromNumber });
+          if (session.toNumber) searchConditions.push({ mobile: session.toNumber });
+          if (cleanFrom) searchConditions.push({ mobile: { [Op.like]: `%${cleanFrom}` } });
+          if (cleanTo) searchConditions.push({ mobile: { [Op.like]: `%${cleanTo}` } });
+
+          if (searchConditions.length > 0) {
+            customer = await Customer.findOne({
+              where: { [Op.or]: searchConditions },
+            });
+          }
+
+          if (!customer && session.userId) {
+            customer = await Customer.findOne({
+              where: { userId: session.userId },
+              order: [['updatedAt', 'DESC']],
+            });
+          }
+
+          if (customer) {
+            console.log(`[VoBiz Call] Auto-resolved Customer context: ${customer.name} (${customer.email || 'No email'})`);
+          }
+        } catch (custErr) {
+          console.warn(`[VoBiz Call] Customer lookup failed: ${custErr.message}`);
+        }
+      }
+
       // Keep transcript and audio for CallLog/QueueService when call ends
       const transcriptChunks = [];
       const customerChunks = [];
@@ -164,7 +199,7 @@ class VobizSocketHandler {
       // 2. Instantiate generic Voice Pipeline
       const pipeline = new VoicePipeline({
         agent: session.agent,
-        customer: session.customer,
+        customer: customer,
         merchant: session.user,
         direction: session.direction,
         onAudioOutput: (pcmBuffer, targetRate) => {

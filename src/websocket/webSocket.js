@@ -32,16 +32,30 @@ class WebSocketHandler {
         return;
       }
 
-      // Fetch customer context from DB if customerId is provided
+      // Fetch customer context from DB if customerId is provided or auto-resolve latest customer
       let customer = null;
       if (customerId) {
         try {
           customer = await Customer.findByPk(customerId);
           if (customer) {
-            console.log(`[WebTester] Loaded customer context for: ${customer.name}`);
+            console.log(`[WebTester] Loaded customer context for: ${customer.name} (${customer.email || 'No email'})`);
           }
         } catch (dbErr) {
           console.warn(`[WebTester] Failed to load customer context: ${dbErr.message}`);
+        }
+      }
+
+      if (!customer && agent.userId) {
+        try {
+          customer = await Customer.findOne({
+            where: { userId: agent.userId },
+            order: [['updatedAt', 'DESC']],
+          });
+          if (customer) {
+            console.log(`[WebTester] Auto-resolved latest customer context for merchant: ${customer.name} (${customer.email || 'No email'})`);
+          }
+        } catch (custErr) {
+          console.warn(`[WebTester] Auto customer lookup failed: ${custErr.message}`);
         }
       }
 
