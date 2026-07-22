@@ -192,7 +192,7 @@ class VoicePipeline {
     this.SILENCE_TIMEOUT_MS = 1500;
 
     // Inactivity / silence monitor — ends the call if neither party speaks for this long
-    this.silenceTimeoutMs = options.silenceTimeoutMs || 10000; // 10s default
+    this.silenceTimeoutMs = options.silenceTimeoutMs || 30000; // 30s default
     this.silenceTimer = null;
     this.onSilenceTimeout = options.onSilenceTimeout || null;
     this.hasWarnedSilence = false;
