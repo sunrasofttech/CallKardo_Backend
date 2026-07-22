@@ -462,20 +462,20 @@ class VobizSocketHandler {
       }
 
       const freshSession = await CallSession.findByPk(session.id);
-      if (freshSession && freshSession.status === 'connected') {
+      if (freshSession && freshSession.status !== 'completed' && freshSession.status !== 'failed') {
         freshSession.status = 'completed';
         freshSession.endTime = new Date();
         await freshSession.save();
 
         const duration = Math.round(
-          (freshSession.endTime.getTime() - freshSession.startTime.getTime()) / 1000
+          (freshSession.endTime.getTime() - (freshSession.startTime ? freshSession.startTime.getTime() : freshSession.createdAt.getTime())) / 1000
         );
-        console.log(`[VoBiz Call Ended] Call Session ${session.id} finished. Duration: ${duration} seconds.`);
+        console.log(`[VoBiz Call Ended] Call Session ${session.id} (${freshSession.direction}) finished. Duration: ${duration} seconds.`);
 
         await CallLog.create({
           callSessionId: session.id,
           logLevel: 'info',
-          message: 'Call session finished. WebSocket closed.',
+          message: `Call session finished (${freshSession.direction}). WebSocket closed.`,
         });
 
         // Decrement concurrency tracker via ZSET deregistration
@@ -484,7 +484,7 @@ class VobizSocketHandler {
         }
 
         // Standardize transcript as a formatted text
-        const formattedTranscript = transcriptChunks
+        const formattedTranscript = (transcriptChunks || [])
           .map((c) => `${c.role === 'customer' ? 'Customer' : 'Agent'}: ${c.text}`)
           .join('\n');
 
@@ -502,7 +502,7 @@ class VobizSocketHandler {
             const filePath = path.join(uploadsDir, fileName);
             
             // Calculate total duration in bytes (16kHz, 16-bit, mono PCM = 32000 bytes/sec)
-            const totalDurationBytes = Math.max(1, (Date.now() - ws.callStartTime) * 32);
+            const totalDurationBytes = Math.max(1, (Date.now() - (ws.callStartTime || Date.now())) * 32);
             
             const customerTimeline = Buffer.alloc(totalDurationBytes);
             const agentTimeline = Buffer.alloc(totalDurationBytes);
@@ -565,18 +565,20 @@ class VobizSocketHandler {
         const completionEvent = {
           callSessionId: session.id,
           userId: session.userId,
-          campaignId: session.campaignId,
+          campaignId: session.campaignId || null,
           vobizNumberId: session.vobizNumberId,
           customerId: session.customerId,
           transcript: formattedTranscript,
-          duration: Math.round(
-            (freshSession.endTime.getTime() - freshSession.startTime.getTime()) / 1000
-          ),
+          duration: Math.max(0, duration),
           recordingUrl: fileName ? `/uploads/${fileName}` : null,
         };
 
         // Enqueue report for worker processing (Reliable Queue)
         await QueueService.enqueueReport(completionEvent);
+
+        // Immediate analysis fallback
+        const { processCallAnalysis } = require('../workers/aiWorker');
+        processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
 
         // Clear memory references to prevent socket memory leaks
         ws.customerChunks = null;

@@ -41,6 +41,28 @@ async function processCallAnalysis(event) {
       return;
     }
 
+    // Auto-resolve customerId if missing on event (common for raw inbound calls)
+    let finalCustomerId = customerId;
+    if (!finalCustomerId && callSessionId) {
+      const { CallSession, Customer } = require('../models');
+      const session = await CallSession.findByPk(callSessionId);
+      if (session && session.customerId) {
+        finalCustomerId = session.customerId;
+      } else if (session && userId) {
+        const callerNum = session.fromNumber || 'Inbound Caller';
+        let cust = await Customer.findOne({ where: { userId, mobile: callerNum } });
+        if (!cust) {
+          cust = await Customer.create({ userId, mobile: callerNum, name: 'Inbound Caller' });
+        }
+        finalCustomerId = cust.id;
+      }
+    }
+
+    if (!finalCustomerId) {
+      console.warn(`[AI Worker] Skipping CallReport creation for session ${callSessionId}: customerId could not be resolved.`);
+      return;
+    }
+
     // 2. Trigger Gemini Transcript Analysis
     const analysis = await AiAnalysisService.analyzeTranscript(transcript);
     console.log(`[AI Analysis Result] Session: ${callSessionId} -> Outcome: ${analysis.outcome}, Score: ${analysis.leadScore}`);
@@ -52,7 +74,7 @@ async function processCallAnalysis(event) {
         userId,
         campaignId,
         vobizNumberId,
-        customerId,
+        customerId: finalCustomerId,
         transcript,
         summary: analysis.summary,
         duration,
@@ -117,4 +139,5 @@ if (require.main === module) {
 
 module.exports = {
   startAiWorker,
+  processCallAnalysis,
 };
