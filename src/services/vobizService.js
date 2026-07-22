@@ -184,11 +184,24 @@ class VobizService {
    * Helper to check if mock/simulation mode should be used
    */
   _isMock(apiKey) {
-    return !apiKey || 
-           apiKey.includes('your_') || 
-           apiKey.includes('mock') || 
-           process.env.VOBIZ_FORCE_MOCK === 'true' ||
-           (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
+    if (process.env.VOBIZ_FORCE_REAL_CALL === 'true') return false;
+    if (process.env.VOBIZ_FORCE_MOCK === 'true') return true;
+    if (!apiKey || 
+        apiKey.includes('your_') || 
+        apiKey.includes('mock') || 
+        apiKey.includes('default') ||
+        apiKey.includes('placeholder') ||
+        apiKey.includes('dummy') ||
+        apiKey.includes('test') ||
+        apiKey.includes('real_key') ||
+        apiKey === 'parent_auth_id') {
+      return true;
+    }
+    // Valid VoBiz Auth IDs are 36-character UUID strings or start with 'MA'
+    if (typeof apiKey === 'string' && apiKey.length !== 36 && !apiKey.startsWith('MA')) {
+      return true;
+    }
+    return (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
   }
 
   /**
