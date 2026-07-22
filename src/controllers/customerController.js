@@ -253,6 +253,26 @@ class CustomerController {
   }
 
   /**
+   * Get customer list details with member customers by List ID
+   */
+  async getListById(req, res, next) {
+    try {
+      const list = await CustomerList.findOne({
+        where: { id: req.params.id, userId: req.user.id },
+        include: ['customers'],
+      });
+
+      if (!list) {
+        return ResponseBuilder.error(res, 'Customer list not found', 404);
+      }
+
+      return ResponseBuilder.success(res, list, 'Customer list retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Create a Customer List and associate customers
    */
   async createList(req, res, next) {
