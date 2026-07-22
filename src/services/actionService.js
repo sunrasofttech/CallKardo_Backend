@@ -48,12 +48,38 @@ class ActionService {
   }
 
   /**
+   * Helper: Resolve valid customer email address with DB fallback
+   */
+  async _resolveCustomerEmail(customer, merchant) {
+    if (customer?.email && customer.email.includes('@') && !customer.email.includes('example.com')) {
+      return customer.email;
+    }
+    try {
+      const { Customer } = require('../models');
+      const { Op } = require('sequelize');
+      const whereClause = { email: { [Op.ne]: null } };
+      if (merchant?.id) whereClause.userId = merchant.id;
+      
+      const found = await Customer.findOne({
+        where: whereClause,
+        order: [['updatedAt', 'DESC']],
+      });
+      if (found && found.email && !found.email.includes('example.com')) {
+        return found.email;
+      }
+    } catch (err) {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
    * Handle Join Link action
    */
   async sendJoinLink(customer, agent, merchant) {
     const mobile = customer?.mobile || 'Unknown';
     const name = customer?.name || 'Customer';
-    const customerEmail = customer?.email;
+    const customerEmail = await this._resolveCustomerEmail(customer, merchant);
     const merchantEmail = merchant?.email || defaults.smtp.from;
     
     // Generate unique Jitsi room link unless overridden by env
@@ -111,7 +137,7 @@ class ActionService {
    */
   async sendCustomerEmail(customer, agent, merchant, subjectText, bodyText) {
     const name = customer?.name || 'Customer';
-    const customerEmail = customer?.email;
+    const customerEmail = await this._resolveCustomerEmail(customer, merchant);
     const merchantEmail = merchant?.email || defaults.smtp.from || 'alerts@callkardo.com';
 
     if (customerEmail) {
@@ -188,7 +214,7 @@ class ActionService {
   async scheduleMeeting(customer, agent, merchant, meetingTimeStr) {
     const name = customer?.name || 'Customer';
     const mobile = customer?.mobile || 'Unknown';
-    const customerEmail = customer?.email;
+    const customerEmail = await this._resolveCustomerEmail(customer, merchant);
     const merchantEmail = merchant?.email || defaults.smtp.from;
 
     const parsedTime = this._parseRequestedMeetingTime(meetingTimeStr);

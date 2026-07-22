@@ -784,7 +784,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           await ActionService.sendWhatsAppHi(this.customer);
           break;
         case 'send_email':
-          await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant);
+          await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant, null, actionPayload);
           break;
         case 'schedule_meeting':
           await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload);
