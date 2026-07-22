@@ -18,6 +18,10 @@ router.get('/pages/about-us', (req, res, next) => {
   req.params.slug = 'about-us';
   SettingController.getPageBySlug(req, res, next);
 });
+router.get('/pages/features', (req, res, next) => {
+  req.params.slug = 'features';
+  SettingController.getPageBySlug(req, res, next);
+});
 router.get('/pages/help-support', (req, res, next) => {
   req.params.slug = 'help-support';
   SettingController.getPageBySlug(req, res, next);
