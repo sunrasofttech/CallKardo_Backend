@@ -127,20 +127,77 @@ class ReportController {
         return ResponseBuilder.error(res, 'Mobile number is required', 400);
       }
 
-      const reports = await CallReport.findAll({
-        where: { userId: req.user.id },
+      const { Op } = require('sequelize');
+      const digitsOnly = mobile.replace(/[^0-9]/g, '');
+      const searchPattern = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+      // Find all matching customer IDs for this merchant
+      const customers = await Customer.findAll({
+        where: {
+          [Op.and]: [
+            { userId: req.user.id },
+            {
+              [Op.or]: [
+                { mobile },
+                { mobile: { [Op.like]: `%${searchPattern}%` } }
+              ]
+            }
+          ]
+        }
+      });
+
+      const customerIds = customers.map(c => c.id);
+
+      if (customerIds.length === 0) {
+        return ResponseBuilder.success(res, [], 'No reports found for this mobile number');
+      }
+
+      let reports = await CallReport.findAll({
+        where: {
+          userId: req.user.id,
+          customerId: { [Op.in]: customerIds }
+        },
         include: [
-          {
-            model: Customer,
-            as: 'customer',
-            where: { mobile },
-            attributes: ['name', 'mobile', 'tags', 'notes'],
-          },
+          { model: Customer, as: 'customer', attributes: ['name', 'mobile', 'tags', 'notes'] },
           { model: Campaign, as: 'campaign', attributes: ['name', 'startTime'] },
           { model: VobizNumber, as: 'vobizNumber', attributes: ['number'] },
         ],
         order: [['createdAt', 'DESC']],
       });
+
+      // Fallback to CallSessions if no CallReport entries exist yet
+      if (reports.length === 0) {
+        const sessions = await CallSession.findAll({
+          where: {
+            userId: req.user.id,
+            customerId: { [Op.in]: customerIds }
+          },
+          include: [
+            { model: Customer, as: 'customer', attributes: ['name', 'mobile', 'tags', 'notes'] },
+            { model: Campaign, as: 'campaign', attributes: ['name', 'startTime'] },
+            { model: VobizNumber, as: 'vobizNumber', attributes: ['number'] },
+          ],
+          order: [['createdAt', 'DESC']],
+        });
+
+        reports = sessions.map(s => ({
+          id: s.id,
+          userId: s.userId,
+          callSessionId: s.id,
+          customerId: s.customerId,
+          campaignId: s.campaignId,
+          transcript: [],
+          summary: `Call ${s.direction} (${s.status})`,
+          sentiment: 'neutral',
+          outcome: s.status === 'completed' ? 'connected' : (s.status === 'busy' ? 'busy' : 'failed'),
+          callDurationSeconds: (s.startTime && s.endTime) ? Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000) : 0,
+          customer: s.customer,
+          campaign: s.campaign,
+          vobizNumber: s.vobizNumber,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        }));
+      }
 
       return ResponseBuilder.success(res, reports, 'Call reports retrieved successfully');
     } catch (err) {
