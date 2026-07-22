@@ -336,14 +336,20 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         },
         onTranscription: (text, role) => {
           if (role === 'agent') {
-            const textAfterActions = this._processActionTriggers(text);
+            this._accumulatedAgentText = (this._accumulatedAgentText || '') + text;
+            const textAfterActions = this._processActionTriggers(this._accumulatedAgentText);
+            this._accumulatedAgentText = textAfterActions;
+            
             this._checkForCallEndRequest(textAfterActions, 'agent');
             const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
             if (cleanText && this.onAgentTranscription) {
-              this.onAgentTranscription(cleanText);
+              this.onAgentTranscription(text);
             }
-          } else if (role === 'user' && this.onCustomerTranscription) {
-            this.onCustomerTranscription(text);
+          } else if (role === 'user') {
+            this._accumulatedAgentText = '';
+            if (this.onCustomerTranscription) {
+              this.onCustomerTranscription(text);
+            }
           }
         },
         onInterrupted: () => {
