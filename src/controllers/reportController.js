@@ -131,11 +131,14 @@ class ReportController {
       const digitsOnly = mobile.replace(/[^0-9]/g, '');
       const searchPattern = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
 
-      // Find all matching customer IDs for this merchant
+      const isAdminUser = req.user.role === 'admin';
+      const userCondition = isAdminUser ? {} : { userId: req.user.id };
+
+      // Find all matching customer IDs
       const customers = await Customer.findAll({
         where: {
           [Op.and]: [
-            { userId: req.user.id },
+            userCondition,
             {
               [Op.or]: [
                 { mobile },
@@ -154,7 +157,7 @@ class ReportController {
 
       let reports = await CallReport.findAll({
         where: {
-          userId: req.user.id,
+          ...userCondition,
           customerId: { [Op.in]: customerIds }
         },
         include: [
@@ -169,7 +172,7 @@ class ReportController {
       if (reports.length === 0) {
         const sessions = await CallSession.findAll({
           where: {
-            userId: req.user.id,
+            ...userCondition,
             customerId: { [Op.in]: customerIds }
           },
           include: [
