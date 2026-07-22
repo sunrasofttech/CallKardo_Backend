@@ -18,29 +18,40 @@ class VobizService {
    * @returns {Promise<{ success: boolean, callId?: string, error?: string }>}
    */
   async initiateCall({ apiKey, apiSecret, fromNumber, toNumber, wsToken }) {
-    // If credentials are mocks/unset, trigger a local mock simulation
-    const isMock = this._isMock(apiKey);
+    const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
+    const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
+    const defaultFromNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918071583805';
 
-    if (isMock) {
+    let authId = apiKey;
+    let authToken = apiSecret;
+
+    if (!authId || authId.includes('mock') || authId.includes('default') || authId.includes('placeholder') || authId.includes('real_key') || authId === 'parent_auth_id') {
+      authId = parentAuthId;
+      authToken = parentAuthToken;
+    }
+    if (!authToken) {
+      authToken = parentAuthToken;
+    }
+
+    let finalFrom = fromNumber || defaultFromNumber;
+
+    if (this._isMock(authId)) {
       this._simulateIncomingCall(wsToken);
       return { success: true, callId: `mock-call-${Date.now()}` };
     }
 
     try {
-      const authId = apiKey;
-      const authToken = apiSecret;
       const url = `${this.apiUrl}/Account/${authId}/Call/`;
-
-      // Answer URL must be an HTTP/S endpoint that returns XML
-      // We'll point it to our vobiz webhook endpoint
       const answerUrl = `https://${defaults.ws.host}/api/v1/vobiz/answer?token=${wsToken}`;
 
       const data = {
-        from: fromNumber.startsWith('+') ? fromNumber.substring(1) : fromNumber,
+        from: finalFrom.startsWith('+') ? finalFrom.substring(1) : finalFrom,
         to: toNumber.startsWith('+') ? toNumber.substring(1) : toNumber,
         answer_url: answerUrl,
         answer_method: 'POST',
       };
+
+      console.log(`[VoBiz Service] Placing LIVE Outbound Call to ${data.to} from ${data.from} using Auth ID ${authId}...`);
 
       const response = await axios.post(url, data, {
         headers: {
@@ -48,12 +59,14 @@ class VobizService {
           'X-Auth-ID': authId,
           'X-Auth-Token': authToken,
         },
-        timeout: 10000,
+        timeout: 15000,
       });
+
+      console.log('[VoBiz Service] Live Call Initiated Successfully. Response:', response.data);
 
       return {
         success: true,
-        callId: response.data.call_id || response.data.request_uuid || response.data.id,
+        callId: response.data.call_id || response.data.request_uuid || response.data.id || response.data.uuid,
       };
     } catch (error) {
       console.error('VoBiz API Outbound Trigger Failed:', error.response ? error.response.data : error.message);
@@ -184,24 +197,12 @@ class VobizService {
    * Helper to check if mock/simulation mode should be used
    */
   _isMock(apiKey) {
-    if (process.env.VOBIZ_FORCE_REAL_CALL === 'true') return false;
     if (process.env.VOBIZ_FORCE_MOCK === 'true') return true;
-    if (!apiKey || 
-        apiKey.includes('your_') || 
-        apiKey.includes('mock') || 
-        apiKey.includes('default') ||
-        apiKey.includes('placeholder') ||
-        apiKey.includes('dummy') ||
-        apiKey.includes('test') ||
-        apiKey.includes('real_key') ||
-        apiKey === 'parent_auth_id') {
-      return true;
+    // Live Mode Enabled: If forced or if valid auth key/parent key present, execute live call
+    if (process.env.VOBIZ_FORCE_REAL_CALL === 'true' || process.env.NODE_ENV === 'production' || (apiKey && (apiKey.startsWith('MA') || apiKey.length === 36))) {
+      return false;
     }
-    // Valid VoBiz Auth IDs are 36-character UUID strings or start with 'MA'
-    if (typeof apiKey === 'string' && apiKey.length !== 36 && !apiKey.startsWith('MA')) {
-      return true;
-    }
-    return (process.env.NODE_ENV !== 'production' && process.env.VOBIZ_FORCE_REAL_CALL !== 'true');
+    return false;
   }
 
   /**

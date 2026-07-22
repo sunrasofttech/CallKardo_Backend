@@ -141,39 +141,47 @@ async function processPlaceCall(payload) {
     }
 
     // 5. Connect and Dial
-    // Get Merchant VoBiz account credentials and VoBiz Number with Parent/Admin Fallback for Trial Users
+    // Get VoBiz credentials (Merchant custom credentials or Parent credentials from .env)
     const defaults = require('../config/defaults');
-    let vobizAccount = await VobizAccount.findOne({ where: { userId } });
-    let vobizNumber = campaign.vobizNumberId ? await VobizNumber.findByPk(campaign.vobizNumberId) : null;
+    const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
+    const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
+    const parentDemoNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918071583805';
 
-    // Fallback 1: Try Admin VobizAccount if merchant account is missing
-    if (!vobizAccount) {
-      const adminAccount = await VobizAccount.findOne();
-      if (adminAccount) {
-        console.log(`[callWorker] Using Admin VoBiz Account fallback for trial merchant ${userId}`);
-        vobizAccount = adminAccount;
-      }
-    }
+    let apiKey = parentAuthId;
+    let apiSecret = parentAuthToken;
+    let fromNumber = parentDemoNumber;
 
-    // Fallback 2: Use Parent Config from defaults / environment
-    if (!vobizAccount) {
-      const parentId = defaults.vobiz.parentAuthId || process.env.VOBIZ_PARENT_AUTH_ID;
-      const parentToken = defaults.vobiz.parentAuthToken || process.env.VOBIZ_PARENT_AUTH_TOKEN;
-      if (parentId && parentToken) {
-        console.log(`[callWorker] Using Parent VoBiz Config fallback for merchant ${userId}`);
-        vobizAccount = { apiKey: parentId, apiSecret: parentToken };
+    // Check if merchant has their own valid custom VoBiz Account
+    const merchantAccount = await VobizAccount.findOne({ where: { userId } });
+    if (merchantAccount && merchantAccount.apiKey && merchantAccount.apiSecret) {
+      let key = merchantAccount.apiKey;
+      let secret = merchantAccount.apiSecret;
+      try {
+        key = decrypt(key) || key;
+        secret = decrypt(secret) || secret;
+      } catch (_) {}
+
+      // If valid custom merchant credentials (not placeholders/dummies), use merchant keys
+      if (key && !key.includes('your_') && !key.includes('mock') && !key.includes('real_key') && !key.includes('default') && key !== 'parent_auth_id') {
+        apiKey = key;
+        apiSecret = secret;
+        console.log(`[callWorker] Using custom VoBiz Account credentials for merchant ${userId}`);
       } else {
-        // Mock fallback for development / trial sandbox mode
-        console.log(`[callWorker] Using Default Parent Config for trial merchant ${userId}`);
-        vobizAccount = { apiKey: 'parent_auth_id_default', apiSecret: 'parent_auth_token_default' };
+        console.log(`[callWorker] Merchant ${userId} has placeholder credentials. Falling back to Parent VoBiz credentials (${parentAuthId})`);
       }
+    } else {
+      console.log(`[callWorker] No custom VoBiz Account for trial merchant ${userId}. Using Parent VoBiz credentials (${parentAuthId})`);
     }
 
-    // Fallback for VoBiz Number
-    if (!vobizNumber) {
-      vobizNumber = await VobizNumber.findOne({ where: { status: 'active' } });
-      if (!vobizNumber) {
-        vobizNumber = { id: null, number: defaults.vobiz.demoNumber || '+918071583805' };
+    // Resolve VoBiz Number
+    let vobizNumber = campaign.vobizNumberId ? await VobizNumber.findByPk(campaign.vobizNumberId) : null;
+    if (vobizNumber && vobizNumber.number) {
+      fromNumber = vobizNumber.number;
+    } else {
+      const activeNum = await VobizNumber.findOne({ where: { status: 'active' } });
+      if (activeNum && activeNum.number) {
+        fromNumber = activeNum.number;
+        vobizNumber = activeNum;
       }
     }
 
@@ -184,7 +192,7 @@ async function processPlaceCall(payload) {
       userId,
       campaignId,
       agentId: campaign.agentId,
-      vobizNumberId: vobizNumber.id || campaign.vobizNumberId,
+      vobizNumberId: vobizNumber ? vobizNumber.id : campaign.vobizNumberId,
       customerId,
       wsSessionToken: wsToken,
       status: 'initiated',
@@ -197,26 +205,16 @@ async function processPlaceCall(payload) {
     await CallLog.create({
       callSessionId: session.id,
       logLevel: 'info',
-      message: `Call job dispatched. Outbound dial initiated to ${customer.mobile}`,
+      message: `Call job dispatched. Outbound dial initiated to ${customer.mobile} from ${fromNumber}`,
     });
 
-    // Decrypt credentials with fallback
-    let decryptedApiKey, decryptedApiSecret;
-    try {
-      decryptedApiKey = decrypt(vobizAccount.apiKey);
-      decryptedApiSecret = decrypt(vobizAccount.apiSecret);
-    } catch (err) {
-      decryptedApiKey = vobizAccount.apiKey;
-      decryptedApiSecret = vobizAccount.apiSecret;
-    }
-
-    console.log(`[Campaign Call Start] Dialing customer ${customer.mobile} (Name: ${customer.name}) for Campaign "${campaign.name}"...`);
+    console.log(`[Campaign Call Start] Dialing customer ${customer.mobile} (Name: ${customer.name}) for Campaign "${campaign.name}" via VoBiz Auth ID ${apiKey}...`);
 
     // Invoke VoBiz Outbound dialing API
     const dialResponse = await VobizService.initiateCall({
-      apiKey: decryptedApiKey,
-      apiSecret: decryptedApiSecret,
-      fromNumber: vobizNumber.number,
+      apiKey,
+      apiSecret,
+      fromNumber,
       toNumber: customer.mobile,
       wsToken,
     });
