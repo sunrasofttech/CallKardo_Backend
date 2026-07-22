@@ -1,3 +1,5 @@
+process.env.TZ = 'Asia/Kolkata';
+
 const { Sequelize } = require('sequelize');
 const defaults = require('./defaults');
 
@@ -11,6 +13,12 @@ const sequelize = new Sequelize(
     host: defaults.db.host,
     port: defaults.db.port,
     dialect: 'mysql',
+    timezone: '+05:30',
+    dialectOptions: {
+      dateStrings: true,
+      typeCast: true,
+      timezone: '+05:30',
+    },
     logging: defaults.db.logging ? console.log : false,
     pool: {
       max: 20,

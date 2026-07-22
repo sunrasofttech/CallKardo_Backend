@@ -1,3 +1,5 @@
+process.env.TZ = 'Asia/Kolkata';
+
 const QueueService = require('../services/queueService');
 const { Campaign, CustomerListMember, CampaignCustomer, sequelize } = require('../models');
 const { redisClient } = require('../config/redis');

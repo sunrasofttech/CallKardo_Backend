@@ -1,3 +1,5 @@
+process.env.TZ = 'Asia/Kolkata';
+
 const crypto = require('crypto');
 const { duplicateClient } = require('../config/redis');
 const QueueService = require('../services/queueService');
