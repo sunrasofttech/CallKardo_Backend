@@ -80,7 +80,9 @@ async function processPlaceCall(payload) {
       return;
     }
 
-    // 3. Concurrency Control
+    // 3. Concurrency Control — first purge stale ZSET entries
+    await QueueService.purgeStaleActiveCalls(campaignId).catch(() => {});
+
     const activeCalls = await QueueService.getActiveCalls(campaignId);
     if (activeCalls >= campaign.maxConcurrentCalls) {
       // Re-schedule with 5-second delay
@@ -96,6 +98,7 @@ async function processPlaceCall(payload) {
       });
       let totalUserActiveCalls = 0;
       for (const uc of userCampaigns) {
+        await QueueService.purgeStaleActiveCalls(uc.id).catch(() => {});
         totalUserActiveCalls += await QueueService.getActiveCalls(uc.id);
       }
 

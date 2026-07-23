@@ -84,7 +84,7 @@ class QueueService {
    * @param {string} callSessionId 
    * @param {number} ttlMs 
    */
-  async registerActiveCall(campaignId, callSessionId, ttlMs = 3600000) {
+  async registerActiveCall(campaignId, callSessionId, ttlMs = 300000) {
     const key = `active_calls_zset:${campaignId}`;
     const score = Date.now() + ttlMs;
     await redisClient.zAdd(key, {
@@ -113,6 +113,39 @@ class QueueService {
     // Clean up expired calls
     await redisClient.zRemRangeByScore(key, 0, now);
     return await redisClient.zCard(key);
+  }
+
+  /**
+   * Purge stale ZSET entries by cross-checking with DB session status.
+   * Removes any entries whose call sessions are no longer active (initiated/connected).
+   * @param {string} campaignId
+   */
+  async purgeStaleActiveCalls(campaignId) {
+    const key = `active_calls_zset:${campaignId}`;
+    const members = await redisClient.zRange(key, 0, -1);
+    if (!members || members.length === 0) return;
+
+    const { CallSession } = require('../models');
+    const { Op } = require('sequelize');
+
+    // Check which sessions are actually still active
+    const activeSessions = await CallSession.findAll({
+      where: {
+        id: { [Op.in]: members },
+        status: { [Op.in]: ['initiated', 'connected'] },
+      },
+      attributes: ['id'],
+    });
+
+    const activeIds = new Set(activeSessions.map(s => s.id));
+
+    // Remove stale entries
+    for (const sessionId of members) {
+      if (!activeIds.has(sessionId)) {
+        await redisClient.zRem(key, sessionId);
+        console.log(`[QueueService] Purged stale ZSET entry for session ${sessionId} in campaign ${campaignId}`);
+      }
+    }
   }
 
   /**

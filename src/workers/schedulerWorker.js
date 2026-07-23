@@ -104,6 +104,9 @@ async function dispatchRunningCampaigns() {
         console.error(`[Scheduler] Error recovering stuck calls for campaign ${campaign.id}:`, recoveryErr.message);
       }
 
+      // Purge stale Redis ZSET entries by cross-checking with DB
+      await QueueService.purgeStaleActiveCalls(campaign.id).catch(() => {});
+
       const activeCalls = await QueueService.getActiveCalls(campaign.id);
       
       // Enforce campaign-level limits
