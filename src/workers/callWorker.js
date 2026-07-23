@@ -103,8 +103,8 @@ async function processPlaceCall(payload) {
       }
 
       if (totalUserActiveCalls >= limitCheck.maxConcurrent) {
-        console.log(`Merchant ${userId} plan concurrency limit saturated (${totalUserActiveCalls}/${limitCheck.maxConcurrent}). Re-scheduling call job.`);
-        await QueueService.scheduleJob('PLACE_CALL', payload, Date.now() + 5000);
+        console.log(`Merchant ${userId} plan concurrency limit saturated (${totalUserActiveCalls}/${limitCheck.maxConcurrent}). Re-scheduling call job in 2s.`);
+        await QueueService.scheduleJob('PLACE_CALL', payload, Date.now() + 2000);
         return;
       }
     }
