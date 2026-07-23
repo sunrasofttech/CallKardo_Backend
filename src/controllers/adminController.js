@@ -1,7 +1,7 @@
 const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
-const { createVoiceSchema, updateVoiceSchema } = require('../validators/admin');
+const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema } = require('../validators/admin');
 
 
 class AdminController {
@@ -363,33 +363,253 @@ class AdminController {
     }
   }
 
-  async updateMerchantSubscription(req, res, next) {
+  /**
+   * Get all subscriptions (Admin)
+   */
+  async getSubscriptions(req, res, next) {
     try {
-      const merchant = await User.findOne({ where: { id: req.params.id, role: 'merchant' } });
-      if (!merchant) return ResponseBuilder.error(res, 'Merchant not found', 404);
+      const { Op } = require('sequelize');
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+      const { search, status, planId } = req.query;
 
-      const plan = await Plan.findByPk(req.body.planId);
-      if (!plan) return ResponseBuilder.error(res, 'Target subscription plan not found', 404);
+      const whereClause = {};
+      if (status) {
+        whereClause.status = status;
+      }
+      if (planId) {
+        whereClause.planId = planId;
+      }
+
+      const userWhereClause = {};
+      if (search) {
+        userWhereClause[Op.or] = [
+          { businessName: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { mobile: { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      const { count, rows: subscriptions } = await Subscription.findAndCountAll({
+        where: whereClause,
+        include: [
+          {
+            model: User,
+            as: 'user',
+            where: Object.keys(userWhereClause).length > 0 ? userWhereClause : undefined,
+            attributes: ['id', 'businessName', 'email', 'mobile', 'isVerified', 'kycStatus', 'role'],
+          },
+          { model: Plan, as: 'plan' },
+        ],
+        order: [['updatedAt', 'DESC']],
+        limit,
+        offset,
+      });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          subscriptions,
+          pagination: {
+            total: count,
+            page,
+            limit,
+            totalPages: Math.ceil(count / limit) || 1,
+          },
+        },
+        'Subscriptions retrieved successfully'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get subscription by subscription ID or merchant ID (Admin)
+   */
+  async getSubscriptionById(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { Op } = require('sequelize');
+      let subscription = await Subscription.findOne({
+        where: {
+          [Op.or]: [{ id }, { userId: id }],
+        },
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'businessName', 'email', 'mobile', 'isVerified', 'kycStatus'] },
+          { model: Plan, as: 'plan' },
+        ],
+      });
+
+      if (!subscription) {
+        return ResponseBuilder.error(res, 'Subscription record not found', 404);
+      }
+
+      return ResponseBuilder.success(res, subscription, 'Subscription details retrieved');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Upgrade Merchant Subscription (Admin)
+   */
+  async upgradeMerchantSubscription(req, res, next) {
+    try {
+      const targetMerchantId = req.params.id || req.params.merchantId || req.body.merchantId;
+      let merchant = null;
+
+      if (targetMerchantId) {
+        merchant = await User.findOne({ where: { id: targetMerchantId, role: 'merchant' } });
+      } else if (req.body.subscriptionId) {
+        const existingSub = await Subscription.findByPk(req.body.subscriptionId);
+        if (existingSub) {
+          merchant = await User.findByPk(existingSub.userId);
+        }
+      }
+
+      if (!merchant) {
+        return ResponseBuilder.error(res, 'Merchant user not found', 404);
+      }
+
+      const planId = req.body.planId;
+      if (!planId) {
+        return ResponseBuilder.error(res, 'Plan ID is required', 400);
+      }
+
+      const plan = await Plan.findByPk(planId);
+      if (!plan) {
+        return ResponseBuilder.error(res, 'Target subscription plan not found', 404);
+      }
 
       const now = new Date();
-      const expiryDate = new Date(now);
-      expiryDate.setMonth(expiryDate.getMonth() + 1);
+      let expiryDate;
+      if (req.body.expiryDate) {
+        expiryDate = new Date(req.body.expiryDate);
+      } else {
+        const durationMonths = parseInt(req.body.durationMonths, 10) || 1;
+        expiryDate = new Date(now);
+        expiryDate.setMonth(expiryDate.getMonth() + durationMonths);
+      }
+
+      let callsRemaining;
+      if (req.body.customCallLimit !== undefined && req.body.customCallLimit !== null) {
+        callsRemaining = parseInt(req.body.customCallLimit, 10);
+      } else {
+        callsRemaining = plan.callLimit === -1 ? 999999 : plan.callLimit;
+      }
+
       const values = {
         planId: plan.id,
         activePlan: plan.name,
         startDate: now,
         expiryDate,
-        callsUsed: 0,
-        callsRemaining: plan.callLimit === -1 ? 999999 : plan.callLimit,
-        status: 'active',
+        callsUsed: req.body.resetCallsUsed !== false ? 0 : undefined,
+        callsRemaining,
+        status: req.body.status || 'active',
       };
-      const [subscription, created] = await Subscription.findOrCreate({
-        where: { userId: merchant.id },
-        defaults: { userId: merchant.id, ...values },
-      });
-      if (!created) await subscription.update(values);
+      if (values.callsUsed === undefined) delete values.callsUsed;
+
+      let subscription = await Subscription.findOne({ where: { userId: merchant.id } });
+      if (!subscription) {
+        subscription = await Subscription.create({ userId: merchant.id, ...values });
+      } else {
+        await subscription.update(values);
+      }
+
       await removeTrialDemoNumber(merchant.id);
-      return ResponseBuilder.success(res, subscription, 'Merchant subscription updated successfully');
+
+      const updatedSubscription = await Subscription.findByPk(subscription.id, {
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'businessName', 'email', 'mobile'] },
+          { model: Plan, as: 'plan' },
+        ],
+      });
+
+      return ResponseBuilder.success(
+        res,
+        updatedSubscription,
+        `Successfully upgraded merchant ${merchant.businessName || merchant.email} to ${plan.name} plan`
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update subscription details directly (Admin)
+   */
+  async updateSubscription(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { Op } = require('sequelize');
+      let subscription = await Subscription.findOne({
+        where: {
+          [Op.or]: [{ id }, { userId: id }],
+        },
+      });
+
+      if (!subscription) {
+        return ResponseBuilder.error(res, 'Subscription record not found', 404);
+      }
+
+      const updates = {};
+      if (req.body.planId) {
+        const plan = await Plan.findByPk(req.body.planId);
+        if (!plan) return ResponseBuilder.error(res, 'Plan not found', 404);
+        updates.planId = plan.id;
+        updates.activePlan = plan.name;
+      }
+      if (req.body.callsRemaining !== undefined) {
+        updates.callsRemaining = parseInt(req.body.callsRemaining, 10);
+      }
+      if (req.body.callsUsed !== undefined) {
+        updates.callsUsed = parseInt(req.body.callsUsed, 10);
+      }
+      if (req.body.expiryDate !== undefined) {
+        updates.expiryDate = req.body.expiryDate ? new Date(req.body.expiryDate) : null;
+      }
+      if (req.body.status) {
+        updates.status = req.body.status;
+      }
+
+      await subscription.update(updates);
+
+      const result = await Subscription.findByPk(subscription.id, {
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'businessName', 'email', 'mobile'] },
+          { model: Plan, as: 'plan' },
+        ],
+      });
+
+      return ResponseBuilder.success(res, result, 'Subscription updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Cancel subscription (Admin)
+   */
+  async cancelSubscription(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { Op } = require('sequelize');
+      let subscription = await Subscription.findOne({
+        where: {
+          [Op.or]: [{ id }, { userId: id }],
+        },
+      });
+
+      if (!subscription) {
+        return ResponseBuilder.error(res, 'Subscription record not found', 404);
+      }
+
+      await subscription.update({ status: 'cancelled' });
+      await removeTrialDemoNumber(subscription.userId);
+
+      return ResponseBuilder.success(res, subscription, 'Subscription cancelled successfully');
     } catch (err) {
       next(err);
     }
@@ -726,12 +946,20 @@ class AdminController {
           order: [['createdAt', 'DESC']],
         });
 
+        const fs = require('fs');
+        const path = require('path');
+        const uploadsDir = path.join(__dirname, '../../uploads');
+
         count = sessionResult.count;
         rows = sessionResult.rows.map((s) => {
           let duration = 0;
           if (s.startTime && s.endTime) {
             duration = Math.max(0, Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000));
           }
+          const recFileName = `recording-${s.id}.wav`;
+          const recPath = path.join(uploadsDir, recFileName);
+          const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
+
           return {
             id: s.id,
             userId: s.userId,
@@ -745,7 +973,7 @@ class AdminController {
             outcome: s.status === 'completed' ? 'Interested' : 'No Answer',
             sentiment: 'Neutral',
             leadScore: s.status === 'completed' ? 70 : 0,
-            recordingUrl: null,
+            recordingUrl,
             user: s.user,
             customer: s.customer,
             campaign: s.campaign,

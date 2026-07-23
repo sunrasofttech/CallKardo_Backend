@@ -10,5 +10,8 @@ router.post('/upgrade', authenticate, isMerchant, SubscriptionController.upgrade
 
 // Admin Access
 router.get('/merchant/:merchantId', authenticate, isAdmin, SubscriptionController.getMerchantSubscription);
+router.get('/admin/all', authenticate, isAdmin, SubscriptionController.getAllSubscriptions);
+router.post('/admin/upgrade', authenticate, isAdmin, SubscriptionController.adminUpgradeSubscription);
+router.post('/merchant/:merchantId/upgrade', authenticate, isAdmin, SubscriptionController.adminUpgradeSubscription);
 
 module.exports = router;

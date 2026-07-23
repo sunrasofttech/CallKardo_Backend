@@ -40,14 +40,7 @@ async function processCallAnalysis(event) {
       return;
     }
 
-    // 1. Idempotency Check: check if CallReport already exists for this session
-    const existingReport = await CallReport.findOne({ where: { callSessionId } });
-    if (existingReport) {
-      console.log(`CallReport for session ${callSessionId} already exists. Skipping.`);
-      return;
-    }
-
-    // 2. Fetch the full CallSession from DB (single source of truth for IDs)
+    // 1. Fetch the full CallSession from DB (single source of truth for IDs)
     const session = await CallSession.findByPk(callSessionId);
     if (!session) {
       console.warn(`[AI Worker] CallSession ${callSessionId} not found in DB. Cannot create report.`);
@@ -60,11 +53,71 @@ async function processCallAnalysis(event) {
     let finalCustomerId = session.customerId || event.customerId;
     let finalCampaignId = session.campaignId || event.campaignId;
 
-    // 3. Auto-resolve customer for inbound calls if customerId is still missing
+    // Fallback: If finalUserId is still missing, try looking up VobizNumber or Agent or default user
+    if (!finalUserId && finalVobizNumberId) {
+      const { VobizNumber } = require('../models');
+      const vn = await VobizNumber.findByPk(finalVobizNumberId);
+      if (vn && vn.userId) finalUserId = vn.userId;
+    }
+    if (!finalUserId && session.agentId) {
+      const { Agent: DBAgent } = require('../models');
+      const ag = await DBAgent.findByPk(session.agentId);
+      if (ag && ag.userId) finalUserId = ag.userId;
+    }
+    if (!finalUserId) {
+      const { User } = require('../models');
+      const defaultUser = await User.findOne({ where: { role: 'merchant' } });
+      if (defaultUser) finalUserId = defaultUser.id;
+    }
+
+    const finalTranscript = (transcript && transcript.trim().length > 0) ? transcript : '';
+
+    // Check if CallReport already exists for this session
+    const existingReport = await CallReport.findOne({ where: { callSessionId } });
+    if (existingReport) {
+      let needsUpdate = false;
+
+      // Update transcript if incoming is longer/more detailed or existing is empty
+      if (finalTranscript && (!existingReport.transcript || existingReport.transcript.length < finalTranscript.length)) {
+        existingReport.transcript = finalTranscript;
+        needsUpdate = true;
+      }
+      // Update recording URL if existing is missing and incoming is provided
+      if (recordingUrl && !existingReport.recordingUrl) {
+        existingReport.recordingUrl = recordingUrl;
+        needsUpdate = true;
+      }
+      // Update duration if incoming is longer
+      if (duration && duration > (existingReport.duration || 0)) {
+        existingReport.duration = duration;
+        needsUpdate = true;
+      }
+      // Update customer ID if existing is missing
+      if (finalCustomerId && !existingReport.customerId) {
+        existingReport.customerId = finalCustomerId;
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        if (existingReport.transcript && existingReport.transcript.trim().length > 0) {
+          const analysis = await AiAnalysisService.analyzeTranscript(existingReport.transcript);
+          existingReport.summary = analysis.summary;
+          existingReport.outcome = analysis.outcome;
+          existingReport.sentiment = analysis.sentiment;
+          existingReport.leadScore = analysis.leadScore;
+        }
+        await existingReport.save();
+        console.log(`[AI Worker] Updated existing CallReport for session ${callSessionId} with new transcript/recordingUrl.`);
+      } else {
+        console.log(`CallReport for session ${callSessionId} already exists and is up to date.`);
+      }
+      return;
+    }
+
+    // 2. Auto-resolve customer for inbound calls if customerId is still missing
     if (!finalCustomerId && finalUserId) {
       try {
         const { Op } = require('sequelize');
-        // Try to find customer by caller number
         const callerNum = session.fromNumber || session.toNumber || '';
         if (callerNum) {
           const cleanNum = callerNum.replace(/^\+91/, '').replace(/\D/g, '');
@@ -79,7 +132,6 @@ async function processCallAnalysis(event) {
           });
 
           if (!cust) {
-            // Create a new customer record for the inbound caller
             cust = await Customer.create({
               userId: finalUserId,
               mobile: callerNum || 'Unknown',
@@ -94,7 +146,6 @@ async function processCallAnalysis(event) {
       }
     }
 
-    // Update session with resolved customerId if it was missing
     if (finalCustomerId && !session.customerId) {
       try {
         session.customerId = finalCustomerId;
@@ -107,15 +158,11 @@ async function processCallAnalysis(event) {
       return;
     }
 
-    // 4. Determine the transcript to analyze
-    // Prefer the transcript passed in the event, but if empty, try to build from session data
-    const finalTranscript = (transcript && transcript.trim().length > 0) ? transcript : '';
-
-    // 5. Trigger Gemini Transcript Analysis
+    // 3. Trigger Gemini Transcript Analysis
     const analysis = await AiAnalysisService.analyzeTranscript(finalTranscript);
     console.log(`[AI Analysis Result] Session: ${callSessionId} -> Outcome: ${analysis.outcome}, Score: ${analysis.leadScore}, Direction: ${session.direction}`);
 
-    // 6. Save CallReport in DB idempotently
+    // 4. Save CallReport in DB idempotently
     const [report, created] = await CallReport.findOrCreate({
       where: { callSessionId },
       defaults: {
@@ -134,8 +181,12 @@ async function processCallAnalysis(event) {
     });
 
     if (!created) {
-      console.log(`CallReport for session ${callSessionId} was already created by another worker. Skipping.`);
-      return;
+      await report.update({
+        ...(finalTranscript && (!report.transcript || report.transcript.length < finalTranscript.length) && { transcript: finalTranscript, summary: analysis.summary, outcome: analysis.outcome, sentiment: analysis.sentiment, leadScore: analysis.leadScore }),
+        ...(recordingUrl && !report.recordingUrl && { recordingUrl }),
+        ...(duration && duration > (report.duration || 0) && { duration }),
+        ...(finalCustomerId && !report.customerId && { customerId: finalCustomerId }),
+      });
     }
 
     console.log(`[AI Worker] CallReport created successfully for session ${callSessionId} (${session.direction}). CustomerId: ${finalCustomerId || 'none'}, Transcript length: ${finalTranscript.length}`);

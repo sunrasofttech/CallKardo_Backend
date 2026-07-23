@@ -24,22 +24,28 @@ class ReportController {
         order: [['createdAt', 'DESC']],
       });
 
-      // Fallback: If no CallReport records exist yet, construct reports dynamically from CallSession records
-      if (reports.length === 0) {
-        const sessionFilter = { userId: req.user.id };
-        if (campaignId) sessionFilter.campaignId = campaignId;
+      // Find any CallSessions for this merchant that do not have a CallReport record yet
+      const existingReportSessionIds = new Set(reports.map(r => r.callSessionId).filter(Boolean));
+      const sessionFilter = { userId: req.user.id };
+      if (campaignId) sessionFilter.campaignId = campaignId;
 
-        const sessions = await CallSession.findAll({
-          where: sessionFilter,
-          include: [
-            { model: Customer, as: 'customer', attributes: ['name', 'mobile'], required: false },
-            { model: Campaign, as: 'campaign', attributes: ['name'], required: false },
-            { model: VobizNumber, as: 'vobizNumber', attributes: ['number'], required: false },
-          ],
-          order: [['createdAt', 'DESC']],
-        });
+      const allSessions = await CallSession.findAll({
+        where: sessionFilter,
+        include: [
+          { model: Customer, as: 'customer', attributes: ['name', 'mobile'], required: false },
+          { model: Campaign, as: 'campaign', attributes: ['name'], required: false },
+          { model: VobizNumber, as: 'vobizNumber', attributes: ['number'], required: false },
+        ],
+        order: [['createdAt', 'DESC']],
+      });
 
-        reports = sessions.map((s) => {
+      const missingSessions = allSessions.filter(s => !existingReportSessionIds.has(s.id));
+      if (missingSessions.length > 0) {
+        const fs = require('fs');
+        const path = require('path');
+        const uploadsDir = path.join(__dirname, '../../uploads');
+
+        const derivedReports = missingSessions.map((s) => {
           let duration = 0;
           if (s.startTime && s.endTime) {
             duration = Math.max(0, Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000));
@@ -52,6 +58,10 @@ class ReportController {
           } else if (s.status === 'failed') {
             mappedOutcome = 'Wrong Number';
           }
+
+          const recFileName = `recording-${s.id}.wav`;
+          const recPath = path.join(uploadsDir, recFileName);
+          const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
 
           return {
             id: s.id,
@@ -66,7 +76,7 @@ class ReportController {
             outcome: mappedOutcome,
             sentiment: 'Neutral',
             leadScore: s.status === 'completed' ? 70 : 10,
-            recordingUrl: null,
+            recordingUrl,
             customer: s.customer,
             campaign: s.campaign,
             vobizNumber: s.vobizNumber,
@@ -74,6 +84,8 @@ class ReportController {
             updatedAt: s.updatedAt,
           };
         });
+
+        reports = [...reports, ...derivedReports].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       }
 
       return ResponseBuilder.success(res, reports, 'Call reports retrieved successfully');
@@ -114,11 +126,6 @@ class ReportController {
           duration = `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
-        // Map status humanly:
-        // Picked: completed, connected
-        // Missed: no-answer
-        // Declined: busy
-        // Failed: failed
         let mappedStatus = 'Missed';
         if (session.status === 'completed' || session.status === 'connected') {
           mappedStatus = 'Picked';
@@ -149,7 +156,7 @@ class ReportController {
    */
   async getReportBySession(req, res, next) {
     try {
-      const report = await CallReport.findOne({
+      let report = await CallReport.findOne({
         where: { callSessionId: req.params.sessionId, userId: req.user.id },
         include: [
           { model: Customer, as: 'customer', attributes: ['name', 'mobile', 'tags', 'notes'] },
@@ -159,7 +166,51 @@ class ReportController {
       });
 
       if (!report) {
-        return ResponseBuilder.error(res, 'Call report not found', 404);
+        // Fallback to CallSession
+        const session = await CallSession.findOne({
+          where: { id: req.params.sessionId, userId: req.user.id },
+          include: [
+            { model: Customer, as: 'customer', attributes: ['name', 'mobile', 'tags', 'notes'] },
+            { model: Campaign, as: 'campaign', attributes: ['name', 'startTime'] },
+            { model: VobizNumber, as: 'vobizNumber', attributes: ['number'] },
+          ],
+        });
+
+        if (!session) {
+          return ResponseBuilder.error(res, 'Call report not found', 404);
+        }
+
+        const fs = require('fs');
+        const path = require('path');
+        const recFileName = `recording-${session.id}.wav`;
+        const recPath = path.join(__dirname, '../../uploads', recFileName);
+        const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
+
+        let duration = 0;
+        if (session.startTime && session.endTime) {
+          duration = Math.max(0, Math.round((new Date(session.endTime) - new Date(session.startTime)) / 1000));
+        }
+
+        report = {
+          id: session.id,
+          userId: session.userId,
+          callSessionId: session.id,
+          campaignId: session.campaignId,
+          vobizNumberId: session.vobizNumberId,
+          customerId: session.customerId,
+          transcript: `Call ${session.direction} (${session.status})`,
+          summary: `Call ${session.direction} via agent. Status: ${session.status}`,
+          duration,
+          outcome: session.status === 'completed' ? 'Interested' : 'No Answer',
+          sentiment: 'Neutral',
+          leadScore: session.status === 'completed' ? 70 : 10,
+          recordingUrl,
+          customer: session.customer,
+          campaign: session.campaign,
+          vobizNumber: session.vobizNumber,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt,
+        };
       }
 
       return ResponseBuilder.success(res, report, 'Call report details retrieved');

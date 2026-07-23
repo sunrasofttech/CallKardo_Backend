@@ -236,6 +236,196 @@ const swaggerSpec = {
         },
       },
     },
+    '/admin/subscriptions': {
+      get: {
+        summary: 'Get all merchant subscriptions with pagination, filtering and search (Admin)',
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'expired', 'cancelled'] } },
+          { name: 'planId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: 'Paginated list of subscriptions retrieved successfully' },
+          401: { description: 'Unauthorized' },
+          403: { description: 'Forbidden (Admin only)' },
+        },
+      },
+    },
+    '/admin/subscriptions/upgrade': {
+      post: {
+        summary: 'Upgrade a merchant subscription (Admin)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  merchantId: { type: 'string', format: 'uuid' },
+                  subscriptionId: { type: 'string', format: 'uuid' },
+                  planId: { type: 'string', format: 'uuid' },
+                  customCallLimit: { type: 'integer' },
+                  durationMonths: { type: 'integer', default: 1 },
+                  expiryDate: { type: 'string', format: 'date-time' },
+                  status: { type: 'string', enum: ['active', 'expired', 'cancelled'], default: 'active' },
+                },
+                required: ['planId'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Subscription upgraded successfully' },
+          404: { description: 'Merchant or Plan not found' },
+        },
+      },
+    },
+    '/admin/subscriptions/{id}': {
+      get: {
+        summary: 'Get subscription by ID or merchant ID (Admin)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: 'Subscription details retrieved' },
+          404: { description: 'Subscription not found' },
+        },
+      },
+      put: {
+        summary: 'Update subscription details (Admin override)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  planId: { type: 'string', format: 'uuid' },
+                  callsRemaining: { type: 'integer' },
+                  callsUsed: { type: 'integer' },
+                  expiryDate: { type: 'string', format: 'date-time' },
+                  status: { type: 'string', enum: ['active', 'expired', 'cancelled'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Subscription updated successfully' },
+        },
+      },
+    },
+    '/admin/merchants/{id}/subscription/upgrade': {
+      post: {
+        summary: 'Upgrade subscription for a specific merchant (Admin)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  planId: { type: 'string', format: 'uuid' },
+                  customCallLimit: { type: 'integer' },
+                  durationMonths: { type: 'integer' },
+                },
+                required: ['planId'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Merchant subscription upgraded' },
+        },
+      },
+    },
+    '/admin/categories': {
+      get: {
+        summary: 'Get all business categories (Admin)',
+        responses: {
+          200: { description: 'Categories list retrieved' },
+        },
+      },
+      post: {
+        summary: 'Create a new business category (Admin)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  defaultPrompt: { type: 'string' },
+                  defaultVoiceId: { type: 'string', format: 'uuid' },
+                  defaultLanguage: { type: 'string' },
+                  defaultAgentConfig: { type: 'object' },
+                },
+                required: ['name', 'defaultPrompt'],
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Business category created' },
+        },
+      },
+    },
+    '/admin/categories/{id}': {
+      get: {
+        summary: 'Get business category by ID (Admin)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: 'Category details retrieved' },
+          404: { description: 'Category not found' },
+        },
+      },
+      put: {
+        summary: 'Update business category (Admin)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  defaultPrompt: { type: 'string' },
+                  defaultVoiceId: { type: 'string', format: 'uuid' },
+                  defaultLanguage: { type: 'string' },
+                  defaultAgentConfig: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Category updated successfully' },
+        },
+      },
+      delete: {
+        summary: 'Delete business category (Admin)',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: 'Category deleted successfully' },
+        },
+      },
+    },
   },
 };
 

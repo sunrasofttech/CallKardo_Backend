@@ -170,15 +170,26 @@ const voiceAgent = defineAgent({
         // Extract transcript from chat context with error handling
         let formattedTranscript = '';
         try {
-          const chatMessages = (session.chatCtx?.items || []).filter(item => item.type === 'message');
-          formattedTranscript = chatMessages
+          const rawMessages = session.chatCtx?.messages || session.chatCtx?.items || session.history || [];
+          const extracted = (rawMessages || [])
+            .filter(msg => msg && msg.role !== 'system')
             .map(msg => {
-              const roleName = msg.role === 'assistant' ? 'Agent' : 'Customer';
-              const text = msg.textContent || '';
-              return `${roleName}: ${text}`;
+              const roleName = (msg.role === 'assistant' || msg.role === 'agent') ? 'Agent' : 'Customer';
+              let text = '';
+              if (typeof msg.content === 'string') {
+                text = msg.content;
+              } else if (Array.isArray(msg.content)) {
+                text = msg.content.map(c => typeof c === 'string' ? c : (c.text || c.textContent || '')).join(' ');
+              } else {
+                text = msg.text || msg.textContent || msg.message || '';
+              }
+              return `${roleName}: ${text.trim()}`;
             })
-            .filter(line => line.trim().length > 0)
-            .join('\n');
+            .filter(line => line.trim().length > 8);
+
+          if (extracted.length > 0) {
+            formattedTranscript = extracted.join('\n');
+          }
         } catch (transcriptErr) {
           console.warn('[LiveKit Agent] Failed to extract transcript from chatCtx:', transcriptErr.message);
         }

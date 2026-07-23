@@ -89,7 +89,10 @@ class SubscriptionController {
       const { merchantId } = req.params;
       const subscription = await Subscription.findOne({
         where: { userId: merchantId },
-        include: [{ model: Plan, as: 'plan' }],
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'businessName', 'email', 'mobile'] },
+          { model: Plan, as: 'plan' },
+        ],
       });
 
       if (!subscription) {
@@ -100,6 +103,22 @@ class SubscriptionController {
     } catch (err) {
       next(err);
     }
+  }
+
+  /**
+   * Get all merchant subscriptions (Admin)
+   */
+  async getAllSubscriptions(req, res, next) {
+    const adminController = require('./adminController');
+    return adminController.getSubscriptions(req, res, next);
+  }
+
+  /**
+   * Admin Upgrade Merchant Subscription
+   */
+  async adminUpgradeSubscription(req, res, next) {
+    const adminController = require('./adminController');
+    return adminController.upgradeMerchantSubscription(req, res, next);
   }
 }
 

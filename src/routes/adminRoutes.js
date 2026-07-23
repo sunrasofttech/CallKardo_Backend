@@ -16,10 +16,19 @@ router.put('/admins/:id', adminController.updateAdmin);
 router.get('/merchants', adminController.getMerchants);
 router.get('/merchants/:id', adminController.getMerchant);
 router.put('/merchants/:id', adminController.updateMerchant);
-router.put('/merchants/:id/subscription', adminController.updateMerchantSubscription);
+router.put('/merchants/:id/subscription', adminController.upgradeMerchantSubscription);
+router.post('/merchants/:id/subscription/upgrade', adminController.upgradeMerchantSubscription);
 router.get('/merchants/:id/numbers', adminController.getMerchantNumbers);
 router.put('/merchants/:id/numbers/:numberId', adminController.updateMerchantNumber);
 router.delete('/merchants/:id/numbers/:numberId', adminController.deleteMerchantNumber);
+
+// Subscription management routes
+router.get('/subscriptions', adminController.getSubscriptions);
+router.get('/subscriptions/:id', adminController.getSubscriptionById);
+router.post('/subscriptions/upgrade', adminController.upgradeMerchantSubscription);
+router.put('/subscriptions/:id', adminController.updateSubscription);
+router.post('/subscriptions/:id/cancel', adminController.cancelSubscription);
+
 
 // Agent approval routes
 router.get('/agents', adminController.getAgents);
@@ -48,8 +57,14 @@ router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/reports', adminController.getGlobalCallReports);
 router.get('/reports/session/:sessionId', adminController.getGlobalCallSession);
 
-// Global Virtual Numbers inventory route
-router.get('/virtual-numbers', adminController.getGlobalVirtualNumbers);
+const categoryController = require('../controllers/categoryController');
+
+// Business Category management routes
+router.get('/categories', categoryController.getAll);
+router.get('/categories/:id', categoryController.getById);
+router.post('/categories', categoryController.create);
+router.put('/categories/:id', categoryController.update);
+router.delete('/categories/:id', categoryController.delete);
 
 module.exports = router;
 
