@@ -84,15 +84,31 @@ async function dispatchRunningCampaigns() {
             order: [['createdAt', 'DESC']],
           });
 
-          if (stuckSession) {
-            console.log(`[Scheduler] Recovering stuck session ${stuckSession.id} (status: ${stuckSession.status}) for customer ${stuckCC.customerId}`);
-            stuckSession.status = 'failed';
-            stuckSession.endTime = new Date();
-            await stuckSession.save();
+            if (stuckSession) {
+              console.log(`[Scheduler] Recovering stuck session ${stuckSession.id} (status: ${stuckSession.status}) for customer ${stuckCC.customerId}`);
+              stuckSession.status = 'failed';
+              stuckSession.endTime = new Date();
+              await stuckSession.save();
 
-            // Deregister from active calls ZSET
-            await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => {});
-          }
+              // Deregister from active calls ZSET
+              await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => {});
+
+              // Create report for stuck session
+              const completionEvent = {
+                callSessionId: stuckSession.id,
+                userId: campaign.userId,
+                campaignId: campaign.id,
+                vobizNumberId: stuckSession.vobizNumberId,
+                customerId: stuckCC.customerId,
+                transcript: '',
+                duration: 0,
+                recordingUrl: null,
+              };
+              const { processCallAnalysis } = require('./aiWorker');
+              processCallAnalysis(completionEvent).catch((aiErr) =>
+                console.error('[Scheduler] Error creating report for stuck session:', aiErr.message)
+              );
+            }
 
           // Reset customer to 'pending' so the scheduler can retry
           stuckCC.callStatus = 'pending';

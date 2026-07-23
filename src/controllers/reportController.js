@@ -41,9 +41,31 @@ class ReportController {
 
       const missingSessions = allSessions.filter(s => !existingReportSessionIds.has(s.id));
       if (missingSessions.length > 0) {
+        const { processCallAnalysis } = require('../workers/aiWorker');
         const fs = require('fs');
         const path = require('path');
-        const uploadsDir = path.join(__dirname, '../../uploads');
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+
+        for (const s of missingSessions) {
+          let duration = 0;
+          if (s.startTime && s.endTime) {
+            duration = Math.max(0, Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000));
+          }
+          const recFileName = `recording-${s.id}.wav`;
+          const recPath = path.join(uploadsDir, recFileName);
+          const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
+
+          processCallAnalysis({
+            callSessionId: s.id,
+            userId: s.userId,
+            campaignId: s.campaignId,
+            vobizNumberId: s.vobizNumberId,
+            customerId: s.customerId,
+            transcript: '',
+            duration,
+            recordingUrl,
+          }).catch(() => {});
+        }
 
         const derivedReports = missingSessions.map((s) => {
           let duration = 0;
