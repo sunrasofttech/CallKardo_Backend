@@ -71,7 +71,7 @@ class SubscriptionService {
     // Starter plan: Max 5 calls, but wait, Starter has callLimit = 5
     // Validate call quota. (Starter is free, no credits required but Max 5 calls total)
     // Basic/Pro have limits. Unlimited plans might have callLimit = -1
-    const callLimit = subscription.plan.callLimit;
+    const callLimit = subscription.plan ? subscription.plan.callLimit : -1;
     
     if (callLimit !== -1 && subscription.callsRemaining <= 0) {
       return { isValid: false, reason: 'Call quota limit reached for the current billing cycle.' };
@@ -79,7 +79,7 @@ class SubscriptionService {
 
     return {
       isValid: true,
-      maxConcurrent: subscription.plan.maxConcurrentCalls,
+      maxConcurrent: subscription.plan ? subscription.plan.maxConcurrentCalls : 1,
     };
   }
 

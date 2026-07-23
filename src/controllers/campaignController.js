@@ -142,9 +142,9 @@ class CampaignController {
         return ResponseBuilder.error(res, 'Campaign not found', 404);
       }
 
-      if (campaign.status !== 'draft') {
+      if (!['draft', 'scheduled', 'stopped', 'failed'].includes(campaign.status)) {
         await transaction.rollback();
-        return ResponseBuilder.error(res, 'Only draft campaigns can be started', 400);
+        return ResponseBuilder.error(res, 'Only draft, scheduled, stopped, or failed campaigns can be started', 400);
       }
 
       // 1. Validate subscription limits
@@ -178,7 +178,7 @@ class CampaignController {
           `INSERT IGNORE INTO campaign_customers (id, campaign_id, customer_id, call_status, retry_count, created_at, updated_at)
            SELECT UUID(), :campaignId, customer_id, 'pending', 0, NOW(), NOW()
            FROM customer_list_members
-           WHERE customer_list_id = :customerListId AND deleted_at IS NULL`,
+           WHERE customer_list_id = :customerListId`,
           {
             replacements: {
               campaignId: campaign.id,

@@ -204,7 +204,7 @@ async function handleStartCampaign(payload) {
       `INSERT IGNORE INTO campaign_customers (id, campaign_id, customer_id, call_status, retry_count, created_at, updated_at)
        SELECT UUID(), :campaignId, customer_id, 'pending', 0, NOW(), NOW()
        FROM customer_list_members
-       WHERE customer_list_id = :customerListId AND deleted_at IS NULL`,
+       WHERE customer_list_id = :customerListId`,
       {
         replacements: {
           campaignId: campaign.id,
