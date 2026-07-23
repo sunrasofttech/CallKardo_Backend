@@ -2,7 +2,7 @@ const { duplicateClient } = require('../config/redis');
 const AiAnalysisService = require('../services/aiAnalysisService');
 const SubscriptionService = require('../services/subscriptionService');
 const QueueService = require('../services/queueService');
-const { CallReport, CampaignCustomer, Campaign, sequelize } = require('../models');
+const { CallReport, CallSession, Customer, CampaignCustomer, Campaign, sequelize } = require('../models');
 
 async function startAiWorker() {
   console.log('AI Worker started.');
@@ -28,10 +28,11 @@ async function startAiWorker() {
 }
 
 /**
- * Invokes Gemini, saves CallReport, adjusts campaign progress and plan limits
+ * Invokes Gemini, saves CallReport, adjusts campaign progress and plan limits.
+ * Handles both inbound and outbound calls reliably.
  */
 async function processCallAnalysis(event) {
-  const { callSessionId, userId, campaignId, vobizNumberId, customerId, transcript, duration, recordingUrl } = event;
+  const { callSessionId, transcript, duration, recordingUrl } = event;
 
   try {
     if (!callSessionId) {
@@ -46,29 +47,59 @@ async function processCallAnalysis(event) {
       return;
     }
 
-    // Auto-resolve missing fields from CallSession
-    let finalUserId = userId;
-    let finalVobizNumberId = vobizNumberId;
-    let finalCustomerId = customerId;
-    let finalCampaignId = campaignId;
-
-    const { CallSession, Customer } = require('../models');
+    // 2. Fetch the full CallSession from DB (single source of truth for IDs)
     const session = await CallSession.findByPk(callSessionId);
-    if (session) {
-      if (!finalUserId) finalUserId = session.userId;
-      if (!finalVobizNumberId) finalVobizNumberId = session.vobizNumberId;
-      if (!finalCustomerId) finalCustomerId = session.customerId;
-      if (!finalCampaignId) finalCampaignId = session.campaignId;
+    if (!session) {
+      console.warn(`[AI Worker] CallSession ${callSessionId} not found in DB. Cannot create report.`);
+      return;
+    }
 
-      // Auto-resolve customer if still missing
-      if (!finalCustomerId && finalUserId) {
-        const callerNum = session.fromNumber || 'Inbound Caller';
-        let cust = await Customer.findOne({ where: { userId: finalUserId, mobile: callerNum } });
-        if (!cust) {
-          cust = await Customer.create({ userId: finalUserId, mobile: callerNum, name: 'Inbound Caller' });
+    // Resolve all foreign keys from session first, then fall back to event payload
+    let finalUserId = session.userId || event.userId;
+    let finalVobizNumberId = session.vobizNumberId || event.vobizNumberId;
+    let finalCustomerId = session.customerId || event.customerId;
+    let finalCampaignId = session.campaignId || event.campaignId;
+
+    // 3. Auto-resolve customer for inbound calls if customerId is still missing
+    if (!finalCustomerId && finalUserId) {
+      try {
+        const { Op } = require('sequelize');
+        // Try to find customer by caller number
+        const callerNum = session.fromNumber || session.toNumber || '';
+        if (callerNum) {
+          const cleanNum = callerNum.replace(/^\+91/, '').replace(/\D/g, '');
+          const searchConditions = [{ mobile: callerNum }];
+          if (cleanNum) searchConditions.push({ mobile: { [Op.like]: `%${cleanNum}` } });
+
+          let cust = await Customer.findOne({
+            where: {
+              userId: finalUserId,
+              [Op.or]: searchConditions,
+            },
+          });
+
+          if (!cust) {
+            // Create a new customer record for the inbound caller
+            cust = await Customer.create({
+              userId: finalUserId,
+              mobile: callerNum || 'Unknown',
+              name: 'Inbound Caller',
+            });
+            console.log(`[AI Worker] Created new Customer record for inbound caller: ${callerNum}`);
+          }
+          finalCustomerId = cust.id;
         }
-        finalCustomerId = cust.id;
+      } catch (custErr) {
+        console.warn(`[AI Worker] Customer auto-resolution failed: ${custErr.message}`);
       }
+    }
+
+    // Update session with resolved customerId if it was missing
+    if (finalCustomerId && !session.customerId) {
+      try {
+        session.customerId = finalCustomerId;
+        await session.save();
+      } catch (_) {}
     }
 
     if (!finalUserId) {
@@ -76,11 +107,15 @@ async function processCallAnalysis(event) {
       return;
     }
 
-    // 2. Trigger Gemini Transcript Analysis
-    const analysis = await AiAnalysisService.analyzeTranscript(transcript);
-    console.log(`[AI Analysis Result] Session: ${callSessionId} -> Outcome: ${analysis.outcome}, Score: ${analysis.leadScore}`);
+    // 4. Determine the transcript to analyze
+    // Prefer the transcript passed in the event, but if empty, try to build from session data
+    const finalTranscript = (transcript && transcript.trim().length > 0) ? transcript : '';
 
-    // 3. Save CallReport in DB idempotently
+    // 5. Trigger Gemini Transcript Analysis
+    const analysis = await AiAnalysisService.analyzeTranscript(finalTranscript);
+    console.log(`[AI Analysis Result] Session: ${callSessionId} -> Outcome: ${analysis.outcome}, Score: ${analysis.leadScore}, Direction: ${session.direction}`);
+
+    // 6. Save CallReport in DB idempotently
     const [report, created] = await CallReport.findOrCreate({
       where: { callSessionId },
       defaults: {
@@ -88,14 +123,14 @@ async function processCallAnalysis(event) {
         campaignId: finalCampaignId,
         vobizNumberId: finalVobizNumberId,
         customerId: finalCustomerId,
-        transcript: transcript || '',
+        transcript: finalTranscript,
         summary: analysis.summary,
         duration: duration || 0,
         outcome: analysis.outcome,
         sentiment: analysis.sentiment,
         leadScore: analysis.leadScore,
-        recordingUrl,
-      }
+        recordingUrl: recordingUrl || null,
+      },
     });
 
     if (!created) {
@@ -103,18 +138,24 @@ async function processCallAnalysis(event) {
       return;
     }
 
-    // 4. Deduct call credit from merchant's subscription
+    console.log(`[AI Worker] CallReport created successfully for session ${callSessionId} (${session.direction}). CustomerId: ${finalCustomerId || 'none'}, Transcript length: ${finalTranscript.length}`);
+
+    // 7. Deduct call credit from merchant's subscription
     if (finalUserId) {
-      await SubscriptionService.recordCallUsage(finalUserId);
+      try {
+        await SubscriptionService.recordCallUsage(finalUserId);
+      } catch (subErr) {
+        console.warn(`[AI Worker] Failed to record call usage for user ${finalUserId}: ${subErr.message}`);
+      }
     }
 
-    // 5. Update campaign customer status
+    // 8. Update campaign customer status (only for outbound campaign calls)
     if (finalCampaignId && finalCustomerId) {
       const isFailed = (analysis.outcome === 'No Answer' || analysis.outcome === 'Wrong Number');
       const callStatus = isFailed ? 'failed' : 'completed';
 
       const mapping = await CampaignCustomer.findOne({
-        where: { campaignId: finalCampaignId, customerId: finalCustomerId }
+        where: { campaignId: finalCampaignId, customerId: finalCustomerId },
       });
 
       if (mapping) {
@@ -130,9 +171,13 @@ async function processCallAnalysis(event) {
         where: { campaignId: finalCampaignId, callStatus: 'pending' },
       });
 
+      const remainingCalling = await CampaignCustomer.count({
+        where: { campaignId: finalCampaignId, callStatus: 'calling' },
+      });
+
       const activeCalls = await QueueService.getActiveCalls(finalCampaignId);
 
-      if (remainingPending === 0 && activeCalls === 0) {
+      if (remainingPending === 0 && remainingCalling === 0 && activeCalls === 0) {
         // Mark campaign as completed
         const campaign = await Campaign.findByPk(finalCampaignId);
         if (campaign && campaign.status === 'running') {
@@ -142,7 +187,6 @@ async function processCallAnalysis(event) {
         }
       }
     }
-
   } catch (dbErr) {
     console.error(`DB Update Error in AI worker for session ${callSessionId}:`, dbErr);
   }

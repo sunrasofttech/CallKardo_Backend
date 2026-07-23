@@ -183,7 +183,13 @@ class VobizSocketHandler {
           }
 
           if (customer) {
-            console.log(`[VoBiz Call] Auto-resolved Customer context: ${customer.name} (${customer.email || 'No email'})`);
+            console.log(`[VoBiz Call] Auto-resolved Customer context: ${customer.name} (${customer.mobile || 'No mobile'})`);
+            // Persist resolved customerId back to session DB record so report picks it up
+            if (!session.customerId) {
+              session.customerId = customer.id;
+              await session.save();
+              console.log(`[VoBiz Call] Updated session ${session.id} with customerId: ${customer.id}`);
+            }
           }
         } catch (custErr) {
           console.warn(`[VoBiz Call] Customer lookup failed: ${custErr.message}`);
@@ -492,6 +498,11 @@ class VobizSocketHandler {
         .map((c) => `${c.role === 'customer' ? 'Customer' : 'Agent'}: ${c.text}`)
         .join('\n');
 
+      console.log(`[VoBiz Call] Transcript for session ${session.id}: ${formattedTranscript.length} chars, ${(transcriptChunks || []).length} chunks`);
+      if (formattedTranscript.length > 0) {
+        console.log(`[VoBiz Call] Transcript preview: ${formattedTranscript.substring(0, 200)}...`);
+      }
+
       // Compile conversation recording
       let fileName = null;
       if ((ws.customerChunks && ws.customerChunks.length > 0) || (ws.agentChunks && ws.agentChunks.length > 0)) {
@@ -565,20 +576,34 @@ class VobizSocketHandler {
         }
       }
 
+      // Re-fetch session to get any customerId that was resolved during the call
+      const latestSession = await CallSession.findByPk(session.id);
+
       // Reliable report queuing & immediate creation
       const completionEvent = {
         callSessionId: session.id,
-        userId: freshSession.userId || session.userId,
-        campaignId: freshSession.campaignId || session.campaignId || null,
-        vobizNumberId: freshSession.vobizNumberId || session.vobizNumberId,
-        customerId: freshSession.customerId || session.customerId,
+        userId: latestSession?.userId || freshSession.userId || session.userId,
+        campaignId: latestSession?.campaignId || freshSession.campaignId || session.campaignId || null,
+        vobizNumberId: latestSession?.vobizNumberId || freshSession.vobizNumberId || session.vobizNumberId,
+        customerId: latestSession?.customerId || freshSession.customerId || session.customerId,
         transcript: formattedTranscript,
         duration: Math.max(0, duration),
         recordingUrl: fileName ? `/uploads/${fileName}` : null,
       };
 
+      console.log(`[VoBiz Call] Enqueuing report for session ${session.id}:`, {
+        userId: completionEvent.userId,
+        customerId: completionEvent.customerId,
+        campaignId: completionEvent.campaignId,
+        transcriptLen: formattedTranscript.length,
+        duration: completionEvent.duration,
+        direction: freshSession.direction,
+      });
+
       // Enqueue report for worker processing (Reliable Queue)
-      await QueueService.enqueueReport(completionEvent).catch(() => {});
+      await QueueService.enqueueReport(completionEvent).catch((qErr) => {
+        console.error('[VoBiz Call] Failed to enqueue report to Redis:', qErr.message);
+      });
 
       // Immediate analysis fallback to guarantee CallReport creation
       const { processCallAnalysis } = require('../workers/aiWorker');

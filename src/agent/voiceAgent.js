@@ -167,52 +167,82 @@ const voiceAgent = defineAgent({
         const startTime = dbSession?.startTime || new Date();
         const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
 
-        const chatMessages = session.chatCtx.items.filter(item => item.type === 'message');
-        const formattedTranscript = chatMessages
-          .map(msg => {
-            const roleName = msg.role === 'assistant' ? 'Agent' : 'Customer';
-            const text = msg.textContent || '';
-            return `${roleName}: ${text}`;
-          })
-          .filter(line => line.trim().length > 0)
-          .join('\n');
+        // Extract transcript from chat context with error handling
+        let formattedTranscript = '';
+        try {
+          const chatMessages = (session.chatCtx?.items || []).filter(item => item.type === 'message');
+          formattedTranscript = chatMessages
+            .map(msg => {
+              const roleName = msg.role === 'assistant' ? 'Agent' : 'Customer';
+              const text = msg.textContent || '';
+              return `${roleName}: ${text}`;
+            })
+            .filter(line => line.trim().length > 0)
+            .join('\n');
+        } catch (transcriptErr) {
+          console.warn('[LiveKit Agent] Failed to extract transcript from chatCtx:', transcriptErr.message);
+        }
 
-        console.log(`[LiveKit Agent] Compiled transcript:\n${formattedTranscript}`);
+        console.log(`[LiveKit Agent] Compiled transcript (${formattedTranscript.length} chars):`);
+        if (formattedTranscript.length > 0) {
+          console.log(`[LiveKit Agent] Transcript preview: ${formattedTranscript.substring(0, 200)}...`);
+        }
+
+        // Resolve session ID (prefer DB session, then from room name)
+        const resolvedSessionId = dbSession?.id || callSessionId;
 
         // Update database CallSession
-        if (callSessionId) {
-          const freshSession = await CallSession.findByPk(callSessionId);
-          if (freshSession) {
-            freshSession.status = 'completed';
-            freshSession.endTime = endTime;
-            await freshSession.save();
+        if (resolvedSessionId) {
+          try {
+            const freshSession = await CallSession.findByPk(resolvedSessionId);
+            if (freshSession) {
+              freshSession.status = 'completed';
+              freshSession.endTime = endTime;
+              await freshSession.save();
+            }
+          } catch (dbSaveErr) {
+            console.error('[LiveKit Agent] Failed to update CallSession:', dbSaveErr.message);
           }
         }
 
-        // Enqueue report for automated Gemini analysis and campaign updates
+        // Resolve all IDs for report — always attempt to create a report
         const userId = dbSession?.userId || vobizNumber?.userId;
         const campaignId = dbSession?.campaignId || null;
-        const vobizNumberId = dbSession?.vobizNumberId || vobizNumber?.id;
+        const resolvedVobizNumberId = dbSession?.vobizNumberId || vobizNumber?.id || null;
         const customerId = dbSession?.customerId || null;
 
-        if (userId && vobizNumberId && callSessionId) {
+        if (resolvedSessionId && userId) {
           const completionEvent = {
-            callSessionId,
+            callSessionId: resolvedSessionId,
             userId,
             campaignId,
-            vobizNumberId,
+            vobizNumberId: resolvedVobizNumberId,
             customerId,
             transcript: formattedTranscript,
             duration,
             recordingUrl: null,
           };
 
-          await QueueService.enqueueReport(completionEvent).catch(() => {});
-          console.log(`[LiveKit Agent] Successfully enqueued report to Redis for session: ${callSessionId}`);
+          console.log(`[LiveKit Agent] Enqueuing report for session ${resolvedSessionId}:`, {
+            userId,
+            customerId,
+            campaignId,
+            vobizNumberId: resolvedVobizNumberId,
+            transcriptLen: formattedTranscript.length,
+            duration,
+          });
+
+          await QueueService.enqueueReport(completionEvent).catch((qErr) => {
+            console.error('[LiveKit Agent] Failed to enqueue report:', qErr.message);
+          });
 
           // Immediate analysis fallback to guarantee CallReport creation
           const { processCallAnalysis } = require('../workers/aiWorker');
-          processCallAnalysis(completionEvent).catch(aiErr => console.error('[LiveKit Agent] Immediate AI analysis error:', aiErr.message));
+          processCallAnalysis(completionEvent).catch(aiErr =>
+            console.error('[LiveKit Agent] Immediate AI analysis error:', aiErr.message)
+          );
+        } else {
+          console.warn(`[LiveKit Agent] Cannot create report — missing resolvedSessionId (${resolvedSessionId}) or userId (${userId})`);
         }
       } catch (err) {
         console.error('[LiveKit Agent] Error compiling/saving final call report:', err.message);
