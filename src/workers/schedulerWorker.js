@@ -47,7 +47,8 @@ async function startScheduler() {
 }
 
 /**
- * Periodically dispatches call jobs for running campaigns based on limits and pacing
+ * Periodically dispatches call jobs for running campaigns based on limits and pacing.
+ * Also recovers stuck 'calling' sessions that never completed.
  */
 async function dispatchRunningCampaigns() {
   try {
@@ -56,6 +57,53 @@ async function dispatchRunningCampaigns() {
     });
 
     for (const campaign of campaigns) {
+      // --- Recovery: Detect and fix stuck 'calling' customers ---
+      // If a campaign_customer has been in 'calling' status for > 3 minutes,
+      // check if the corresponding call_session is still 'initiated' (never connected).
+      // If so, mark customer as 'failed' and session as 'failed' to unblock the campaign.
+      try {
+        const { CallSession } = require('../models');
+        const stuckThreshold = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
+
+        const stuckCallingCustomers = await CampaignCustomer.findAll({
+          where: {
+            campaignId: campaign.id,
+            callStatus: 'calling',
+            updatedAt: { [Op.lt]: stuckThreshold },
+          },
+        });
+
+        for (const stuckCC of stuckCallingCustomers) {
+          // Find the most recent session for this campaign+customer
+          const stuckSession = await CallSession.findOne({
+            where: {
+              campaignId: campaign.id,
+              customerId: stuckCC.customerId,
+              status: { [Op.in]: ['initiated', 'connected'] },
+            },
+            order: [['createdAt', 'DESC']],
+          });
+
+          if (stuckSession) {
+            console.log(`[Scheduler] Recovering stuck session ${stuckSession.id} (status: ${stuckSession.status}) for customer ${stuckCC.customerId}`);
+            stuckSession.status = 'failed';
+            stuckSession.endTime = new Date();
+            await stuckSession.save();
+
+            // Deregister from active calls ZSET
+            await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => {});
+          }
+
+          // Reset customer to 'pending' so the scheduler can retry
+          stuckCC.callStatus = 'pending';
+          stuckCC.retryCount = (stuckCC.retryCount || 0) + 1;
+          await stuckCC.save();
+          console.log(`[Scheduler] Reset stuck customer ${stuckCC.customerId} to 'pending' (retry: ${stuckCC.retryCount})`);
+        }
+      } catch (recoveryErr) {
+        console.error(`[Scheduler] Error recovering stuck calls for campaign ${campaign.id}:`, recoveryErr.message);
+      }
+
       const activeCalls = await QueueService.getActiveCalls(campaign.id);
       
       // Enforce campaign-level limits
@@ -131,9 +179,13 @@ async function dispatchRunningCampaigns() {
       });
 
       if (pending.length === 0) {
-        // Double check if there are no pending calls AND active calls is 0
-        // (If so, campaign should be marked completed)
-        if (activeCalls === 0) {
+        // Check if there are also no 'calling' customers stuck (already handled above)
+        const callingCount = await CampaignCustomer.count({
+          where: { campaignId: campaign.id, callStatus: 'calling' },
+        });
+
+        // Only mark campaign completed if no pending, no calling, and no active calls
+        if (activeCalls === 0 && callingCount === 0) {
           campaign.status = 'completed';
           await campaign.save();
           console.log(`Campaign ${campaign.name} (${campaign.id}) finished. Marked Completed.`);
