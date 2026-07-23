@@ -154,62 +154,72 @@ class CampaignController {
         return ResponseBuilder.error(res, `Failed to start campaign: ${limitCheck.reason}`, 403);
       }
 
-      const startTime = new Date(campaign.startTime);
-      const isImmediate = startTime <= new Date();
+      // Force running status and current start timestamp when explicitly started by user
+      campaign.status = 'running';
+      campaign.startTime = new Date();
+      await campaign.save({ transaction });
 
-      if (isImmediate) {
-        // Start running immediately
-        campaign.status = 'running';
-        await campaign.save({ transaction });
+      // Fetch customers from list count
+      const memberCount = await CustomerListMember.count({
+        where: { customerListId: campaign.customerListId },
+        transaction,
+      });
 
-        // Fetch customers from list count
-        const memberCount = await CustomerListMember.count({
-          where: { customerListId: campaign.customerListId },
+      if (memberCount === 0) {
+        await transaction.rollback();
+        return ResponseBuilder.error(res, 'Target customer list is empty. Cannot start campaign.', 400);
+      }
+
+      // Link customers atomically via MySQL INSERT ... SELECT to prevent OOM
+      await sequelize.query(
+        `INSERT IGNORE INTO campaign_customers (id, campaign_id, customer_id, call_status, retry_count, created_at, updated_at)
+         SELECT UUID(), :campaignId, customer_id, 'pending', 0, NOW(), NOW()
+         FROM customer_list_members
+         WHERE customer_list_id = :customerListId`,
+        {
+          replacements: {
+            campaignId: campaign.id,
+            customerListId: campaign.customerListId,
+          },
+          type: sequelize.QueryTypes.INSERT,
           transaction,
+        }
+      );
+
+      // Reset existing mappings to pending if they are not currently in calling state
+      await CampaignCustomer.update(
+        { callStatus: 'pending', retryCount: 0 },
+        {
+          where: {
+            campaignId: campaign.id,
+            callStatus: { [Op.ne]: 'calling' },
+          },
+          transaction,
+        }
+      );
+
+      await transaction.commit();
+
+      // Immediately dispatch initial call placement jobs to call_queue
+      try {
+        const pendingList = await CampaignCustomer.findAll({
+          where: { campaignId: campaign.id, callStatus: 'pending' },
+          limit: Math.max(1, campaign.maxConcurrentCalls || 1),
+          order: [['createdAt', 'ASC']],
         });
 
-        if (memberCount === 0) {
-          await transaction.rollback();
-          return ResponseBuilder.error(res, 'Target customer list is empty. Cannot start campaign.', 400);
-        }
-
-        // Link customers atomically via MySQL INSERT ... SELECT to prevent OOM
-        await sequelize.query(
-          `INSERT IGNORE INTO campaign_customers (id, campaign_id, customer_id, call_status, retry_count, created_at, updated_at)
-           SELECT UUID(), :campaignId, customer_id, 'pending', 0, NOW(), NOW()
-           FROM customer_list_members
-           WHERE customer_list_id = :customerListId`,
-          {
-            replacements: {
-              campaignId: campaign.id,
-              customerListId: campaign.customerListId
-            },
-            type: sequelize.QueryTypes.INSERT,
-            transaction
-          }
-        );
-
-        await transaction.commit();
-
-        return ResponseBuilder.success(res, campaign, 'Campaign started immediately');
-      } else {
-        // Schedule start via Redis Sorted Set
-        campaign.status = 'scheduled';
-        await campaign.save({ transaction });
-
-        await QueueService.scheduleJob(
-          'START_CAMPAIGN',
-          {
+        for (const p of pendingList) {
+          await QueueService.enqueueJob('PLACE_CALL', {
             campaignId: campaign.id,
+            customerId: p.customerId,
             userId: req.user.id,
-          },
-          startTime.getTime()
-        );
-
-        await transaction.commit();
-
-        return ResponseBuilder.success(res, campaign, `Campaign scheduled to start at ${campaign.startTime}`);
+          }).catch(() => {});
+        }
+      } catch (enqueueErr) {
+        console.error('[Campaign Start] Error enqueueing initial call jobs:', enqueueErr.message);
       }
+
+      return ResponseBuilder.success(res, campaign, 'Campaign started successfully');
     } catch (err) {
       if (!transaction.finished) {
         await transaction.rollback();
