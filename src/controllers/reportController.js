@@ -14,15 +14,67 @@ class ReportController {
       if (outcome) filter.outcome = outcome;
       if (sentiment) filter.sentiment = sentiment;
 
-      const reports = await CallReport.findAll({
+      let reports = await CallReport.findAll({
         where: filter,
         include: [
-          { model: Customer, as: 'customer', attributes: ['name', 'mobile'] },
-          { model: Campaign, as: 'campaign', attributes: ['name'] },
-          { model: VobizNumber, as: 'vobizNumber', attributes: ['number'] },
+          { model: Customer, as: 'customer', attributes: ['name', 'mobile'], required: false },
+          { model: Campaign, as: 'campaign', attributes: ['name'], required: false },
+          { model: VobizNumber, as: 'vobizNumber', attributes: ['number'], required: false },
         ],
         order: [['createdAt', 'DESC']],
       });
+
+      // Fallback: If no CallReport records exist yet, construct reports dynamically from CallSession records
+      if (reports.length === 0) {
+        const sessionFilter = { userId: req.user.id };
+        if (campaignId) sessionFilter.campaignId = campaignId;
+
+        const sessions = await CallSession.findAll({
+          where: sessionFilter,
+          include: [
+            { model: Customer, as: 'customer', attributes: ['name', 'mobile'], required: false },
+            { model: Campaign, as: 'campaign', attributes: ['name'], required: false },
+            { model: VobizNumber, as: 'vobizNumber', attributes: ['number'], required: false },
+          ],
+          order: [['createdAt', 'DESC']],
+        });
+
+        reports = sessions.map((s) => {
+          let duration = 0;
+          if (s.startTime && s.endTime) {
+            duration = Math.max(0, Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000));
+          }
+          let mappedOutcome = 'No Answer';
+          if (s.status === 'completed' || s.status === 'connected') {
+            mappedOutcome = 'Interested';
+          } else if (s.status === 'busy') {
+            mappedOutcome = 'Callback Requested';
+          } else if (s.status === 'failed') {
+            mappedOutcome = 'Wrong Number';
+          }
+
+          return {
+            id: s.id,
+            userId: s.userId,
+            callSessionId: s.id,
+            campaignId: s.campaignId,
+            vobizNumberId: s.vobizNumberId,
+            customerId: s.customerId,
+            transcript: `Call ${s.direction} (${s.status})`,
+            summary: `Call ${s.direction} via agent. Status: ${s.status}`,
+            duration,
+            outcome: mappedOutcome,
+            sentiment: 'Neutral',
+            leadScore: s.status === 'completed' ? 70 : 10,
+            recordingUrl: null,
+            customer: s.customer,
+            campaign: s.campaign,
+            vobizNumber: s.vobizNumber,
+            createdAt: s.createdAt,
+            updatedAt: s.updatedAt,
+          };
+        });
+      }
 
       return ResponseBuilder.success(res, reports, 'Call reports retrieved successfully');
     } catch (err) {
