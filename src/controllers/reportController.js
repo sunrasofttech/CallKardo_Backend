@@ -44,7 +44,7 @@ class ReportController {
         const { processCallAnalysis } = require('../workers/aiWorker');
         const fs = require('fs');
         const path = require('path');
-        const uploadsDir = path.join(process.cwd(), 'uploads');
+        const uploadsDir = path.join(__dirname, '../../uploads');
 
         for (const s of missingSessions) {
           let duration = 0;

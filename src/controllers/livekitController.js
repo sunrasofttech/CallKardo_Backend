@@ -174,7 +174,7 @@ class LivekitController {
             const fs = require('fs');
             const path = require('path');
             const recFile = `recording-${session.id}.wav`;
-            const recPath = path.join(process.cwd(), 'uploads', recFile);
+            const recPath = path.join(__dirname, '../../uploads', recFile);
             const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFile}` : null;
 
             const completionEvent = {

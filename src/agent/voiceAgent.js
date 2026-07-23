@@ -171,6 +171,33 @@ const voiceAgent = defineAgent({
       session.say(greeting);
     }
 
+    const localTranscript = [];
+    session.on('user_input_transcribed', (ev) => {
+      if (ev.transcript && ev.transcript.trim()) {
+        console.log(`[LiveKit Agent Transcript] User: ${ev.transcript}`);
+        localTranscript.push(`Customer: ${ev.transcript.trim()}`);
+      }
+    });
+
+    session.on('conversation_item_added', (ev) => {
+      if (ev.item && ev.item.role !== 'system') {
+        const role = (ev.item.role === 'assistant' || ev.item.role === 'agent') ? 'Agent' : 'Customer';
+        let text = '';
+        if (typeof ev.item.content === 'string') {
+          text = ev.item.content;
+        } else if (Array.isArray(ev.item.content)) {
+          text = ev.item.content.map(c => typeof c === 'string' ? c : (c.text || c.textContent || '')).join(' ');
+        }
+        if (text.trim().length > 0) {
+          const line = `${role}: ${text.trim()}`;
+          if (localTranscript.length === 0 || localTranscript[localTranscript.length - 1] !== line) {
+            console.log(`[LiveKit Agent Transcript] Item: ${line}`);
+            localTranscript.push(line);
+          }
+        }
+      }
+    });
+
     // Listen to session close to compile and enqueue report
     session.on('close', async () => {
       console.log('[LiveKit Agent] Session closed. Handling final report compilation...');
@@ -197,13 +224,18 @@ const voiceAgent = defineAgent({
               }
               return `${roleName}: ${text.trim()}`;
             })
-            .filter(line => line.trim().length > 8);
+            .filter(line => line.trim().length > 4); // Relaxed minimum length filter
 
           if (extracted.length > 0) {
             formattedTranscript = extracted.join('\n');
           }
         } catch (transcriptErr) {
           console.warn('[LiveKit Agent] Failed to extract transcript from chatCtx:', transcriptErr.message);
+        }
+
+        if (formattedTranscript.length === 0 && localTranscript.length > 0) {
+          formattedTranscript = localTranscript.join('\n');
+          console.log('[LiveKit Agent] Fell back to localTranscript.');
         }
 
         console.log(`[LiveKit Agent] Compiled transcript (${formattedTranscript.length} chars):`);
@@ -220,7 +252,7 @@ const voiceAgent = defineAgent({
           try {
             const fs = require('fs');
             const path = require('path');
-            const uploadsDir = path.join(process.cwd(), 'uploads');
+            const uploadsDir = path.join(__dirname, '../../uploads');
             if (!fs.existsSync(uploadsDir)) {
               fs.mkdirSync(uploadsDir, { recursive: true });
             }
@@ -325,7 +357,7 @@ const voiceAgent = defineAgent({
 
           // Immediate analysis fallback to guarantee CallReport creation
           const { processCallAnalysis } = require('../workers/aiWorker');
-          processCallAnalysis(completionEvent).catch(aiErr =>
+          await processCallAnalysis(completionEvent).catch(aiErr =>
             console.error('[LiveKit Agent] Immediate AI analysis error:', aiErr.message)
           );
         } else {
