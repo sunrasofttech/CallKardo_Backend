@@ -207,8 +207,12 @@ const voiceAgent = defineAgent({
             recordingUrl: null,
           };
 
-          await QueueService.enqueueReport(completionEvent);
+          await QueueService.enqueueReport(completionEvent).catch(() => {});
           console.log(`[LiveKit Agent] Successfully enqueued report to Redis for session: ${callSessionId}`);
+
+          // Immediate analysis fallback to guarantee CallReport creation
+          const { processCallAnalysis } = require('../workers/aiWorker');
+          processCallAnalysis(completionEvent).catch(aiErr => console.error('[LiveKit Agent] Immediate AI analysis error:', aiErr.message));
         }
       } catch (err) {
         console.error('[LiveKit Agent] Error compiling/saving final call report:', err.message);

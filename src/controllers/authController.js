@@ -18,6 +18,7 @@ const {
   setupBusinessSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  resetMerchantPasswordSchema,
   verifyOtpSchema,
 } = require('../validators/auth');
 
@@ -441,6 +442,32 @@ class AuthController {
       await account.save();
 
       return ResponseBuilder.success(res, null, 'Password reset successfully. You can now login.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Merchant Direct Password Reset (Authenticated, no old password verification required)
+   */
+  async resetMerchantPassword(req, res, next) {
+    try {
+      const { error, value } = resetMerchantPasswordSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const newPass = value.password || value.newPassword;
+
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(newPass, salt);
+
+      const merchant = req.user;
+      merchant.passwordHash = passwordHash;
+      merchant.refreshToken = null; // Revoke refresh tokens on password reset
+      await merchant.save();
+
+      return ResponseBuilder.success(res, null, 'Merchant password updated successfully');
     } catch (err) {
       next(err);
     }

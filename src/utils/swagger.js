@@ -79,6 +79,31 @@ const swaggerSpec = {
         },
       },
     },
+    '/auth/merchant/reset-password': {
+      post: {
+        summary: 'Direct Password Reset for Authenticated Merchant (no old password required)',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  password: { type: 'string', minLength: 6 },
+                  confirmPassword: { type: 'string', minLength: 6 },
+                },
+                required: ['password', 'confirmPassword'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Merchant password updated successfully' },
+          400: { description: 'Validation error or password mismatch' },
+          401: { description: 'Unauthorized token missing or invalid' },
+        },
+      },
+    },
     '/campaigns': {
       get: {
         summary: 'Get all merchant campaigns',

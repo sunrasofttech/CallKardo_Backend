@@ -59,6 +59,31 @@ const verifyOtpSchema = Joi.object({
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
 });
 
+const resetMerchantPasswordSchema = Joi.object({
+  password: Joi.string().min(6).optional().messages({
+    'string.min': 'Password must be at least 6 characters long',
+  }),
+  newPassword: Joi.string().min(6).optional().messages({
+    'string.min': 'Password must be at least 6 characters long',
+  }),
+  confirmPassword: Joi.string().min(6).optional(),
+  confirm_password: Joi.string().min(6).optional(),
+}).custom((value, helpers) => {
+  const newPass = value.password || value.newPassword;
+  const confirmPass = value.confirmPassword || value.confirm_password;
+
+  if (!newPass) {
+    return helpers.message('Password is required and must be at least 6 characters long');
+  }
+  if (!confirmPass) {
+    return helpers.message('Confirm password is required');
+  }
+  if (newPass !== confirmPass) {
+    return helpers.message('Password and confirm password do not match');
+  }
+  return value;
+});
+
 module.exports = {
   merchantRegisterSchema,
   adminRegisterSchema,
@@ -66,5 +91,7 @@ module.exports = {
   setupBusinessSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  resetMerchantPasswordSchema,
   verifyOtpSchema,
 };
+

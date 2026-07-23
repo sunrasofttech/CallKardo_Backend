@@ -28,12 +28,12 @@ CallReport.init(
     },
     vobizNumberId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'vobiz_number_id',
     },
     customerId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'customer_id',
     },
     transcript: {

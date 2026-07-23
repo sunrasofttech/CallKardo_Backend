@@ -34,6 +34,11 @@ async function processCallAnalysis(event) {
   const { callSessionId, userId, campaignId, vobizNumberId, customerId, transcript, duration, recordingUrl } = event;
 
   try {
+    if (!callSessionId) {
+      console.warn('[AI Worker] Missing callSessionId on completion event. Cannot save CallReport.');
+      return;
+    }
+
     // 1. Idempotency Check: check if CallReport already exists for this session
     const existingReport = await CallReport.findOne({ where: { callSessionId } });
     if (existingReport) {
@@ -41,25 +46,33 @@ async function processCallAnalysis(event) {
       return;
     }
 
-    // Auto-resolve customerId if missing on event (common for raw inbound calls)
+    // Auto-resolve missing fields from CallSession
+    let finalUserId = userId;
+    let finalVobizNumberId = vobizNumberId;
     let finalCustomerId = customerId;
-    if (!finalCustomerId && callSessionId) {
-      const { CallSession, Customer } = require('../models');
-      const session = await CallSession.findByPk(callSessionId);
-      if (session && session.customerId) {
-        finalCustomerId = session.customerId;
-      } else if (session && userId) {
+    let finalCampaignId = campaignId;
+
+    const { CallSession, Customer } = require('../models');
+    const session = await CallSession.findByPk(callSessionId);
+    if (session) {
+      if (!finalUserId) finalUserId = session.userId;
+      if (!finalVobizNumberId) finalVobizNumberId = session.vobizNumberId;
+      if (!finalCustomerId) finalCustomerId = session.customerId;
+      if (!finalCampaignId) finalCampaignId = session.campaignId;
+
+      // Auto-resolve customer if still missing
+      if (!finalCustomerId && finalUserId) {
         const callerNum = session.fromNumber || 'Inbound Caller';
-        let cust = await Customer.findOne({ where: { userId, mobile: callerNum } });
+        let cust = await Customer.findOne({ where: { userId: finalUserId, mobile: callerNum } });
         if (!cust) {
-          cust = await Customer.create({ userId, mobile: callerNum, name: 'Inbound Caller' });
+          cust = await Customer.create({ userId: finalUserId, mobile: callerNum, name: 'Inbound Caller' });
         }
         finalCustomerId = cust.id;
       }
     }
 
-    if (!finalCustomerId) {
-      console.warn(`[AI Worker] Skipping CallReport creation for session ${callSessionId}: customerId could not be resolved.`);
+    if (!finalUserId) {
+      console.warn(`[AI Worker] Skipping CallReport creation for session ${callSessionId}: userId could not be resolved.`);
       return;
     }
 
@@ -71,13 +84,13 @@ async function processCallAnalysis(event) {
     const [report, created] = await CallReport.findOrCreate({
       where: { callSessionId },
       defaults: {
-        userId,
-        campaignId,
-        vobizNumberId,
+        userId: finalUserId,
+        campaignId: finalCampaignId,
+        vobizNumberId: finalVobizNumberId,
         customerId: finalCustomerId,
-        transcript,
+        transcript: transcript || '',
         summary: analysis.summary,
-        duration,
+        duration: duration || 0,
         outcome: analysis.outcome,
         sentiment: analysis.sentiment,
         leadScore: analysis.leadScore,
@@ -91,15 +104,17 @@ async function processCallAnalysis(event) {
     }
 
     // 4. Deduct call credit from merchant's subscription
-    await SubscriptionService.recordCallUsage(userId);
+    if (finalUserId) {
+      await SubscriptionService.recordCallUsage(finalUserId);
+    }
 
     // 5. Update campaign customer status
-    if (campaignId) {
+    if (finalCampaignId && finalCustomerId) {
       const isFailed = (analysis.outcome === 'No Answer' || analysis.outcome === 'Wrong Number');
       const callStatus = isFailed ? 'failed' : 'completed';
 
       const mapping = await CampaignCustomer.findOne({
-        where: { campaignId, customerId }
+        where: { campaignId: finalCampaignId, customerId: finalCustomerId }
       });
 
       if (mapping) {
@@ -112,18 +127,18 @@ async function processCallAnalysis(event) {
 
       // Check if all campaign customers have been processed
       const remainingPending = await CampaignCustomer.count({
-        where: { campaignId, callStatus: 'pending' },
+        where: { campaignId: finalCampaignId, callStatus: 'pending' },
       });
 
-      const activeCalls = await QueueService.getActiveCalls(campaignId);
+      const activeCalls = await QueueService.getActiveCalls(finalCampaignId);
 
       if (remainingPending === 0 && activeCalls === 0) {
         // Mark campaign as completed
-        const campaign = await Campaign.findByPk(campaignId);
+        const campaign = await Campaign.findByPk(finalCampaignId);
         if (campaign && campaign.status === 'running') {
           campaign.status = 'completed';
           await campaign.save();
-          console.log(`Campaign ${campaign.name} (${campaignId}) has no pending calls remaining. Marked Completed.`);
+          console.log(`Campaign ${campaign.name} (${finalCampaignId}) has no pending calls remaining. Marked Completed.`);
         }
       }
     }

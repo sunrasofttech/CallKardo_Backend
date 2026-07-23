@@ -462,129 +462,132 @@ class VobizSocketHandler {
       }
 
       const freshSession = await CallSession.findByPk(session.id);
-      if (freshSession && freshSession.status !== 'completed' && freshSession.status !== 'failed') {
+      if (!freshSession) return;
+
+      if (freshSession.status !== 'completed' && freshSession.status !== 'failed') {
         freshSession.status = 'completed';
         freshSession.endTime = new Date();
         await freshSession.save();
-
-        const duration = Math.round(
-          (freshSession.endTime.getTime() - (freshSession.startTime ? freshSession.startTime.getTime() : freshSession.createdAt.getTime())) / 1000
-        );
-        console.log(`[VoBiz Call Ended] Call Session ${session.id} (${freshSession.direction}) finished. Duration: ${duration} seconds.`);
-
-        await CallLog.create({
-          callSessionId: session.id,
-          logLevel: 'info',
-          message: `Call session finished (${freshSession.direction}). WebSocket closed.`,
-        });
-
-        // Decrement concurrency tracker via ZSET deregistration
-        if (session.campaignId) {
-          await QueueService.deregisterActiveCall(session.campaignId, session.id);
-        }
-
-        // Standardize transcript as a formatted text
-        const formattedTranscript = (transcriptChunks || [])
-          .map((c) => `${c.role === 'customer' ? 'Customer' : 'Agent'}: ${c.text}`)
-          .join('\n');
-
-        // Compile conversation recording
-        let fileName = null;
-        if ((ws.customerChunks && ws.customerChunks.length > 0) || (ws.agentChunks && ws.agentChunks.length > 0)) {
-          try {
-            const fs = require('fs');
-            const path = require('path');
-            const uploadsDir = path.join(__dirname, '../../uploads');
-            if (!fs.existsSync(uploadsDir)) {
-              fs.mkdirSync(uploadsDir, { recursive: true });
-            }
-            fileName = `recording-${session.id}.wav`;
-            const filePath = path.join(uploadsDir, fileName);
-            
-            // Calculate total duration in bytes (16kHz, 16-bit, mono PCM = 32000 bytes/sec)
-            const totalDurationBytes = Math.max(1, (Date.now() - (ws.callStartTime || Date.now())) * 32);
-            
-            const customerTimeline = Buffer.alloc(totalDurationBytes);
-            const agentTimeline = Buffer.alloc(totalDurationBytes);
-            
-            // Write customer chunks to their offsets
-            if (ws.customerChunks) {
-              for (const chunk of ws.customerChunks) {
-                if (chunk.offset < totalDurationBytes) {
-                  const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
-                  chunk.buffer.copy(customerTimeline, chunk.offset, 0, copyLen);
-                }
-              }
-            }
-            // Write agent chunks to their offsets
-            if (ws.agentChunks) {
-              for (const chunk of ws.agentChunks) {
-                if (chunk.offset < totalDurationBytes) {
-                  const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
-                  chunk.buffer.copy(agentTimeline, chunk.offset, 0, copyLen);
-                }
-              }
-            }
-            
-            // Mix customer and agent timelines sample-by-sample
-            const mixedBuffer = Buffer.alloc(totalDurationBytes);
-            const sampleCount = Math.floor(totalDurationBytes / 2);
-            for (let i = 0; i < sampleCount; i++) {
-              const s1 = customerTimeline.readInt16LE(i * 2);
-              const s2 = agentTimeline.readInt16LE(i * 2);
-              // Mix and clamp to signed 16-bit integer range
-              const mixed = Math.max(-32768, Math.min(32767, s1 + s2));
-              mixedBuffer.writeInt16LE(mixed, i * 2);
-            }
-            
-            // Generate standard 16kHz, 16-bit, mono WAV header
-            const header = Buffer.alloc(44);
-            header.write('RIFF', 0);
-            header.writeUInt32LE(36 + mixedBuffer.length, 4);
-            header.write('WAVE', 8);
-            header.write('fmt ', 12);
-            header.writeUInt32LE(16, 16);
-            header.writeUInt16LE(1, 20); // PCM
-            header.writeUInt16LE(1, 22); // 1 Channel (Mono)
-            header.writeUInt32LE(16000, 24); // 16kHz sample rate
-            header.writeUInt32LE((16000 * 16 * 1) / 8, 28); // byte rate
-            header.writeUInt16LE((16 * 1) / 8, 32); // block align
-            header.writeUInt16LE(16, 34); // bits per sample
-            header.write('data', 36);
-            header.writeUInt32LE(mixedBuffer.length, 40);
-            
-            const wavBuffer = Buffer.concat([header, mixedBuffer]);
-            fs.writeFileSync(filePath, wavBuffer);
-            console.log(`Saved mixed call recording to ${filePath}`);
-          } catch (recordErr) {
-            console.error('Failed to save call recording:', recordErr);
-          }
-        }
-
-        // Reliable report queuing
-        const completionEvent = {
-          callSessionId: session.id,
-          userId: session.userId,
-          campaignId: session.campaignId || null,
-          vobizNumberId: session.vobizNumberId,
-          customerId: session.customerId,
-          transcript: formattedTranscript,
-          duration: Math.max(0, duration),
-          recordingUrl: fileName ? `/uploads/${fileName}` : null,
-        };
-
-        // Enqueue report for worker processing (Reliable Queue)
-        await QueueService.enqueueReport(completionEvent);
-
-        // Immediate analysis fallback
-        const { processCallAnalysis } = require('../workers/aiWorker');
-        processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
-
-        // Clear memory references to prevent socket memory leaks
-        ws.customerChunks = null;
-        ws.agentChunks = null;
-        ws.transcriptChunks = null;
       }
+
+      const endTime = freshSession.endTime || new Date();
+      const startTime = freshSession.startTime || freshSession.createdAt;
+      const duration = Math.max(0, Math.round((endTime.getTime() - startTime.getTime()) / 1000));
+
+      console.log(`[VoBiz Call Ended] Call Session ${session.id} (${freshSession.direction}) finished. Duration: ${duration} seconds.`);
+
+      await CallLog.create({
+        callSessionId: session.id,
+        logLevel: 'info',
+        message: `Call session finished (${freshSession.direction}). WebSocket closed.`,
+      }).catch(() => {});
+
+      // Decrement concurrency tracker via ZSET deregistration
+      if (freshSession.campaignId) {
+        await QueueService.deregisterActiveCall(freshSession.campaignId, session.id).catch(() => {});
+      }
+
+      // Standardize transcript as a formatted text
+      const formattedTranscript = (transcriptChunks || [])
+        .map((c) => `${c.role === 'customer' ? 'Customer' : 'Agent'}: ${c.text}`)
+        .join('\n');
+
+      // Compile conversation recording
+      let fileName = null;
+      if ((ws.customerChunks && ws.customerChunks.length > 0) || (ws.agentChunks && ws.agentChunks.length > 0)) {
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const uploadsDir = path.join(__dirname, '../../uploads');
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          fileName = `recording-${session.id}.wav`;
+          const filePath = path.join(uploadsDir, fileName);
+          
+          // Calculate total duration in bytes (16kHz, 16-bit, mono PCM = 32000 bytes/sec)
+          const totalDurationBytes = Math.max(1, (Date.now() - (ws.callStartTime || Date.now())) * 32);
+          
+          const customerTimeline = Buffer.alloc(totalDurationBytes);
+          const agentTimeline = Buffer.alloc(totalDurationBytes);
+          
+          // Write customer chunks to their offsets
+          if (ws.customerChunks) {
+            for (const chunk of ws.customerChunks) {
+              if (chunk.offset < totalDurationBytes) {
+                const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
+                chunk.buffer.copy(customerTimeline, chunk.offset, 0, copyLen);
+              }
+            }
+          }
+          // Write agent chunks to their offsets
+          if (ws.agentChunks) {
+            for (const chunk of ws.agentChunks) {
+              if (chunk.offset < totalDurationBytes) {
+                const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
+                chunk.buffer.copy(agentTimeline, chunk.offset, 0, copyLen);
+              }
+            }
+          }
+          
+          // Mix customer and agent timelines sample-by-sample
+          const mixedBuffer = Buffer.alloc(totalDurationBytes);
+          const sampleCount = Math.floor(totalDurationBytes / 2);
+          for (let i = 0; i < sampleCount; i++) {
+            const s1 = customerTimeline.readInt16LE(i * 2);
+            const s2 = agentTimeline.readInt16LE(i * 2);
+            // Mix and clamp to signed 16-bit integer range
+            const mixed = Math.max(-32768, Math.min(32767, s1 + s2));
+            mixedBuffer.writeInt16LE(mixed, i * 2);
+          }
+          
+          // Generate standard 16kHz, 16-bit, mono WAV header
+          const header = Buffer.alloc(44);
+          header.write('RIFF', 0);
+          header.writeUInt32LE(36 + mixedBuffer.length, 4);
+          header.write('WAVE', 8);
+          header.write('fmt ', 12);
+          header.writeUInt32LE(16, 16);
+          header.writeUInt16LE(1, 20); // PCM
+          header.writeUInt16LE(1, 22); // 1 Channel (Mono)
+          header.writeUInt32LE(16000, 24); // 16kHz sample rate
+          header.writeUInt32LE((16000 * 16 * 1) / 8, 28); // byte rate
+          header.writeUInt16LE((16 * 1) / 8, 32); // block align
+          header.writeUInt16LE(16, 34); // bits per sample
+          header.write('data', 36);
+          header.writeUInt32LE(mixedBuffer.length, 40);
+          
+          const wavBuffer = Buffer.concat([header, mixedBuffer]);
+          fs.writeFileSync(filePath, wavBuffer);
+          console.log(`Saved mixed call recording to ${filePath}`);
+        } catch (recordErr) {
+          console.error('Failed to save call recording:', recordErr);
+        }
+      }
+
+      // Reliable report queuing & immediate creation
+      const completionEvent = {
+        callSessionId: session.id,
+        userId: freshSession.userId || session.userId,
+        campaignId: freshSession.campaignId || session.campaignId || null,
+        vobizNumberId: freshSession.vobizNumberId || session.vobizNumberId,
+        customerId: freshSession.customerId || session.customerId,
+        transcript: formattedTranscript,
+        duration: Math.max(0, duration),
+        recordingUrl: fileName ? `/uploads/${fileName}` : null,
+      };
+
+      // Enqueue report for worker processing (Reliable Queue)
+      await QueueService.enqueueReport(completionEvent).catch(() => {});
+
+      // Immediate analysis fallback to guarantee CallReport creation
+      const { processCallAnalysis } = require('../workers/aiWorker');
+      processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
+
+      // Clear memory references to prevent socket memory leaks
+      ws.customerChunks = null;
+      ws.agentChunks = null;
+      ws.transcriptChunks = null;
     } catch (cleanError) {
       console.error('Error during call session cleanup:', cleanError);
     }

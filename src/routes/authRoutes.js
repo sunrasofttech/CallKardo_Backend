@@ -28,7 +28,11 @@ router.post('/reset-password', AuthController.resetPassword);
 const { authenticate, isMerchant } = require('../middleware/auth');
 router.post('/setup-business', authenticate, isMerchant, AuthController.setupBusiness);
 
+// Merchant Direct Password Reset (Authenticated, no old password verification)
+router.post('/merchant/reset-password', authenticate, isMerchant, AuthController.resetMerchantPassword);
+
 // Get User Profile
 router.get('/me', authenticate, AuthController.getMe);
 
 module.exports = router;
+

@@ -240,6 +240,22 @@ async function processPlaceCall(payload) {
 
       // Deregister active call
       await QueueService.deregisterActiveCall(campaignId, session.id);
+
+      // Process report for failed call & update campaign completion status
+      const completionEvent = {
+        callSessionId: session.id,
+        userId,
+        campaignId,
+        vobizNumberId: session.vobizNumberId,
+        customerId,
+        transcript: '',
+        duration: 0,
+        recordingUrl: null,
+      };
+      const { processCallAnalysis } = require('./aiWorker');
+      processCallAnalysis(completionEvent).catch((aiErr) =>
+        console.error('[callWorker] Error creating report for failed call:', aiErr.message)
+      );
     } else {
       console.log(`[Campaign Call Dispatched] Outbound call successfully placed. Call ID: ${dialResponse.callId}`);
       // Store the VoBiz call UUID on the session so we can hang it up later via REST API
