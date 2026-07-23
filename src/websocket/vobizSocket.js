@@ -93,6 +93,10 @@ class VobizSocketHandler {
 
     // Default media format (updated when the 'start' frame is received)
     ws.mediaFormat = { encoding: 'audio/x-mulaw', sampleRate: 8000 };
+    ws.customerChunks = [];
+    ws.agentChunks = [];
+    ws.transcriptChunks = [];
+    ws.callStartTime = Date.now();
 
     // Synchronously buffer early messages to prevent race conditions
     const earlyBuffer = [];
@@ -197,10 +201,10 @@ class VobizSocketHandler {
       }
 
       // Keep transcript and audio for CallLog/QueueService when call ends
-      const transcriptChunks = [];
-      const customerChunks = [];
-      const agentChunks = [];
-      const callStartTime = Date.now();
+      const transcriptChunks = ws.transcriptChunks;
+      const customerChunks = ws.customerChunks;
+      const agentChunks = ws.agentChunks;
+      const callStartTime = ws.callStartTime;
 
       // 2. Instantiate generic Voice Pipeline
       const pipeline = new VoicePipeline({
@@ -509,7 +513,7 @@ class VobizSocketHandler {
         try {
           const fs = require('fs');
           const path = require('path');
-          const uploadsDir = path.join(__dirname, '../../uploads');
+          const uploadsDir = path.join(process.cwd(), 'uploads');
           if (!fs.existsSync(uploadsDir)) {
             fs.mkdirSync(uploadsDir, { recursive: true });
           }

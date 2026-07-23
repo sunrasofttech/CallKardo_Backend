@@ -93,6 +93,9 @@ class SarvamSpeechStream extends stt.SpeechStream {
 
         // Convert Int16Array AudioFrame to Buffer
         const pcmBuffer = Buffer.from(chunk.data.buffer, chunk.data.byteOffset, chunk.data.byteLength);
+        if (this.sttInstance.onAudioChunk) {
+          try { this.sttInstance.onAudioChunk(pcmBuffer); } catch (_) {}
+        }
         if (ws.readyState === WebSocket.OPEN) {
           const payload = JSON.stringify({
             audio: {
@@ -122,6 +125,7 @@ class SarvamSTT extends stt.STT {
     });
     this.label = 'sarvam_stt';
     this.language = options.language || 'en-IN';
+    this.onAudioChunk = options.onAudioChunk || null;
   }
 
   get model() {
@@ -190,6 +194,9 @@ class SarvamSynthesizeStream extends tts.SynthesizeStream {
         const parsed = JSON.parse(data.toString());
         if (parsed.type === 'audio' && parsed.data) {
           const pcmBuffer = Buffer.from(parsed.data, 'base64');
+          if (self.ttsInstance.onAudioChunk) {
+            try { self.ttsInstance.onAudioChunk(pcmBuffer); } catch (_) {}
+          }
           const int16Array = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.byteLength / 2);
           const frame = new AudioFrame(int16Array, 16000, 1, int16Array.length);
 
@@ -327,6 +334,7 @@ class SarvamTTS extends tts.TTS {
     this.voiceId = options.voiceId || 'amrit';
     this.pace = options.pace || 1.10;
     this.temperature = options.temperature || 0.75;
+    this.onAudioChunk = options.onAudioChunk || null;
   }
 
   get model() {

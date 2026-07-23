@@ -98,9 +98,17 @@ const voiceAgent = defineAgent({
       console.error('[LiveKit Agent] CallSession database lookup failed:', err.message);
     }
 
+    const customerChunks = [];
+    const agentChunks = [];
+    const callStartTime = Date.now();
+
     // Configure STT Sarvam
     const stt = new SarvamSTT({
       language: activeAgent?.language || 'en-IN',
+      onAudioChunk: (pcmBuffer) => {
+        const offset = (Date.now() - callStartTime) * 32;
+        customerChunks.push({ offset, buffer: pcmBuffer });
+      },
     });
 
     // Configure LLM dynamically
@@ -131,6 +139,10 @@ const voiceAgent = defineAgent({
       voiceId: voiceId,
       pace: activeAgent?.pace || 1.10,
       temperature: 0.75,
+      onAudioChunk: (pcmBuffer) => {
+        const offset = (Date.now() - callStartTime) * 32;
+        agentChunks.push({ offset, buffer: pcmBuffer });
+      },
     });
 
     // Create voice agent session with adaptive VAD & interruption settings
@@ -202,6 +214,70 @@ const voiceAgent = defineAgent({
         // Resolve session ID (prefer DB session, then from room name)
         const resolvedSessionId = dbSession?.id || callSessionId;
 
+        // Compile audio recording if chunks present
+        let recordingUrl = null;
+        if (customerChunks.length > 0 || agentChunks.length > 0) {
+          try {
+            const fs = require('fs');
+            const path = require('path');
+            const uploadsDir = path.join(process.cwd(), 'uploads');
+            if (!fs.existsSync(uploadsDir)) {
+              fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            const fileName = `recording-${resolvedSessionId}.wav`;
+            const filePath = path.join(uploadsDir, fileName);
+
+            const totalDurationBytes = Math.max(32000, (Date.now() - callStartTime) * 32);
+            const customerTimeline = Buffer.alloc(totalDurationBytes);
+            const agentTimeline = Buffer.alloc(totalDurationBytes);
+
+            for (const chunk of customerChunks) {
+              if (chunk && chunk.buffer && chunk.offset >= 0 && chunk.offset < totalDurationBytes) {
+                const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
+                chunk.buffer.copy(customerTimeline, chunk.offset, 0, copyLen);
+              }
+            }
+
+            for (const chunk of agentChunks) {
+              if (chunk && chunk.buffer && chunk.offset >= 0 && chunk.offset < totalDurationBytes) {
+                const copyLen = Math.min(chunk.buffer.length, totalDurationBytes - chunk.offset);
+                chunk.buffer.copy(agentTimeline, chunk.offset, 0, copyLen);
+              }
+            }
+
+            const mixedBuffer = Buffer.alloc(totalDurationBytes);
+            const sampleCount = Math.floor(totalDurationBytes / 2);
+            for (let i = 0; i < sampleCount; i++) {
+              const s1 = customerTimeline.readInt16LE(i * 2);
+              const s2 = agentTimeline.readInt16LE(i * 2);
+              const mixed = Math.max(-32768, Math.min(32767, s1 + s2));
+              mixedBuffer.writeInt16LE(mixed, i * 2);
+            }
+
+            const header = Buffer.alloc(44);
+            header.write('RIFF', 0);
+            header.writeUInt32LE(36 + mixedBuffer.length, 4);
+            header.write('WAVE', 8);
+            header.write('fmt ', 12);
+            header.writeUInt32LE(16, 16);
+            header.writeUInt16LE(1, 20); // PCM
+            header.writeUInt16LE(1, 22); // Mono
+            header.writeUInt32LE(16000, 24); // 16kHz
+            header.writeUInt32LE((16000 * 16 * 1) / 8, 28);
+            header.writeUInt16LE((16 * 1) / 8, 32);
+            header.writeUInt16LE(16, 34);
+            header.write('data', 36);
+            header.writeUInt32LE(mixedBuffer.length, 40);
+
+            const wavBuffer = Buffer.concat([header, mixedBuffer]);
+            fs.writeFileSync(filePath, wavBuffer);
+            recordingUrl = `/uploads/${fileName}`;
+            console.log(`[LiveKit Agent] Saved call recording file to disk: ${filePath} (${wavBuffer.length} bytes)`);
+          } catch (recErr) {
+            console.error('[LiveKit Agent] Failed to save recording to disk:', recErr.message);
+          }
+        }
+
         // Update database CallSession
         if (resolvedSessionId) {
           try {
@@ -231,7 +307,7 @@ const voiceAgent = defineAgent({
             customerId,
             transcript: formattedTranscript,
             duration,
-            recordingUrl: null,
+            recordingUrl,
           };
 
           console.log(`[LiveKit Agent] Enqueuing report for session ${resolvedSessionId}:`, {
