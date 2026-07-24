@@ -202,19 +202,31 @@ async function processCallAnalysis(event) {
 
     // 8. Update campaign customer status (only for outbound campaign calls)
     if (finalCampaignId && finalCustomerId) {
-      const isFailed = (analysis.outcome === 'No Answer' || analysis.outcome === 'Wrong Number');
-      const callStatus = isFailed ? 'failed' : 'completed';
+      // Use session status as the primary indicator - only retry if the call never connected
+      const sessionNeverConnected = (session.status === 'failed' && !session.startTime);
+      const isNoAnswer = (analysis.outcome === 'No Answer' || analysis.outcome === 'Wrong Number');
+
+      // A call is a true failure/retry-eligible only if it never connected (not picked up)
+      // If it connected but had a poor outcome, it's still "completed" from a campaign perspective
+      const callStatus = (sessionNeverConnected || (isNoAnswer && !session.startTime)) ? 'failed' : 'completed';
 
       const mapping = await CampaignCustomer.findOne({
         where: { campaignId: finalCampaignId, customerId: finalCustomerId },
       });
 
       if (mapping) {
-        mapping.callStatus = callStatus;
-        if (isFailed) {
-          mapping.retryCount = (mapping.retryCount || 0) + 1;
+        // Only update if current status is still 'calling' or 'pending' (avoid double-processing)
+        if (mapping.callStatus === 'calling' || mapping.callStatus === 'pending') {
+          mapping.callStatus = callStatus;
+          // Only increment retryCount if the call truly never connected
+          if (callStatus === 'failed' && sessionNeverConnected) {
+            mapping.retryCount = (mapping.retryCount || 0) + 1;
+          }
+          await mapping.save();
+          console.log(`[AI Worker] CampaignCustomer updated: campaign=${finalCampaignId} customer=${finalCustomerId} → ${callStatus} (sessionStatus=${session.status}, startTime=${session.startTime ? 'yes' : 'no'})`);
+        } else {
+          console.log(`[AI Worker] CampaignCustomer already in final state: ${mapping.callStatus} — skipping update.`);
         }
-        await mapping.save();
       }
 
       // Check if all campaign customers have been processed
