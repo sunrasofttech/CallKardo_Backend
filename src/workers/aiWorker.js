@@ -210,20 +210,30 @@ async function processCallAnalysis(event) {
       // If it connected but had a poor outcome, it's still "completed" from a campaign perspective
       const callStatus = (sessionNeverConnected || (isNoAnswer && !session.startTime)) ? 'failed' : 'completed';
 
+      const campaign = await Campaign.findByPk(finalCampaignId);
+      const maxRetries = campaign?.maxRetries || 3;
+
       const mapping = await CampaignCustomer.findOne({
         where: { campaignId: finalCampaignId, customerId: finalCustomerId },
       });
 
       if (mapping) {
-        // Only update if current status is still 'calling' or 'pending' (avoid double-processing)
         if (mapping.callStatus === 'calling' || mapping.callStatus === 'pending') {
-          mapping.callStatus = callStatus;
-          // Only increment retryCount if the call truly never connected
-          if (callStatus === 'failed' && sessionNeverConnected) {
-            mapping.retryCount = (mapping.retryCount || 0) + 1;
+          if (sessionNeverConnected) {
+            const newRetry = (mapping.retryCount || 0) + 1;
+            mapping.retryCount = newRetry;
+            if (newRetry < maxRetries) {
+              mapping.callStatus = 'pending'; // Retry eligible
+              console.log(`[AI Worker] Call failed to connect. Resetting customer ${finalCustomerId} to 'pending' (retry ${newRetry}/${maxRetries})`);
+            } else {
+              mapping.callStatus = 'failed'; // Max retries reached
+              console.log(`[AI Worker] Call failed to connect. Max retries reached for customer ${finalCustomerId} (${newRetry}/${maxRetries}). Marked 'failed'.`);
+            }
+          } else {
+            mapping.callStatus = 'completed';
+            console.log(`[AI Worker] Connected call completed. CampaignCustomer updated: campaign=${finalCampaignId} customer=${finalCustomerId} → completed`);
           }
           await mapping.save();
-          console.log(`[AI Worker] CampaignCustomer updated: campaign=${finalCampaignId} customer=${finalCustomerId} → ${callStatus} (sessionStatus=${session.status}, startTime=${session.startTime ? 'yes' : 'no'})`);
         } else {
           console.log(`[AI Worker] CampaignCustomer already in final state: ${mapping.callStatus} — skipping update.`);
         }

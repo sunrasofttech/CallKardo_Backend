@@ -94,11 +94,20 @@ async function dispatchRunningCampaigns() {
             await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => { });
           }
 
-          // Reset customer to 'pending' so the scheduler can retry
-          stuckCC.callStatus = 'pending';
-          stuckCC.retryCount = (stuckCC.retryCount || 0) + 1;
-          await stuckCC.save();
-          console.log(`[Scheduler] Reset stuck customer ${stuckCC.customerId} to 'pending' (retry: ${stuckCC.retryCount})`);
+          const newRetryCount = (stuckCC.retryCount || 0) + 1;
+          const maxRetries = campaign.maxRetries || 3;
+
+          if (newRetryCount >= maxRetries) {
+            stuckCC.callStatus = 'failed';
+            stuckCC.retryCount = newRetryCount;
+            await stuckCC.save();
+            console.log(`[Scheduler] Customer ${stuckCC.customerId} reached max retries (${newRetryCount}/${maxRetries}). Marked 'failed'.`);
+          } else {
+            stuckCC.callStatus = 'pending';
+            stuckCC.retryCount = newRetryCount;
+            await stuckCC.save();
+            console.log(`[Scheduler] Reset stuck customer ${stuckCC.customerId} to 'pending' (retry ${newRetryCount}/${maxRetries})`);
+          }
         }
       } catch (recoveryErr) {
         console.error(`[Scheduler] Error recovering stuck calls for campaign ${campaign.id}:`, recoveryErr.message);

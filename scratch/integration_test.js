@@ -177,11 +177,39 @@ async function runTests() {
     });
 
     await cc.reload();
-    assert(cc.callStatus === 'failed', `CampaignCustomer.callStatus = 'failed' for never-connected call`, `got: ${cc.callStatus}`);
+    assert(cc.callStatus === 'pending', `CampaignCustomer.callStatus = 'pending' on retry 1 (< maxRetries 3)`, `got: ${cc.callStatus}`);
     assert(cc.retryCount === 1, `retryCount incremented to 1 for never-connected call`, `got: ${cc.retryCount}`);
 
+    // Now simulate reaching max retries (retryCount = 3)
+    cc.retryCount = 2; // Next failure will make it 3
+    await cc.save();
+
+    const session2 = await mkSession({
+      campaignId: campaign.id,
+      customerId: cust.id,
+      status: 'failed',
+      startTime: null,
+      endTime: new Date(),
+      wsSessionToken: `test-cc-fail-max-${Date.now()}`,
+    });
+
+    await processCallAnalysis({
+      callSessionId: session2.id,
+      userId,
+      campaignId: campaign.id,
+      customerId: cust.id,
+      transcript: '',
+      duration: 0,
+      recordingUrl: null,
+    });
+
+    await cc.reload();
+    assert(cc.callStatus === 'failed', `CampaignCustomer.callStatus = 'failed' when max retries reached (retry 3/3)`, `got: ${cc.callStatus}`);
+
     await CallReport.destroy({ where: { callSessionId: session.id } });
+    await CallReport.destroy({ where: { callSessionId: session2.id } });
     await session.destroy();
+    await session2.destroy();
     await cc.destroy();
     await campaign.destroy();
     await cust.destroy();

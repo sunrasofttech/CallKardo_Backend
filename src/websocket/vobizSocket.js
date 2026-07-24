@@ -373,9 +373,12 @@ class VobizSocketHandler {
           }
 
           if (frame.event === 'stop') {
-            console.log(`[VoBiz Stream] Call stopped by VoBiz.`);
+            console.log(`[VoBiz Stream] Call stopped by VoBiz frame.`);
             if (ws.pipeline) {
               await ws.pipeline.flushPendingInput();
+            }
+            if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+              ws.close(1000, 'Call stopped by VoBiz');
             }
             return;
           }
