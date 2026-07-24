@@ -516,13 +516,13 @@
       </div>
 
       <div class="controls">
-        <button id="btnStart" class="btn btn-start">
+        <button id="btnStart" class="btn btn-start" data-testid="start-btn">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 18px; height: 18px;">
             <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.187-4.165-6.99-6.99l1.293-.97c.362-.272.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z" />
           </svg>
           Start Call
         </button>
-        <button id="btnStop" class="btn btn-stop" disabled>
+        <button id="btnStop" class="btn btn-stop" data-testid="stop-btn" disabled>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 18px; height: 18px;">
             <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
           </svg>
@@ -557,8 +557,8 @@
         Auto-calling in <span id="countdownSecs">10</span>s...
       </div>
       <div class="modal-actions">
-        <button id="btnModalCancel" class="btn btn-modal-cancel">Cancel</button>
-        <button id="btnModalConfirm" class="btn btn-modal-confirm">Call Now</button>
+        <button id="btnModalCancel" class="btn btn-modal-cancel" data-testid="modal-cancel-btn">Cancel</button>
+        <button id="btnModalConfirm" class="btn btn-modal-confirm" data-testid="modal-confirm-btn">Call Now</button>
       </div>
     </div>
   </div>
@@ -882,6 +882,27 @@
 
     btnStart.addEventListener('click', startCall);
     btnStop.addEventListener('click', stopCall);
+  </script>
+  <!-- Reticle Client Integration -->
+  <script type="module">
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      import('https://esm.run/@reticlehq/react').then(({ reticle, install, registerCapabilities }) => {
+        install();
+        reticle.connect();
+        registerCapabilities({
+          testids: ['start-btn', 'stop-btn', 'modal-cancel-btn', 'modal-confirm-btn'],
+          signals: ['call:started', 'call:stopped']
+        });
+        
+        // Expose signals to standard button clicks
+        document.getElementById('btnStart').addEventListener('click', () => {
+          reticle.signal('call:started');
+        });
+        document.getElementById('btnStop').addEventListener('click', () => {
+          reticle.signal('call:stopped');
+        });
+      }).catch(err => console.warn('Reticle client loading failed:', err));
+    }
   </script>
 </body>
 </html>

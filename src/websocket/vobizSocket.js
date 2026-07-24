@@ -6,24 +6,24 @@ const VobizService = require('../services/vobizService');
 const { decrypt } = require('../utils/crypto');
 
 const encodeTable = [
-    0,0,1,1,2,2,2,2,3,3,3,3,3,3,3,3,
-    4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
-    5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
-    5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
-    6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
-    6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
-    6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
-    6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
-    7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7];
+  0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+  4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7];
 
-const decodeTable = [0,132,396,924,1980,4092,8316,16764];
+const decodeTable = [0, 132, 396, 924, 1980, 4092, 8316, 16764];
 const BIAS = 0x84;
 const CLIP = 32635;
 
@@ -32,8 +32,8 @@ function encodeMuLawSample(sample) {
   if (sign !== 0) sample = -sample;
   sample = sample + BIAS;
   if (sample > CLIP) sample = CLIP;
-  let exponent = encodeTable[(sample>>7) & 0xFF];
-  let mantissa = (sample >> (exponent+3)) & 0x0F;
+  let exponent = encodeTable[(sample >> 7) & 0xFF];
+  let mantissa = (sample >> (exponent + 3)) & 0x0F;
   return (sign | (exponent << 4) | mantissa) ^ 0xFF;
 }
 
@@ -42,7 +42,7 @@ function decodeMuLawSample(muLawSample) {
   let sign = (muLawSample & 0x80);
   let exponent = (muLawSample >> 4) & 0x07;
   let mantissa = muLawSample & 0x0F;
-  let sample = decodeTable[exponent] + (mantissa << (exponent+3));
+  let sample = decodeTable[exponent] + (mantissa << (exponent + 3));
   return (sign !== 0) ? -sample : sample;
 }
 
@@ -242,19 +242,19 @@ class VobizSocketHandler {
               },
             });
             ws.send(playAudioEvent);
-            
+
             // Calculate sequential offset for agent audio to prevent overwrite collisions from API buffering
             const now = Date.now();
             const elapsedBytes = (now - callStartTime) * 32;
-            
+
             // If the agent has been silent for more than 500ms, synchronize offset to real-time
             if (!ws.lastAgentWriteTime || (now - ws.lastAgentWriteTime) > 500) {
               ws.nextAgentWriteOffset = elapsedBytes;
             }
-            
+
             const offset = ws.nextAgentWriteOffset;
             agentChunks.push({ offset, buffer: pcmBuffer });
-            
+
             ws.nextAgentWriteOffset = offset + pcmBuffer.length;
             ws.lastAgentWriteTime = now;
           }
@@ -297,7 +297,7 @@ class VobizSocketHandler {
                   const crypto = require('../utils/crypto');
                   decryptedId = crypto.decrypt(decryptedId) || decryptedId;
                   decryptedToken = crypto.decrypt(decryptedToken) || decryptedToken;
-                } catch (_) {}
+                } catch (_) { }
 
                 // Use sub-account keys if they look valid and are not placeholders
                 if (decryptedId && !decryptedId.includes('your_') && !decryptedId.includes('mock') && decryptedId !== 'YOUR_AUTH_ID') {
@@ -390,11 +390,11 @@ class VobizSocketHandler {
                   logLevel: 'info',
                   message: `[VoBiz Stream] Received first media event. Payload size: ${frame.media.payload.length} chars`,
                 });
-              } catch (_) {}
+              } catch (_) { }
             }
             const base64Payload = frame.media.payload;
             const inputBuffer = Buffer.from(base64Payload, 'base64');
-            
+
             let pcm16k;
             const format = ws.mediaFormat || { encoding: 'audio/x-mulaw', sampleRate: 8000 };
             const encodingStr = (format.encoding || 'audio/x-mulaw').toLowerCase();
@@ -431,7 +431,7 @@ class VobizSocketHandler {
 
       // Remove the buffer listener and register the active handler
       ws.removeListener('message', onBufferMessage);
-      
+
       // Process buffered messages in order
       for (const msg of earlyBuffer) {
         await handleFrame(msg);
@@ -490,11 +490,11 @@ class VobizSocketHandler {
         callSessionId: session.id,
         logLevel: 'info',
         message: `Call session finished (${freshSession.direction}). WebSocket closed.`,
-      }).catch(() => {});
+      }).catch(() => { });
 
       // Decrement concurrency tracker via ZSET deregistration
       if (freshSession.campaignId) {
-        await QueueService.deregisterActiveCall(freshSession.campaignId, session.id).catch(() => {});
+        await QueueService.deregisterActiveCall(freshSession.campaignId, session.id).catch(() => { });
       }
 
       // Standardize transcript as a formatted text
@@ -519,13 +519,13 @@ class VobizSocketHandler {
           }
           fileName = `recording-${session.id}.wav`;
           const filePath = path.join(uploadsDir, fileName);
-          
+
           // Calculate total duration in bytes (16kHz, 16-bit, mono PCM = 32000 bytes/sec)
           const totalDurationBytes = Math.max(1, (Date.now() - (ws.callStartTime || Date.now())) * 32);
-          
+
           const customerTimeline = Buffer.alloc(totalDurationBytes);
           const agentTimeline = Buffer.alloc(totalDurationBytes);
-          
+
           // Write customer chunks to their offsets
           if (ws.customerChunks) {
             for (const chunk of ws.customerChunks) {
@@ -544,7 +544,7 @@ class VobizSocketHandler {
               }
             }
           }
-          
+
           // Mix customer and agent timelines sample-by-sample
           const mixedBuffer = Buffer.alloc(totalDurationBytes);
           const sampleCount = Math.floor(totalDurationBytes / 2);
@@ -555,7 +555,7 @@ class VobizSocketHandler {
             const mixed = Math.max(-32768, Math.min(32767, s1 + s2));
             mixedBuffer.writeInt16LE(mixed, i * 2);
           }
-          
+
           // Generate standard 16kHz, 16-bit, mono WAV header
           const header = Buffer.alloc(44);
           header.write('RIFF', 0);
@@ -571,7 +571,7 @@ class VobizSocketHandler {
           header.writeUInt16LE(16, 34); // bits per sample
           header.write('data', 36);
           header.writeUInt32LE(mixedBuffer.length, 40);
-          
+
           const wavBuffer = Buffer.concat([header, mixedBuffer]);
           fs.writeFileSync(filePath, wavBuffer);
           console.log(`Saved mixed call recording to ${filePath}`);
@@ -611,7 +611,7 @@ class VobizSocketHandler {
 
       // Immediate analysis fallback to guarantee CallReport creation
       const { processCallAnalysis } = require('../workers/aiWorker');
-      processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
+      await processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
 
       // Clear memory references to prevent socket memory leaks
       ws.customerChunks = null;
