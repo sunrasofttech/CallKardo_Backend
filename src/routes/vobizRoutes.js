@@ -24,5 +24,6 @@ router.delete('/numbers/:id', VobizController.deleteNumber);
 // Number Purchasing
 router.get('/available-numbers', VobizController.listAvailableNumbers);
 router.post('/buy-number', VobizController.buyNumber);
+router.post('/initiate-buy-number', require('../controllers/paymentController').initiateNumberPurchasePayment);
 
 module.exports = router;

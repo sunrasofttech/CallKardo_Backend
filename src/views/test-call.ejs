@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent Tester - <%= agentId %></title>
+  <title>Agent Tester - <%= agentId %>
+  </title>
   <!-- Import Premium Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+
   <style>
     :root {
       --bg-gradient: radial-gradient(circle at top left, #0f172a, #0b0f19, #05070c);
@@ -60,7 +64,7 @@
       width: 400px;
       height: 400px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0,0,0,0) 70%);
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
       top: -100px;
       left: -100px;
       filter: blur(50px);
@@ -194,18 +198,37 @@
     }
 
     @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-10px);
+      }
     }
 
     @keyframes pulse-ring {
-      0% { transform: scale(1); opacity: 0.5; }
-      100% { transform: scale(1.4); opacity: 0; }
+      0% {
+        transform: scale(1);
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: scale(1.4);
+        opacity: 0;
+      }
     }
 
     @keyframes voice-pulse {
-      0% { transform: scale(1.05) translateY(-5px); }
-      100% { transform: scale(1.22) translateY(-5px); }
+      0% {
+        transform: scale(1.05) translateY(-5px);
+      }
+
+      100% {
+        transform: scale(1.22) translateY(-5px);
+      }
     }
 
     /* Buttons / Controls */
@@ -286,7 +309,7 @@
       flex-direction: column;
       gap: 14px;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255, 255, 255, 0.1) rgba(0,0,0,0);
+      scrollbar-color: rgba(255, 255, 255, 0.1) rgba(0, 0, 0, 0);
     }
 
     #transcript::-webkit-scrollbar {
@@ -311,8 +334,15 @@
     }
 
     @keyframes bubble-appear {
-      from { transform: translateY(8px) scale(0.95); opacity: 0; }
-      to { transform: translateY(0) scale(1); opacity: 1; }
+      from {
+        transform: translateY(8px) scale(0.95);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+      }
     }
 
     .msg-agent {
@@ -492,6 +522,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="glow-orb"></div>
 
@@ -501,9 +532,11 @@
       <h1>AI Agent Voice Tester</h1>
       <div class="subtitle">
         <span>Testing Agent ID:</span>
-        <span class="agent-pill"><%= agentId %></span>
+        <span class="agent-pill">
+          <%= agentId %>
+        </span>
       </div>
-      
+
       <div class="visualizer-container">
         <div id="voiceSphere" class="voice-sphere idle"></div>
       </div>
@@ -516,15 +549,19 @@
       </div>
 
       <div class="controls">
-        <button id="btnStart" class="btn btn-start" data-testid="start-btn">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 18px; height: 18px;">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.187-4.165-6.99-6.99l1.293-.97c.362-.272.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z" />
+        <button id="btnStart" class="btn btn-start">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
+            stroke="currentColor" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.187-4.165-6.99-6.99l1.293-.97c.362-.272.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z" />
           </svg>
           Start Call
         </button>
-        <button id="btnStop" class="btn btn-stop" data-testid="stop-btn" disabled>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 18px; height: 18px;">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        <button id="btnStop" class="btn btn-stop" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5"
+            stroke="currentColor" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
           </svg>
           Stop Call
         </button>
@@ -534,8 +571,10 @@
     <!-- Live Transcript Card -->
     <div class="card">
       <div class="transcript-header">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px; color: var(--primary);">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v5.009Z" />
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
+          style="width: 20px; height: 20px; color: var(--primary);">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v5.009Z" />
         </svg>
         Live Conversation
       </div>
@@ -547,7 +586,8 @@
   <div id="inactivityModal" class="modal-overlay">
     <div class="modal-card">
       <div class="modal-icon">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 28px; height: 28px;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"
+          style="width: 28px; height: 28px;">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
         </svg>
       </div>
@@ -557,8 +597,8 @@
         Auto-calling in <span id="countdownSecs">10</span>s...
       </div>
       <div class="modal-actions">
-        <button id="btnModalCancel" class="btn btn-modal-cancel" data-testid="modal-cancel-btn">Cancel</button>
-        <button id="btnModalConfirm" class="btn btn-modal-confirm" data-testid="modal-confirm-btn">Call Now</button>
+        <button id="btnModalCancel" class="btn btn-modal-cancel">Cancel</button>
+        <button id="btnModalConfirm" class="btn btn-modal-confirm">Call Now</button>
       </div>
     </div>
   </div>
@@ -606,16 +646,16 @@
     function showInactivityConfirmation() {
       confirmationModalActive = true;
       inactivityModal.classList.add('active');
-      
+
       countdownValue = 10;
       countdownSecs.textContent = countdownValue;
-      
+
       if (countdownInterval) clearInterval(countdownInterval);
-      
+
       countdownInterval = setInterval(() => {
         countdownValue--;
         countdownSecs.textContent = countdownValue;
-        
+
         if (countdownValue <= 0) {
           clearInterval(countdownInterval);
           autoConfirmCall();
@@ -660,7 +700,7 @@
     function logMessage(role, text) {
       const div = document.createElement('div');
       div.className = `msg msg-${role}`;
-      
+
       if (role === 'system') {
         div.innerHTML = `<span class="system-pill">${text}</span>`;
       } else {
@@ -669,7 +709,7 @@
         bubble.innerHTML = `<div class="bubble-sender">${role === 'agent' ? 'Agent' : 'You'}</div><div class="bubble-text">${text}</div>`;
         div.appendChild(bubble);
       }
-      
+
       transcriptDiv.appendChild(div);
       transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
     }
@@ -714,15 +754,15 @@
       for (let i = 0; i < int16Array.length; i++) {
         float32Array[i] = int16Array[i] / 0x7FFF;
       }
-      
+
       const audioBuffer = audioContext.createBuffer(1, float32Array.length, 16000);
       audioBuffer.getChannelData(0).set(float32Array);
-      
+
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContext.destination);
       playbackSources.push(source);
-      
+
       const voiceSphere = document.getElementById('voiceSphere');
       if (voiceSphere) {
         voiceSphere.className = 'voice-sphere speaking';
@@ -734,7 +774,7 @@
           voiceSphere.className = 'voice-sphere connected';
         }
       };
-      
+
       const currentTime = audioContext.currentTime;
       if (nextPlayTime < currentTime) nextPlayTime = currentTime;
       source.start(nextPlayTime);
@@ -748,7 +788,7 @@
       playbackSources.forEach((source) => {
         try {
           source.stop();
-        } catch (err) {}
+        } catch (err) { }
       });
       playbackSources = [];
     }
@@ -756,41 +796,41 @@
     async function startCall() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-        
+
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
+
         ws = new WebSocket(wsUrl);
         ws.binaryType = "arraybuffer";
-        
+
         ws.onopen = () => {
           isCallActive = true;
           clearTimeout(inactivityTimer); // Disable idle warning during calls
-          
+
           const statusBadge = document.querySelector('.status-badge');
           if (statusBadge) statusBadge.classList.add('connected');
-          
+
           statusDiv.textContent = 'Status: Connected';
           btnStart.disabled = true;
           btnStop.disabled = false;
           logMessage('system', 'Call connected. Connecting to Agent AI...');
-          
+
           const voiceSphere = document.getElementById('voiceSphere');
           if (voiceSphere) voiceSphere.className = 'voice-sphere connected';
-          
+
           microphone = audioContext.createMediaStreamSource(stream);
           processor = audioContext.createScriptProcessor(4096, 1, 1);
-          
+
           processor.onaudioprocess = (e) => {
             if (ws.readyState === WebSocket.OPEN) {
               const inputBuffer = e.inputBuffer.getChannelData(0);
-              
+
               // Compute RMS volume for basic Voice Activity Detection (VAD)
               let sum = 0;
               for (let i = 0; i < inputBuffer.length; i++) {
                 sum += inputBuffer[i] * inputBuffer[i];
               }
               const rms = Math.sqrt(sum / inputBuffer.length);
-              
+
               // Keep sending a short tail after speech so STT does not lose quiet word endings.
               if (rms > 0.006) {
                 speechHangoverFrames = 12;
@@ -803,14 +843,14 @@
               }
             }
           };
-          
+
           microphone.connect(processor);
           silentGain = audioContext.createGain();
           silentGain.gain.value = 0;
           processor.connect(silentGain);
           silentGain.connect(audioContext.destination);
         };
-        
+
         ws.onmessage = (event) => {
           if (event.data instanceof ArrayBuffer) {
             // Incoming Audio
@@ -824,11 +864,11 @@
               try {
                 const msg = JSON.parse(event.data);
                 logMessage(msg.type, msg.text);
-              } catch (e) {}
+              } catch (e) { }
             }
           }
         };
-        
+
         ws.onclose = () => {
           stopCall();
           logMessage('system', 'Call disconnected.');
@@ -841,7 +881,7 @@
 
     function stopCall() {
       isCallActive = false;
-      
+
       const voiceSphere = document.getElementById('voiceSphere');
       if (voiceSphere) voiceSphere.className = 'voice-sphere idle';
 
@@ -869,40 +909,20 @@
         audioContext.close();
         audioContext = null;
       }
-      
+
       const statusBadge = document.querySelector('.status-badge');
       if (statusBadge) statusBadge.classList.remove('connected');
-      
+
       statusDiv.textContent = 'Status: Disconnected';
       btnStart.disabled = false;
       btnStop.disabled = true;
-      
+
       resetInactivityTimer(); // Resume idle warning when call stops
     }
 
     btnStart.addEventListener('click', startCall);
     btnStop.addEventListener('click', stopCall);
   </script>
-  <!-- Reticle Client Integration -->
-  <script type="module">
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      import('https://esm.run/@reticlehq/react').then(({ reticle, install, registerCapabilities }) => {
-        install();
-        reticle.connect();
-        registerCapabilities({
-          testids: ['start-btn', 'stop-btn', 'modal-cancel-btn', 'modal-confirm-btn'],
-          signals: ['call:started', 'call:stopped']
-        });
-        
-        // Expose signals to standard button clicks
-        document.getElementById('btnStart').addEventListener('click', () => {
-          reticle.signal('call:started');
-        });
-        document.getElementById('btnStop').addEventListener('click', () => {
-          reticle.signal('call:stopped');
-        });
-      }).catch(err => console.warn('Reticle client loading failed:', err));
-    }
-  </script>
 </body>
+
 </html>

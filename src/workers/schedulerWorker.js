@@ -25,7 +25,7 @@ async function startScheduler() {
 
       for (const job of readyJobs) {
         console.log(`Processing scheduled job: ${job.type}`);
-        
+
         if (job.type === 'START_CAMPAIGN') {
           await handleStartCampaign(job.payload);
         } else if (job.type === 'PLACE_CALL') {
@@ -40,7 +40,7 @@ async function startScheduler() {
     } catch (error) {
       console.error('Error in Scheduler Worker polling loop:', error);
     }
-    
+
     // Sleep 1 second before next poll
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -84,31 +84,15 @@ async function dispatchRunningCampaigns() {
             order: [['createdAt', 'DESC']],
           });
 
-            if (stuckSession) {
-              console.log(`[Scheduler] Recovering stuck session ${stuckSession.id} (status: ${stuckSession.status}) for customer ${stuckCC.customerId}`);
-              stuckSession.status = 'failed';
-              stuckSession.endTime = new Date();
-              await stuckSession.save();
+          if (stuckSession) {
+            console.log(`[Scheduler] Recovering stuck session ${stuckSession.id} (status: ${stuckSession.status}) for customer ${stuckCC.customerId}`);
+            stuckSession.status = 'failed';
+            stuckSession.endTime = new Date();
+            await stuckSession.save();
 
-              // Deregister from active calls ZSET
-              await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => {});
-
-              // Create report for stuck session
-              const completionEvent = {
-                callSessionId: stuckSession.id,
-                userId: campaign.userId,
-                campaignId: campaign.id,
-                vobizNumberId: stuckSession.vobizNumberId,
-                customerId: stuckCC.customerId,
-                transcript: '',
-                duration: 0,
-                recordingUrl: null,
-              };
-              const { processCallAnalysis } = require('./aiWorker');
-              processCallAnalysis(completionEvent).catch((aiErr) =>
-                console.error('[Scheduler] Error creating report for stuck session:', aiErr.message)
-              );
-            }
+            // Deregister from active calls ZSET
+            await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => { });
+          }
 
           // Reset customer to 'pending' so the scheduler can retry
           stuckCC.callStatus = 'pending';
@@ -121,10 +105,10 @@ async function dispatchRunningCampaigns() {
       }
 
       // Purge stale Redis ZSET entries by cross-checking with DB
-      await QueueService.purgeStaleActiveCalls(campaign.id).catch(() => {});
+      await QueueService.purgeStaleActiveCalls(campaign.id).catch(() => { });
 
       const activeCalls = await QueueService.getActiveCalls(campaign.id);
-      
+
       // Enforce campaign-level limits
       if (activeCalls >= campaign.maxConcurrentCalls) {
         continue;

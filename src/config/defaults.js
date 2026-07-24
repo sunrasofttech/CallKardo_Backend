@@ -175,4 +175,14 @@ module.exports = {
       return process.env.LIVEKIT_SIP_HOST || '127.0.0.1:5060';
     },
   },
+
+  // Payment Gateway Configuration
+  paymentGateway: {
+    get initiateUrl() {
+      return process.env.PAYMENT_GATEWAY_URL || 'http://localhost:3000/api/payments/initiate';
+    },
+    get apiToken() {
+      return process.env.PAYMENT_API_TOKEN || 'your_api_token';
+    },
+  },
 };

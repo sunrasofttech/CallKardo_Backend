@@ -77,10 +77,10 @@ class LivekitController {
       if (eventName === 'participant_joined') {
         const participant = event.participant;
         const attributes = participant?.attributes || {};
-        
+
         // If it's a SIP caller, create CallSession dynamically if not already created
         const isSip = participant?.identity?.startsWith('sip:') || attributes['sip.phoneNumber'];
-        
+
         if (isSip) {
           const fromNum = attributes['sip.phoneNumber'] || participant.identity.replace('sip:', '');
           const toNum = attributes['sip.trunkPhoneNumber'] || '';
@@ -157,41 +157,14 @@ class LivekitController {
           const session = await CallSession.findByPk(callSessionId);
           if (session) {
             session.status = 'completed';
-            if (!session.endTime) session.endTime = new Date();
+            session.endTime = new Date();
             await session.save();
 
             await CallLog.create({
               callSessionId: session.id,
               logLevel: 'info',
               message: `LiveKit Room finished: ${roomName}. Call status set to completed.`,
-            }).catch(() => {});
-
-            // Trigger processCallAnalysis to guarantee CallReport creation
-            const duration = session.startTime
-              ? Math.max(0, Math.round((new Date(session.endTime) - new Date(session.startTime)) / 1000))
-              : 0;
-
-            const fs = require('fs');
-            const path = require('path');
-            const recFile = `recording-${session.id}.wav`;
-            const recPath = path.join(__dirname, '../../uploads', recFile);
-            const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFile}` : null;
-
-            const completionEvent = {
-              callSessionId: session.id,
-              userId: session.userId,
-              campaignId: session.campaignId,
-              vobizNumberId: session.vobizNumberId,
-              customerId: session.customerId,
-              transcript: '',
-              duration,
-              recordingUrl,
-            };
-
-            const { processCallAnalysis } = require('../workers/aiWorker');
-            processCallAnalysis(completionEvent).catch(aiErr =>
-              console.error('[LiveKit Webhook] Error creating CallReport:', aiErr.message)
-            );
+            });
           }
         }
       }
@@ -208,7 +181,7 @@ class LivekitController {
   async getWebToken(req, res) {
     try {
       const { agentId } = req.query;
-      
+
       if (!agentId) {
         return res.status(400).json({ success: false, message: 'agentId is required' });
       }
@@ -272,7 +245,7 @@ class LivekitController {
         identity: participantName,
         name: 'Web Tester',
       });
-      
+
       at.addGrant({
         roomJoin: true,
         room: roomName,

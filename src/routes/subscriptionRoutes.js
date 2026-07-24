@@ -7,6 +7,7 @@ const router = express.Router();
 // Merchant Subscription Management
 router.get('/my', authenticate, isMerchant, SubscriptionController.getMySubscription);
 router.post('/upgrade', authenticate, isMerchant, SubscriptionController.upgradeSubscription);
+router.post('/initiate-payment', authenticate, isMerchant, require('../controllers/paymentController').initiateSubscriptionPayment);
 
 // Admin Access
 router.get('/merchant/:merchantId', authenticate, isAdmin, SubscriptionController.getMerchantSubscription);
