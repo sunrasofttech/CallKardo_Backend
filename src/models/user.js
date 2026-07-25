@@ -32,6 +32,20 @@ User.init(
       type: DataTypes.STRING(100),
       allowNull: true,
       field: 'business_name',
+      validate: {
+        isLettersAndSpaces(value) {
+          if (value && typeof value === 'string' && !/^[a-zA-Z\s]+$/.test(value)) {
+            throw new Error('Business name must contain only letters and spaces');
+          }
+        },
+      },
+      set(val) {
+        if (typeof val === 'string') {
+          this.setDataValue('businessName', val.replace(/[^a-zA-Z\s]/g, ''));
+        } else {
+          this.setDataValue('businessName', val);
+        }
+      },
     },
     businessUrl: {
       type: DataTypes.STRING(255),

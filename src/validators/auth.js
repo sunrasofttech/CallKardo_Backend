@@ -30,10 +30,16 @@ const loginSchema = Joi.object({
 }).or('email', 'mobile');
 
 const setupBusinessSchema = Joi.object({
-  businessName: Joi.string().min(2).max(100).required().messages({
-    'string.min': 'Business name must be at least 2 characters long',
-    'any.required': 'Business name is required',
-  }),
+  businessName: Joi.string()
+    .pattern(/^[a-zA-Z\s]+$/)
+    .min(2)
+    .max(100)
+    .required()
+    .messages({
+      'string.pattern.base': 'Business name must contain only letters and spaces',
+      'string.min': 'Business name must be at least 2 characters long',
+      'any.required': 'Business name is required',
+    }),
   businessUrl: Joi.string().uri().optional().allow('').messages({
     'string.uri': 'Please enter a valid URL',
   }),

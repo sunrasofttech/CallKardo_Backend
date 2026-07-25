@@ -23,7 +23,8 @@ class PaymentService {
     const orderId = `${prefix}${timeStr}${randStr}`; // 3 + 6 + 4 = 13 characters
 
     const formattedAmount = String(amount);
-    const resolvedName = user.business_name;
+    const rawName = String(customerName || user.businessName || user.business_name || 'Merchant');
+    const resolvedName = rawName.replace(/[^a-zA-Z\s]/g, '').trim() || 'Merchant';
     const rawMobile = String(customerMobile || user.mobile || user.phoneNumber || '9876543210');
     const cleanDigits = rawMobile.replace(/\D/g, '');
     const resolvedMobile = cleanDigits.length > 10 ? cleanDigits.slice(-10) : cleanDigits || '9876543210';

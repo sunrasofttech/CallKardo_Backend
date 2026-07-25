@@ -343,6 +343,9 @@ class AdminController {
       if (!merchant) return ResponseBuilder.error(res, 'Merchant not found', 404);
 
       const { businessName, businessUrl, categoryId, isVerified, kycStatus } = req.body;
+      if (businessName !== undefined && businessName !== null && (typeof businessName !== 'string' || !/^[a-zA-Z\s]+$/.test(businessName))) {
+        return ResponseBuilder.error(res, 'Business name must contain only letters and spaces', 400);
+      }
       if (categoryId !== undefined && categoryId !== null && !(await Category.findByPk(categoryId))) {
         return ResponseBuilder.error(res, 'Selected business category does not exist', 400);
       }
