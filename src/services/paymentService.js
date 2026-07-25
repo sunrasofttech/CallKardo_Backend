@@ -40,8 +40,6 @@ class PaymentService {
       note: resolvedNote,
     };
 
-    console.log(requestBody)
-
     let responseData = null;
     try {
       console.log(`[PaymentService] Initiating payment request for OrderId: ${orderId}, Amount: ${formattedAmount}, Type: ${type}`);
@@ -53,8 +51,6 @@ class PaymentService {
         },
         timeout: 15000,
       });
-      console.log(response);
-      console.log(JSON.stringify(response.data, null, 2));
 
       responseData = response.data;
     } catch (err) {
