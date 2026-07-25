@@ -99,6 +99,7 @@ class PaymentService {
     const transactionId = gatewayData.transaction_id || null;
     const paymentUrl = gatewayData.payment_url || null;
     const upiString = gatewayData.upiString || null;
+    const gateway_type = gatewayData.gateway_type || null;
 
     // Record pending transaction in DB
     const transaction = await PaymentTransaction.create({
@@ -128,6 +129,7 @@ class PaymentService {
         order_id: orderId,
         amount: formattedAmount,
         upiString: upiString,
+        gateway_type: gateway_type,
         timestamp: gatewayData.timestamp || new Date().toISOString(),
         paymentTransactionId: transaction.id,
       },
