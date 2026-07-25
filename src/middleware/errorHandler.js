@@ -13,6 +13,11 @@ function errorHandler(err, req, res, next) {
     return ResponseBuilder.error(res, 'Validation error: Unique constraint violated', 400, details);
   }
 
+  // JSON Parsing SyntaxError (Malformed JSON body)
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return ResponseBuilder.error(res, `Malformed JSON request body: ${err.message}. Please check your JSON quotes and syntax.`, 400);
+  }
+
   // Sequelize ValidationError
   if (err.name === 'SequelizeValidationError') {
     const details = err.errors.map((e) => ({ field: e.path, message: e.message }));
