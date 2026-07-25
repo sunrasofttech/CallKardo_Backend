@@ -16,13 +16,17 @@ class PaymentService {
       throw new Error('User not found');
     }
 
-    // Generate unique order ID
+    // Generate unique order ID (alphanumeric, between 8 and 15 characters long)
     const prefix = type === 'SUBSCRIPTION' ? 'SUB' : type === 'VOBIZ_NUMBER' ? 'NUM' : 'ORD';
-    const orderId = `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const timeStr = Date.now().toString().slice(-6);
+    const randStr = crypto.randomBytes(2).toString('hex');
+    const orderId = `${prefix}${timeStr}${randStr}`; // 3 + 6 + 4 = 13 characters
 
     const formattedAmount = String(amount);
     const resolvedName = customerName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.businessName || 'Customer';
-    const resolvedMobile = customerMobile || user.mobile || user.phoneNumber || '9876543210';
+    const rawMobile = String(customerMobile || user.mobile || user.phoneNumber || '9876543210');
+    const cleanDigits = rawMobile.replace(/\D/g, '');
+    const resolvedMobile = cleanDigits.length > 10 ? cleanDigits.slice(-10) : cleanDigits || '9876543210';
     const resolvedEmail = customerEmail || user.email || 'demo@gmail.com';
     const resolvedNote = note || `${type} purchase by ${resolvedName}`;
 
@@ -50,9 +54,9 @@ class PaymentService {
       responseData = response.data;
     } catch (err) {
       console.error('[PaymentService] Payment initiation API error:', err.response?.data || err.message);
-      
+
       const errorMsg = err.response?.data?.message || err.response?.data?.data?.error?.message || err.message || 'Payment initiation failed';
-      
+
       // Log failed transaction initiation in database for audit
       await PaymentTransaction.create({
         userId,
@@ -66,14 +70,14 @@ class PaymentService {
         customerEmail: resolvedEmail,
         note: resolvedNote,
         rawResponse: err.response?.data || { error: err.message },
-      }).catch(() => {});
+      }).catch(() => { });
 
       throw new Error(errorMsg);
     }
 
     if (!responseData || responseData.success === false) {
       const errorMsg = responseData?.data?.error?.message || responseData?.message || 'Payment initiation failed';
-      
+
       await PaymentTransaction.create({
         userId,
         orderId,
@@ -86,7 +90,7 @@ class PaymentService {
         customerEmail: resolvedEmail,
         note: resolvedNote,
         rawResponse: responseData,
-      }).catch(() => {});
+      }).catch(() => { });
 
       throw new Error(errorMsg);
     }
@@ -240,7 +244,7 @@ class PaymentService {
       });
     }
 
-    await removeTrialDemoNumber(tx.userId).catch(() => {});
+    await removeTrialDemoNumber(tx.userId).catch(() => { });
     console.log(`[Fulfill Subscription] Successfully upgraded user ${tx.userId} to ${plan.name} plan.`);
   }
 
