@@ -130,6 +130,35 @@ class PaymentController {
   }
 
   /**
+   * Complete payment callback called directly from App itself
+   * Updates local payment transaction and triggers ABC Gate callback
+   */
+  async completePaymentAppCallback(req, res, next) {
+    try {
+      console.log('[PaymentController] App completion webhook request:', {
+        body: req.body,
+      });
+
+      const { order_id, status, amount, urn_number } = req.body;
+
+      const result = await paymentService.completePaymentAppCallback({
+        order_id,
+        status,
+        amount,
+        urn_number,
+      });
+
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error('[PaymentController] App callback completion error:', err.message);
+      return res.status(400).json({
+        success: false,
+        message: err.message || 'Payment completion failed',
+      });
+    }
+  }
+
+  /**
    * Check status of a payment transaction by orderId
    */
   async getTransactionStatus(req, res, next) {

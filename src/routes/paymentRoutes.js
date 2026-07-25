@@ -7,6 +7,7 @@ const { authenticate, authorize } = require('../middleware/auth');
  * Public Webhook route for payment gateway callbacks (PAYIN / PAYOUT)
  */
 router.post('/webhook', paymentController.handleWebhook);
+router.post('/callback', authenticate, paymentController.completePaymentAppCallback);
 
 /**
  * Initiate Payment (General) - matching POST /api/payments/initiate

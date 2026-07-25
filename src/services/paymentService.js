@@ -213,6 +213,87 @@ class PaymentService {
   }
 
   /**
+   * App Callback / Direct Webhook completion
+   * Updates local transaction status & forwards callback to ABC Gate (https://api.abcgate.shop/api/callback/upiid)
+   */
+  async completePaymentAppCallback({ order_id, status, amount, urn_number }) {
+    if (!order_id) {
+      throw new Error('Missing order_id in request payload');
+    }
+
+    const tx = await PaymentTransaction.findOne({ where: { orderId: order_id } });
+    if (!tx) {
+      throw new Error(`Transaction record not found for order_id: ${order_id}`);
+    }
+
+    const resolvedAmount = amount || tx.amount;
+    const isSuccess = String(status || '').toLowerCase() === 'success';
+    const finalStatus = isSuccess ? 'success' : 'failed';
+
+    if (urn_number) {
+      tx.urnNumber = urn_number;
+    }
+
+    tx.status = finalStatus;
+    await tx.save();
+
+    if (isSuccess) {
+      console.log(`[PaymentService AppCallback] OrderId ${order_id} marked SUCCESS. Fulfilling ${tx.type} (target: ${tx.targetId})...`);
+      try {
+        if (tx.type === 'SUBSCRIPTION') {
+          await this._fulfillSubscriptionPurchase(tx);
+        } else if (tx.type === 'VOBIZ_NUMBER') {
+          await this._fulfillVobizNumberPurchase(tx);
+        }
+      } catch (fulfillErr) {
+        console.error(`[PaymentService AppCallback] Fulfillment error for orderId ${order_id}:`, fulfillErr);
+      }
+    } else {
+      console.log(`[PaymentService AppCallback] OrderId ${order_id} marked FAILED.`);
+    }
+
+    // Send callback to ABC Gate for both success & failed payments
+    let abcGateCallbackSuccess = false;
+    try {
+      const apiKey = defaults.paymentGateway.apiToken;
+      const response = await axios.post(
+        "https://api.abcgate.shop/api/callback/upiid",
+        {
+          orderId: order_id,
+          amount: String(resolvedAmount),
+          rrn: urn_number || null,
+          status: isSuccess ? "success" : "failed",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "api-token": apiKey,
+          },
+          timeout: 10000,
+        }
+      );
+
+      console.log(`ABC Gate callback sent for ${order_id}:`, response.data);
+      abcGateCallbackSuccess = true;
+    } catch (callbackError) {
+      console.error(
+        "ABC Gate callback failed:",
+        callbackError.response?.data || callbackError.message
+      );
+    }
+
+    return {
+      success: true,
+      message: `Payment callback processed successfully (status: ${finalStatus})`,
+      data: {
+        orderId: order_id,
+        status: finalStatus,
+        abcGateCallbackSent: abcGateCallbackSuccess,
+      },
+    };
+  }
+
+  /**
    * Helper: Fulfill subscription upgrade after successful payment
    */
   async _fulfillSubscriptionPurchase(tx) {
