@@ -58,6 +58,7 @@ router.get('/reports', adminController.getGlobalCallReports);
 router.get('/reports/session/:sessionId', adminController.getGlobalCallSession);
 
 const categoryController = require('../controllers/categoryController');
+const PlanController = require('../controllers/planController');
 
 // Business Category management routes
 router.get('/categories', categoryController.getAll);
@@ -65,6 +66,13 @@ router.get('/categories/:id', categoryController.getById);
 router.post('/categories', categoryController.create);
 router.put('/categories/:id', categoryController.update);
 router.delete('/categories/:id', categoryController.delete);
+
+// Subscription Plan management routes
+router.get('/plans', PlanController.getAll);
+router.get('/plans/:id', PlanController.getById);
+router.post('/plans', PlanController.create);
+router.put('/plans/:id', PlanController.update);
+router.delete('/plans/:id', PlanController.delete);
 
 module.exports = router;
 

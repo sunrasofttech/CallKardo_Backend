@@ -1,11 +1,11 @@
 const express = require('express');
 const PlanController = require('../controllers/planController');
-const { authenticate, isAdmin } = require('../middleware/auth');
+const { authenticate, optionalAuthenticate, isAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', authenticate, PlanController.getAll);
-router.get('/:id', authenticate, PlanController.getById);
+router.get('/', optionalAuthenticate, PlanController.getAll);
+router.get('/:id', optionalAuthenticate, PlanController.getById);
 
 // Admin Only
 router.post('/', authenticate, isAdmin, PlanController.create);

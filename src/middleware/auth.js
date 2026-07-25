@@ -21,12 +21,18 @@ const authenticate = async (req, res, next) => {
 
     let userObj = null;
 
-    if (decoded.role === 'super_admin') {
+    if (decoded.role === 'super_admin' || decoded.role === 'admin') {
       userObj = await Admin.findByPk(decoded.id);
+      if (!userObj) {
+        userObj = await User.findByPk(decoded.id);
+      }
     } else {
       userObj = await User.findByPk(decoded.id, {
         include: ['category'],
       });
+      if (!userObj) {
+        userObj = await Admin.findByPk(decoded.id);
+      }
     }
 
     if (!userObj) {
@@ -35,7 +41,7 @@ const authenticate = async (req, res, next) => {
 
     // Attach to request
     req.user = userObj;
-    req.userRole = decoded.role;
+    req.userRole = userObj.role || decoded.role;
     next();
   } catch (error) {
     console.error('Auth Middleware Error:', error);
@@ -44,10 +50,46 @@ const authenticate = async (req, res, next) => {
 };
 
 /**
- * Super Admin check
+ * Optional Authentication check middleware.
+ */
+const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded = verifyAccessToken(token);
+      
+      if (decoded) {
+        let userObj = null;
+
+        if (decoded.role === 'super_admin' || decoded.role === 'admin') {
+          userObj = await Admin.findByPk(decoded.id);
+          if (!userObj) userObj = await User.findByPk(decoded.id);
+        } else {
+          userObj = await User.findByPk(decoded.id, {
+            include: ['category'],
+          });
+          if (!userObj) userObj = await Admin.findByPk(decoded.id);
+        }
+
+        if (userObj) {
+          req.user = userObj;
+          req.userRole = userObj.role || decoded.role;
+        }
+      }
+    }
+  } catch (error) {
+    // Ignore error for optional auth
+  }
+  next();
+};
+
+/**
+ * Admin check (super_admin or admin)
  */
 const isAdmin = (req, res, next) => {
-  if (req.userRole !== 'super_admin') {
+  const role = req.userRole || req.user?.role;
+  if (role !== 'super_admin' && role !== 'admin') {
     return ResponseBuilder.error(res, 'Forbidden: Admin access only', 403);
   }
   next();
@@ -57,7 +99,8 @@ const isAdmin = (req, res, next) => {
  * Merchant check
  */
 const isMerchant = (req, res, next) => {
-  if (req.userRole !== 'merchant') {
+  const role = req.userRole || req.user?.role;
+  if (role !== 'merchant') {
     return ResponseBuilder.error(res, 'Forbidden: Merchant access only', 403);
   }
   next();
@@ -65,6 +108,7 @@ const isMerchant = (req, res, next) => {
 
 module.exports = {
   authenticate,
+  optionalAuthenticate,
   isAdmin,
   isMerchant,
 };
