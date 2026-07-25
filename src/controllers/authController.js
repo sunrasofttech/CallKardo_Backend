@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { User, Admin, Subscription, Plan, Category, VobizNumber, Agent } = require('../models');
+const { User, Admin, Subscription, Plan, Category, VobizNumber, VobizAccount, Agent } = require('../models');
 const defaults = require('../config/defaults');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/token');
 const ResponseBuilder = require('../utils/response');
@@ -593,11 +593,15 @@ class AuthController {
         }
       }
 
+      const vobizAccount = await VobizAccount.findOne({ where: { userId: user.id } });
+      const vobizOnboarded = Boolean(vobizAccount);
+
       const profile = {
         id: user.id,
         email: user.email,
         mobile: user.mobile,
         role,
+        vobizOnboarded,
         ...(role === 'merchant'
           ? {
               businessName: user.businessName,

@@ -140,40 +140,46 @@ class PaymentService {
   async processWebhook(payload) {
     console.log('[PaymentService] Received webhook payload:', JSON.stringify(payload));
 
-    const eventType = payload.event_type || 'PAYIN';
-    const data = payload.data || payload;
+    const { event_type, data } = payload || {};
 
-    const orderId = data.order_id || data.orderId || payload.order_id || payload.orderId;
-    const rawStatus = (data.status || payload.status || '').toLowerCase();
-    const urnNumber = data.urn_number || data.urnNumber || null;
-
-    if (!orderId) {
-      throw new Error('Missing order_id in webhook payload');
+    if (event_type !== 'PAYIN') {
+      console.log(`[PaymentService Webhook] Ignoring non-PAYIN event type: ${event_type}`);
+      return { success: true, message: `Ignored non-PAYIN event type: ${event_type}` };
     }
 
-    const tx = await PaymentTransaction.findOne({ where: { orderId } });
+    if (!data) {
+      throw new Error('Missing data object in webhook payload');
+    }
+
+    const { order_id, status, amount, urn_number } = data;
+
+    if (!order_id) {
+      throw new Error('Missing order_id in webhook payload data');
+    }
+
+    const tx = await PaymentTransaction.findOne({ where: { orderId: order_id } });
     if (!tx) {
-      console.warn(`[PaymentService Webhook] Transaction not found for orderId: ${orderId}`);
-      return { success: false, message: `Transaction record not found for order_id: ${orderId}` };
+      console.warn(`[PaymentService Webhook] Transaction not found for orderId: ${order_id}`);
+      return { success: false, message: `Transaction record not found for order_id: ${order_id}` };
     }
 
     // Update raw webhook payload and URN
     tx.rawWebhookData = payload;
-    if (urnNumber) tx.urnNumber = urnNumber;
+    if (urn_number) tx.urnNumber = urn_number;
 
     if (tx.status === 'success') {
-      console.log(`[PaymentService Webhook] OrderId ${orderId} already processed as success.`);
+      console.log(`[PaymentService Webhook] OrderId ${order_id} already processed as success.`);
       await tx.save();
-      return { success: true, message: 'Transaction already completed', data: { orderId, status: tx.status } };
+      return { success: true, message: 'Transaction already completed', data: { orderId: order_id, status: tx.status } };
     }
 
-    const isSuccess = rawStatus === 'success';
+    const isSuccess = String(status || '').toLowerCase() === 'success';
 
     if (isSuccess) {
       tx.status = 'success';
       await tx.save();
 
-      console.log(`[PaymentService Webhook] OrderId ${orderId} marked SUCCESS. Fulfilling ${tx.type} (target: ${tx.targetId})...`);
+      console.log(`[PaymentService Webhook] OrderId ${order_id} marked SUCCESS. Fulfilling ${tx.type} (target: ${tx.targetId})...`);
 
       // Fulfill purchase
       try {
@@ -183,23 +189,23 @@ class PaymentService {
           await this._fulfillVobizNumberPurchase(tx);
         }
       } catch (fulfillErr) {
-        console.error(`[PaymentService Webhook] Fulfillment error for orderId ${orderId}:`, fulfillErr);
+        console.error(`[PaymentService Webhook] Fulfillment error for orderId ${order_id}:`, fulfillErr);
       }
 
       return {
         success: true,
         message: 'Payment processed and service fulfilled successfully',
-        data: { orderId, status: 'success' },
+        data: { orderId: order_id, status: 'success' },
       };
     } else {
       tx.status = 'failed';
       await tx.save();
 
-      console.log(`[PaymentService Webhook] OrderId ${orderId} marked FAILED.`);
+      console.log(`[PaymentService Webhook] OrderId ${order_id} marked FAILED.`);
       return {
         success: true,
         message: 'Payment marked as failed',
-        data: { orderId, status: 'failed' },
+        data: { orderId: order_id, status: 'failed' },
       };
     }
   }
