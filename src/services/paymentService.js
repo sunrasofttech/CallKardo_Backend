@@ -50,6 +50,7 @@ class PaymentService {
         },
         timeout: 15000,
       });
+      console.log(response)
 
       responseData = response.data;
     } catch (err) {
