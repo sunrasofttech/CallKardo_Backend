@@ -20,6 +20,8 @@ const {
   resetPasswordSchema,
   resetMerchantPasswordSchema,
   verifyOtpSchema,
+  changePasswordSchema,
+  updateFcmTokenSchema,
 } = require('../validators/auth');
 
 class AuthController {
@@ -245,11 +247,14 @@ class AuthController {
       const accessToken = generateAccessToken(tokenPayload);
       const refreshToken = generateRefreshToken(tokenPayload);
 
-      // Save Refresh Token for validation (hashed)
+      // Save Refresh Token for validation & Save FCM Token if provided
+      if (value.fcmToken) {
+        account.fcmToken = value.fcmToken;
+      }
       if (role === 'merchant') {
         account.refreshToken = hashToken(refreshToken);
-        await account.save();
       }
+      await account.save();
 
       const profile = {
         id: account.id,
@@ -616,6 +621,63 @@ class AuthController {
       };
 
       return ResponseBuilder.success(res, { profile }, 'Profile retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Change Password (for authenticated User or Admin)
+   */
+  async changePassword(req, res, next) {
+    try {
+      const { error, value } = changePasswordSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { oldPassword, newPassword } = value;
+      const account = req.user;
+
+      if (!account || !account.passwordHash) {
+        return ResponseBuilder.error(res, 'User session invalid', 401);
+      }
+
+      const isMatch = await bcrypt.compare(oldPassword, account.passwordHash);
+      if (!isMatch) {
+        return ResponseBuilder.error(res, 'Incorrect current password', 400);
+      }
+
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      account.passwordHash = newPasswordHash;
+      await account.save();
+
+      return ResponseBuilder.success(res, null, 'Password changed successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update FCM / Notification Token
+   */
+  async updateFcmToken(req, res, next) {
+    try {
+      const { error, value } = updateFcmTokenSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { fcmToken } = value;
+      if (!fcmToken) {
+        return ResponseBuilder.error(res, 'fcmToken is required', 400);
+      }
+
+      const account = req.user;
+      account.fcmToken = fcmToken;
+      await account.save();
+
+      return ResponseBuilder.success(res, { fcmToken }, 'Notification token updated successfully');
     } catch (err) {
       next(err);
     }

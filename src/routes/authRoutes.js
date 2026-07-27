@@ -31,6 +31,12 @@ router.post('/setup-business', authenticate, isMerchant, AuthController.setupBus
 // Merchant Direct Password Reset (Authenticated, no old password verification)
 router.post('/merchant/reset-password', authenticate, isMerchant, AuthController.resetMerchantPassword);
 
+// Change Password (Authenticated User/Admin)
+router.post('/change-password', authenticate, AuthController.changePassword);
+
+// Update Notification / FCM Push Token
+router.post('/fcm-token', authenticate, AuthController.updateFcmToken);
+
 // Get User Profile
 router.get('/me', authenticate, AuthController.getMe);
 

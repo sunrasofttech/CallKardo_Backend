@@ -62,6 +62,11 @@ Admin.init(
       allowNull: true,
       field: 'reset_token_expires',
     },
+    fcmToken: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'fcm_token',
+    },
   },
   {
     sequelize,

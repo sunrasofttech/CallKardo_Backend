@@ -21,6 +21,7 @@ const voiceRoutes = require('./routes/voiceRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Swagger Spec
 const swaggerSpec = require('./utils/swagger');
@@ -154,6 +155,7 @@ app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/voices', voiceRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/settings', settingRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
 

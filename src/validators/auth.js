@@ -27,6 +27,7 @@ const loginSchema = Joi.object({
   mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
   password: Joi.string().required(),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
+  fcmToken: Joi.string().optional().allow(''),
 }).or('email', 'mobile');
 
 const setupBusinessSchema = Joi.object({
@@ -65,6 +66,23 @@ const verifyOtpSchema = Joi.object({
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
 });
 
+const changePasswordSchema = Joi.object({
+  oldPassword: Joi.string().required().messages({
+    'any.required': 'Current password (oldPassword) is required',
+  }),
+  newPassword: Joi.string().min(6).required().messages({
+    'string.min': 'New password must be at least 6 characters long',
+    'any.required': 'New password is required',
+  }),
+  confirmPassword: Joi.string().optional(),
+});
+
+const updateFcmTokenSchema = Joi.object({
+  fcmToken: Joi.string().required().messages({
+    'any.required': 'fcmToken is required',
+  }),
+});
+
 const resetMerchantPasswordSchema = Joi.object({
   password: Joi.string().min(6).optional().messages({
     'string.min': 'Password must be at least 6 characters long',
@@ -72,8 +90,8 @@ const resetMerchantPasswordSchema = Joi.object({
   newPassword: Joi.string().min(6).optional().messages({
     'string.min': 'Password must be at least 6 characters long',
   }),
-  confirmPassword: Joi.string().min(6).optional(),
-  confirm_password: Joi.string().min(6).optional(),
+  confirmPassword: Joi.string().optional(),
+  confirm_password: Joi.string().optional(),
 }).custom((value, helpers) => {
   const newPass = value.password || value.newPassword;
   const confirmPass = value.confirmPassword || value.confirm_password;
@@ -99,5 +117,6 @@ module.exports = {
   resetPasswordSchema,
   resetMerchantPasswordSchema,
   verifyOtpSchema,
+  changePasswordSchema,
+  updateFcmTokenSchema,
 };
-

@@ -91,6 +91,11 @@ User.init(
       allowNull: true,
       field: 'refresh_token',
     },
+    fcmToken: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'fcm_token',
+    },
   },
   {
     sequelize,

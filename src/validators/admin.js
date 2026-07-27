@@ -52,12 +52,49 @@ const adminUpdateSubscriptionSchema = Joi.object({
   status: Joi.string().valid('active', 'expired', 'cancelled').optional(),
 });
 
+const updateAdminProfileSchema = Joi.object({
+  firstName: Joi.string().min(1).max(50).optional().allow(''),
+  lastName: Joi.string().min(1).max(50).optional().allow(''),
+  email: Joi.string().email().optional(),
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
+});
+
+const sendNotificationSchema = Joi.object({
+  userId: Joi.string().uuid().optional().allow(null, ''),
+  targetType: Joi.string().valid('single', 'all', 'merchants', 'admins').default('single'),
+  title: Joi.string().min(1).max(150).required().messages({
+    'any.required': 'Notification title is required',
+  }),
+  message: Joi.string().min(1).required().messages({
+    'any.required': 'Notification message is required',
+  }),
+  data: Joi.object().optional().allow(null),
+});
+
+const adminResetMerchantPasswordSchema = Joi.object({
+  merchantId: Joi.string().uuid().optional(),
+  userId: Joi.string().uuid().optional(),
+  email: Joi.string().email().optional(),
+  mobile: Joi.string().optional(),
+  newPassword: Joi.string().min(6).optional(),
+  password: Joi.string().min(6).optional(),
+}).custom((value, helpers) => {
+  const newPass = value.newPassword || value.password;
+  if (!newPass) {
+    return helpers.message('New password (newPassword or password) is required and must be at least 6 characters long');
+  }
+  return value;
+});
+
 module.exports = {
   createVoiceSchema,
   updateVoiceSchema,
   listQuerySchema,
   adminUpgradeSubscriptionSchema,
   adminUpdateSubscriptionSchema,
+  updateAdminProfileSchema,
+  sendNotificationSchema,
+  adminResetMerchantPasswordSchema,
 };
 
 

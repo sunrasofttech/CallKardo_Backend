@@ -1,7 +1,7 @@
-const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer } = require('../models');
+const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
-const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema } = require('../validators/admin');
+const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema, updateAdminProfileSchema, sendNotificationSchema, adminResetMerchantPasswordSchema } = require('../validators/admin');
 
 
 class AdminController {
@@ -1063,6 +1063,224 @@ class AdminController {
           limit,
         }
       }, 'Global virtual numbers inventory retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Admin Profile
+   */
+  async getProfile(req, res, next) {
+    try {
+      const admin = req.user;
+      return ResponseBuilder.success(res, admin, 'Admin profile retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update Admin Profile
+   */
+  async updateProfile(req, res, next) {
+    try {
+      const { error, value } = updateAdminProfileSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const admin = req.user;
+      const { firstName, lastName, email, mobile } = value;
+      const { Op } = require('sequelize');
+
+      if (email && email !== admin.email) {
+        const existingEmail = await Admin.findOne({ where: { email, id: { [Op.ne]: admin.id } } });
+        if (existingEmail) {
+          return ResponseBuilder.error(res, 'Email is already in use by another admin', 400);
+        }
+      }
+
+      if (mobile && mobile !== admin.mobile) {
+        const existingMobile = await Admin.findOne({ where: { mobile, id: { [Op.ne]: admin.id } } });
+        if (existingMobile) {
+          return ResponseBuilder.error(res, 'Mobile number is already in use by another admin', 400);
+        }
+      }
+
+      await admin.update({
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName !== undefined && { lastName }),
+        ...(email !== undefined && { email }),
+        ...(mobile !== undefined && { mobile }),
+      });
+
+      return ResponseBuilder.success(res, admin, 'Admin profile updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Delete Admin Team Member
+   */
+  async deleteAdmin(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      if (req.user.id === id) {
+        return ResponseBuilder.error(res, 'You cannot delete your own admin account', 400);
+      }
+
+      const targetAdmin = await Admin.findByPk(id);
+      if (!targetAdmin) {
+        return ResponseBuilder.error(res, 'Admin team member not found', 404);
+      }
+
+      await targetAdmin.destroy();
+      return ResponseBuilder.success(res, null, 'Admin team member deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Send Notification (Admin)
+   */
+  async sendNotification(req, res, next) {
+    try {
+      const { error, value } = sendNotificationSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { userId, targetType, title, message, data } = value;
+      const createdNotifications = [];
+
+      if (targetType === 'single' && userId) {
+        const targetUser = await User.findByPk(userId);
+        if (!targetUser) {
+          return ResponseBuilder.error(res, 'Target user not found', 404);
+        }
+        const notif = await Notification.create({
+          userId: targetUser.id,
+          title,
+          message,
+          isRead: false,
+        });
+        createdNotifications.push(notif);
+
+        if (targetUser.fcmToken) {
+          console.log(`[Push Notification] Dispatched FCM push to user ${targetUser.id} (${targetUser.fcmToken}): "${title}"`);
+        }
+      } else if (targetType === 'all' || targetType === 'merchants') {
+        const users = await User.findAll({ attributes: ['id', 'fcmToken'] });
+        for (const user of users) {
+          const notif = await Notification.create({
+            userId: user.id,
+            title,
+            message,
+            isRead: false,
+          });
+          createdNotifications.push(notif);
+          if (user.fcmToken) {
+            console.log(`[Push Notification] Dispatched FCM push to user ${user.id} (${user.fcmToken}): "${title}"`);
+          }
+        }
+      } else {
+        return ResponseBuilder.error(res, 'Please provide a valid userId for single notification target', 400);
+      }
+
+      return ResponseBuilder.success(
+        res,
+        { count: createdNotifications.length, notifications: createdNotifications },
+        `Notification sent successfully to ${createdNotifications.length} user(s)`
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get All Notifications (Admin)
+   */
+  async getAllNotifications(req, res, next) {
+    try {
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { count, rows } = await Notification.findAndCountAll({
+        limit,
+        offset,
+        include: [{ model: User, as: 'user', attributes: ['id', 'email', 'mobile', 'businessName', 'fcmToken'] }],
+        order: [['createdAt', 'DESC']],
+      });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          notifications: rows,
+          pagination: {
+            totalItems: count,
+            totalPages: Math.ceil(count / limit),
+            currentPage: page,
+            limit,
+          },
+        },
+        'Notifications retrieved successfully'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Admin Reset Merchant / User Password
+   */
+  async resetMerchantPasswordByAdmin(req, res, next) {
+    try {
+      const { error, value } = adminResetMerchantPasswordSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const targetId = req.params.id || value.merchantId || value.userId;
+      const targetEmail = value.email;
+      const targetMobile = value.mobile;
+      const newPass = value.newPassword || value.password;
+
+      let merchant = null;
+      if (targetId) {
+        merchant = await User.findByPk(targetId);
+      } else if (targetEmail) {
+        merchant = await User.findOne({ where: { email: targetEmail } });
+      } else if (targetMobile) {
+        merchant = await User.findOne({ where: { mobile: targetMobile } });
+      }
+
+      if (!merchant) {
+        return ResponseBuilder.error(res, 'Merchant user not found', 404);
+      }
+
+      const bcrypt = require('bcryptjs');
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(newPass, salt);
+
+      merchant.passwordHash = passwordHash;
+      merchant.refreshToken = null; // Revoke active refresh tokens
+      await merchant.save();
+
+      return ResponseBuilder.success(
+        res,
+        {
+          id: merchant.id,
+          email: merchant.email,
+          mobile: merchant.mobile,
+          businessName: merchant.businessName,
+        },
+        `Password for merchant '${merchant.businessName || merchant.email || merchant.mobile}' reset successfully by Admin`
+      );
     } catch (err) {
       next(err);
     }
