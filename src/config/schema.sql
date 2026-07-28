@@ -288,6 +288,7 @@ CREATE TABLE IF NOT EXISTS `call_sessions` (
   `status` VARCHAR(20) DEFAULT 'initiated', -- initiated, connected, completed, failed, no-answer, busy
   `start_time` DATETIME NULL,
   `end_time` DATETIME NULL,
+  `actions` JSON NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME NULL,
