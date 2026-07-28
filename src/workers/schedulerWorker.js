@@ -7,6 +7,7 @@ const SubscriptionService = require('../services/subscriptionService');
 const { Op } = require('sequelize');
 
 let lastSubscriptionExpiryCheck = 0;
+let lastNumberRentalCheck = 0;
 
 async function startScheduler() {
   console.log('Scheduler Worker started.');
@@ -19,6 +20,12 @@ async function startScheduler() {
       if (now - lastSubscriptionExpiryCheck >= 60 * 1000) {
         await SubscriptionService.expireDueSubscriptions();
         lastSubscriptionExpiryCheck = now;
+      }
+
+      if (now - lastNumberRentalCheck >= 60 * 1000) {
+        const VobizService = require('../services/vobizService');
+        await VobizService.checkNumberRentals();
+        lastNumberRentalCheck = now;
       }
 
       const readyJobs = await QueueService.fetchReadyScheduledJobs(now);

@@ -23,6 +23,11 @@ VobizNumber.init(
       type: DataTypes.STRING(20),
       defaultValue: 'active', // active, inactive
     },
+    rentalExpiryDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'rental_expiry_date',
+    },
     providerData: {
       type: DataTypes.JSON,
       allowNull: true,

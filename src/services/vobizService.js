@@ -502,6 +502,66 @@ class VobizService {
       return { success: false, error: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg) };
     }
   }
+
+  /**
+   * Periodically check VoBiz phone number rentals:
+   * 1. 2 days before rentalExpiryDate: Auto-mark the number as 'inactive'.
+   * 2. 1 day before rentalExpiryDate: Cancel the number from VoBiz and delete the record.
+   */
+  async checkNumberRentals() {
+    try {
+      const { VobizNumber } = require('../models');
+      const { Op } = require('sequelize');
+      const now = new Date();
+
+      // 1. Auto-mark as inactive 2 days before expiration
+      const twoDaysFromNow = new Date();
+      twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+
+      const numbersToInactivate = await VobizNumber.findAll({
+        where: {
+          status: 'active',
+          rentalExpiryDate: {
+            [Op.not]: null,
+            [Op.lte]: twoDaysFromNow
+          }
+        }
+      });
+
+      for (const num of numbersToInactivate) {
+        console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) is within 2 days of expiration (${num.rentalExpiryDate}). Marking status as inactive.`);
+        await num.update({ status: 'inactive' });
+      }
+
+      // 2. Auto-cancel (unrent) from VoBiz 1 day before expiration
+      const oneDayFromNow = new Date();
+      oneDayFromNow.setDate(oneDayFromNow.getDate() + 1);
+
+      const numbersToCancel = await VobizNumber.findAll({
+        where: {
+          rentalExpiryDate: {
+            [Op.not]: null,
+            [Op.lte]: oneDayFromNow
+          }
+        }
+      });
+
+      for (const num of numbersToCancel) {
+        console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) is within 1 day of expiration (${num.rentalExpiryDate}) and unpaid. Releasing/Unrenting from VoBiz...`);
+        try {
+          await this.unrentNumber(num.number);
+          console.log(`[Rental Check] Successfully unrented number ${num.number} from VoBiz.`);
+        } catch (err) {
+          console.error(`[Rental Check] Failed to unrent number ${num.number} from VoBiz:`, err.message);
+        }
+        await num.destroy();
+        console.log(`[Rental Check] Destroyed VobizNumber record for ${num.number}.`);
+      }
+
+    } catch (error) {
+      console.error('Error in checkNumberRentals:', error.message);
+    }
+  }
 }
 
 module.exports = new VobizService();

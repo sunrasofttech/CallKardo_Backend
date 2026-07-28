@@ -472,11 +472,15 @@ class VobizController {
         console.error('Failed to setup inbound routing on purchase:', routingErr.message);
       }
 
+      const rentalExpiryDate = new Date();
+      rentalExpiryDate.setMonth(rentalExpiryDate.getMonth() + 1);
+
       // Save to database
       const vobizNumber = await VobizNumber.create({
         userId: req.user.id,
         number: number,
         status: 'active',
+        rentalExpiryDate,
         providerData: purchaseResult,
       });
 

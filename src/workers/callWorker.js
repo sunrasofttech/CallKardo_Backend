@@ -179,12 +179,31 @@ async function processPlaceCall(payload) {
     // Resolve VoBiz Number
     let vobizNumber = campaign.vobizNumberId ? await VobizNumber.findByPk(campaign.vobizNumberId) : null;
     if (vobizNumber && vobizNumber.number) {
+      if (vobizNumber.status !== 'active') {
+        console.warn(`[callWorker] VoBiz number ${vobizNumber.number} configured for campaign ${campaignId} is inactive.`);
+        await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
+        await CallLog.create({
+          callSessionId: null,
+          logLevel: 'error',
+          message: `Call failed: VoBiz number ${vobizNumber.number} is inactive. Please renew number rental.`,
+        });
+        return;
+      }
       fromNumber = vobizNumber.number;
     } else {
-      const activeNum = await VobizNumber.findOne({ where: { status: 'active' } });
+      const activeNum = await VobizNumber.findOne({ where: { status: 'active', userId } });
       if (activeNum && activeNum.number) {
         fromNumber = activeNum.number;
         vobizNumber = activeNum;
+      } else {
+        console.warn(`[callWorker] No active VoBiz number found for merchant ${userId}. Skipping call.`);
+        await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
+        await CallLog.create({
+          callSessionId: null,
+          logLevel: 'error',
+          message: `Call failed: No active VoBiz number found under merchant account.`,
+        });
+        return;
       }
     }
 

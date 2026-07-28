@@ -347,10 +347,17 @@ class PaymentService {
     // Check if number already registered
     const existing = await VobizNumber.findOne({ where: { userId: tx.userId, number } });
     if (existing) {
-      if (existing.status !== 'active') {
-        await existing.update({ status: 'active' });
+      let nextExpiry = new Date(existing.rentalExpiryDate || new Date());
+      if (nextExpiry < new Date()) {
+        nextExpiry = new Date();
       }
-      console.log(`[Fulfill VoBiz Number] Number ${number} already registered for user ${tx.userId}. Activated.`);
+      nextExpiry.setMonth(nextExpiry.getMonth() + 1);
+
+      await existing.update({
+        status: 'active',
+        rentalExpiryDate: nextExpiry
+      });
+      console.log(`[Fulfill VoBiz Number] Number ${number} already registered for user ${tx.userId}. Activated and extended until ${nextExpiry}.`);
       return;
     }
 
@@ -383,14 +390,18 @@ class PaymentService {
       }
     }
 
+    const rentalExpiryDate = new Date();
+    rentalExpiryDate.setMonth(rentalExpiryDate.getMonth() + 1);
+
     await VobizNumber.create({
       userId: tx.userId,
       number: number,
       status: 'active',
+      rentalExpiryDate,
       providerData: purchaseResult,
     });
 
-    console.log(`[Fulfill VoBiz Number] Number ${number} purchased and added for user ${tx.userId}.`);
+    console.log(`[Fulfill VoBiz Number] Number ${number} purchased and added for user ${tx.userId} with expiry ${rentalExpiryDate}.`);
   }
 }
 
