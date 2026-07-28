@@ -1,6 +1,7 @@
 const { Customer, CustomerList, CustomerListMember, sequelize } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { createCustomerSchema, updateCustomerSchema, createListSchema } = require('../validators/customer');
+const { normalizeMobile } = require('../utils/phone');
 const fs = require('fs');
 const csv = require('csv-parser');
 
@@ -46,7 +47,8 @@ class CustomerController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { name, mobile, email, tags, notes } = value;
+      const { name, email, tags, notes } = value;
+      const mobile = normalizeMobile(value.mobile);
 
       // Check if mobile number exists for this merchant (soft-delete safe)
       const existing = await Customer.findOne({
@@ -89,7 +91,8 @@ class CustomerController {
         return ResponseBuilder.error(res, 'Customer not found', 404);
       }
 
-      const { name, mobile, email, tags, notes } = value;
+      const { name, email, tags, notes } = value;
+      const mobile = value.mobile !== undefined ? normalizeMobile(value.mobile) : undefined;
 
       // Check mobile unique constraint if changing mobile
       if (mobile && mobile !== customer.mobile) {
@@ -160,7 +163,7 @@ class CustomerController {
         .pipe(csv(['name', 'mobile', 'tags', 'notes', 'email']))
         .on('data', (row) => {
           const name = row.name ? row.name.trim() : '';
-          const mobile = row.mobile ? row.mobile.trim() : '';
+          const mobile = row.mobile ? normalizeMobile(row.mobile.trim()) : '';
           const tags = row.tags ? row.tags.trim() : '';
           const notes = row.notes ? row.notes.trim() : '';
           const email = row.email ? row.email.trim() : '';
