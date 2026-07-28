@@ -17,6 +17,9 @@ async function sendEmail({ to, cc, bcc, subject, text, html, icalEvent }) {
         user,
         pass,
       },
+      connectionTimeout: 10000, // Fail fast instead of hanging if the port is unreachable (e.g. blocked by firewall)
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
 
     const isValidEmail = (addr) => addr && typeof addr === 'string' && addr.includes('@') && !addr.includes('example.com');
