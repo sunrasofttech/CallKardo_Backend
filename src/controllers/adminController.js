@@ -1,4 +1,4 @@
-const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification } = require('../models');
+const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema, updateAdminProfileSchema, sendNotificationSchema, adminResetMerchantPasswordSchema } = require('../validators/admin');
@@ -303,17 +303,66 @@ class AdminController {
 
   async getMerchants(req, res, next) {
     try {
-      const merchants = await User.findAll({
-        where: { role: 'merchant' },
+      const { Op } = require('sequelize');
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder } = req.query;
+
+      const whereClause = { role: 'merchant' };
+
+      if (search) {
+        whereClause[Op.or] = [
+          { businessName: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { mobile: { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      if (categoryId) {
+        whereClause.categoryId = categoryId;
+      }
+
+      if (kycStatus) {
+        whereClause.kycStatus = kycStatus;
+      }
+
+      if (isVerified !== undefined && isVerified !== '') {
+        whereClause.isVerified = isVerified === 'true' || isVerified === true || isVerified === '1';
+      }
+
+      // Allowed fields for sorting to prevent SQL injection
+      const allowedSortFields = ['businessName', 'email', 'mobile', 'createdAt', 'kycStatus', 'isVerified'];
+      const activeSortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+      const activeSortOrder = ['ASC', 'DESC'].includes(sortOrder?.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
+
+      const { count, rows: merchants } = await User.findAndCountAll({
+        where: whereClause,
         attributes: { exclude: ['passwordHash', 'refreshToken', 'resetToken', 'resetTokenExpires', 'verificationToken'] },
         include: [
           { model: Category, as: 'category' },
           { model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] },
           { model: VobizNumber, as: 'vobizNumbers' },
         ],
-        order: [['createdAt', 'DESC']],
+        order: [[activeSortField, activeSortOrder]],
+        limit,
+        offset,
       });
-      return ResponseBuilder.success(res, merchants, 'Merchants retrieved successfully');
+
+      return ResponseBuilder.success(
+        res,
+        {
+          merchants,
+          pagination: {
+            totalItems: count,
+            currentPage: page,
+            limit,
+            totalPages: Math.ceil(count / limit) || 1,
+          },
+        },
+        'Merchants retrieved successfully'
+      );
     } catch (err) {
       next(err);
     }
@@ -1281,6 +1330,180 @@ class AdminController {
         },
         `Password for merchant '${merchant.businessName || merchant.email || merchant.mobile}' reset successfully by Admin`
       );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * View call records for a specific merchant
+   */
+  async getMerchantCallRecords(req, res, next) {
+    try {
+      const { id } = req.params;
+      const merchant = await User.findOne({ where: { id, role: 'merchant' } });
+      if (!merchant) {
+        return ResponseBuilder.error(res, 'Merchant user not found', 404);
+      }
+
+      const page = parseInt(req.query.page || '1', 10);
+      const limit = parseInt(req.query.limit || '20', 10);
+      const offset = (page - 1) * limit;
+      const { status, search } = req.query;
+
+      const where = { userId: id };
+      if (status) where.outcome = status;
+
+      const include = [
+        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+        { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
+        { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
+      ];
+
+      if (search) {
+        const { Op } = require('sequelize');
+        where[Op.or] = [
+          { '$customer.name$': { [Op.like]: `%${search}%` } },
+          { '$customer.mobile$': { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      let { count, rows } = await CallReport.findAndCountAll({
+        where,
+        limit,
+        offset,
+        include,
+        order: [['createdAt', 'DESC']],
+      });
+
+      // Fallback: If no CallReport entries exist yet, derive report list from CallSessions
+      if (count === 0) {
+        const sessionWhere = { userId: id };
+        const sessionInclude = [
+          { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+          { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
+          { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
+        ];
+
+        const sessionResult = await CallSession.findAndCountAll({
+          where: sessionWhere,
+          limit,
+          offset,
+          include: sessionInclude,
+          order: [['createdAt', 'DESC']],
+        });
+
+        const fs = require('fs');
+        const path = require('path');
+        const uploadsDir = path.join(__dirname, '../../uploads');
+
+        count = sessionResult.count;
+        rows = sessionResult.rows.map((s) => {
+          let duration = 0;
+          if (s.startTime && s.endTime) {
+            duration = Math.max(0, Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000));
+          }
+          const recFileName = `recording-${s.id}.wav`;
+          const recPath = path.join(uploadsDir, recFileName);
+          const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
+
+          return {
+            id: s.id,
+            userId: s.userId,
+            callSessionId: s.id,
+            campaignId: s.campaignId,
+            customerId: s.customerId,
+            vobizNumberId: s.vobizNumberId,
+            transcript: `Call ${s.direction} (${s.status})`,
+            summary: `Call ${s.direction} (${s.status})`,
+            duration,
+            outcome: s.status === 'completed' ? 'Interested' : 'No Answer',
+            sentiment: 'Neutral',
+            leadScore: s.status === 'completed' ? 70 : 0,
+            recordingUrl,
+            user: s.user,
+            customer: s.customer,
+            campaign: s.campaign,
+            createdAt: s.createdAt,
+            updatedAt: s.updatedAt,
+          };
+        });
+      }
+
+      return ResponseBuilder.success(res, {
+        reports: rows,
+        pagination: {
+          totalItems: count,
+          totalPages: Math.ceil(count / limit),
+          currentPage: page,
+          limit,
+        },
+      }, 'Merchant call records retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get call record details by ID (either session ID or report ID)
+   */
+  async getCallRecordDetails(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      // 1. Try finding by CallSession ID
+      let session = await CallSession.findOne({
+        where: { id },
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
+          { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'] },
+          { model: Campaign, as: 'campaign', attributes: ['id', 'name'] },
+          { model: Agent, as: 'agent', attributes: ['id', 'name'] },
+          { model: VobizNumber, as: 'vobizNumber', attributes: ['id', 'number'] },
+          { model: CallReport, as: 'report' },
+          { model: CallLog, as: 'logs' }
+        ],
+        order: [[{ model: CallLog, as: 'logs' }, 'createdAt', 'ASC']]
+      });
+
+      if (!session) {
+        // 2. Try finding by CallReport ID
+        const report = await CallReport.findOne({
+          where: { id },
+          include: [
+            { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
+            { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'] },
+            { model: Campaign, as: 'campaign', attributes: ['id', 'name'] },
+          ]
+        });
+
+        if (!report) {
+          return ResponseBuilder.error(res, 'Call record not found', 404);
+        }
+
+        // Fetch session with report.callSessionId if exists
+        if (report.callSessionId) {
+          session = await CallSession.findOne({
+            where: { id: report.callSessionId },
+            include: [
+              { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
+              { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'] },
+              { model: Campaign, as: 'campaign', attributes: ['id', 'name'] },
+              { model: Agent, as: 'agent', attributes: ['id', 'name'] },
+              { model: VobizNumber, as: 'vobizNumber', attributes: ['id', 'number'] },
+              { model: CallReport, as: 'report' },
+              { model: CallLog, as: 'logs' }
+            ],
+            order: [[{ model: CallLog, as: 'logs' }, 'createdAt', 'ASC']]
+          });
+        }
+
+        if (!session) {
+          return ResponseBuilder.success(res, { report }, 'Call record report details retrieved successfully');
+        }
+      }
+
+      return ResponseBuilder.success(res, session, 'Call record details retrieved successfully');
     } catch (err) {
       next(err);
     }

@@ -16,6 +16,7 @@ router.put('/admins/:id', adminController.updateAdmin);
 router.get('/merchants', adminController.getMerchants);
 router.get('/merchants/:id', adminController.getMerchant);
 router.put('/merchants/:id', adminController.updateMerchant);
+router.get('/merchants/:id/call-records', adminController.getMerchantCallRecords);
 router.put('/merchants/:id/subscription', adminController.upgradeMerchantSubscription);
 router.post('/merchants/:id/subscription/upgrade', adminController.upgradeMerchantSubscription);
 router.get('/merchants/:id/numbers', adminController.getMerchantNumbers);
@@ -61,6 +62,8 @@ router.get('/audit-logs', adminController.getAuditLogs);
 
 // Global Call Reports routes
 router.get('/reports', adminController.getGlobalCallReports);
+router.get('/reports/:id', adminController.getCallRecordDetails);
+router.get('/call-records/:id', adminController.getCallRecordDetails);
 router.get('/reports/session/:sessionId', adminController.getGlobalCallSession);
 
 const categoryController = require('../controllers/categoryController');
