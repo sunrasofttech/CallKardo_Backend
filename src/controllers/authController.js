@@ -396,7 +396,9 @@ class AuthController {
       await account.save();
 
       // Send password reset email in the background
-      await sendPasswordResetEmail(email, resetToken, role);
+      sendPasswordResetEmail(email, resetToken, role).catch((emailErr) => {
+        console.error(`[Background Email] Failed to send password reset email to ${email}:`, emailErr);
+      });
 
       return ResponseBuilder.success(
         res,

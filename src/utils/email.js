@@ -9,46 +9,47 @@ async function sendEmail({ to, cc, bcc, subject, text, html, icalEvent }) {
   const { host, port, user, pass, from } = defaults.smtp;
 
   if (host && user && pass) {
-    try {
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465, // True for 465, false for others
-        auth: {
-          user,
-          pass,
-        },
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465, // True for 465, false for others
+      auth: {
+        user,
+        pass,
+      },
+    });
+
+    const isValidEmail = (addr) => addr && typeof addr === 'string' && addr.includes('@') && !addr.includes('example.com');
+
+    const mailOptions = {
+      from,
+      to,
+      subject,
+      text,
+      html,
+    };
+
+    if (isValidEmail(cc) && cc !== to) {
+      mailOptions.cc = cc;
+    }
+    if (isValidEmail(bcc) && bcc !== to) {
+      mailOptions.bcc = bcc;
+    }
+
+    if (icalEvent) {
+      mailOptions.icalEvent = icalEvent;
+    }
+
+    // Run email sending in the background (fire and forget)
+    transporter.sendMail(mailOptions)
+      .then((info) => {
+        console.log(`Email sent successfully to ${to}. Message ID: ${info.messageId}`);
+      })
+      .catch((err) => {
+        console.error(`Failed to send email to ${to} via SMTP (background):`, err);
       });
 
-      const isValidEmail = (addr) => addr && typeof addr === 'string' && addr.includes('@') && !addr.includes('example.com');
-
-      const mailOptions = {
-        from,
-        to,
-        subject,
-        text,
-        html,
-      };
-
-      if (isValidEmail(cc) && cc !== to) {
-        mailOptions.cc = cc;
-      }
-      if (isValidEmail(bcc) && bcc !== to) {
-        mailOptions.bcc = bcc;
-      }
-
-      if (icalEvent) {
-        mailOptions.icalEvent = icalEvent;
-      }
-
-      const info = await transporter.sendMail(mailOptions);
-
-      console.log(`Email sent successfully to ${to}. Message ID: ${info.messageId}`);
-      return true;
-    } catch (err) {
-      console.error(`Failed to send email to ${to} via SMTP:`, err);
-      return false;
-    }
+    return true; // Return immediately to unblock the caller
   } else {
     // Local dev / no SMTP configured: log to console
     console.log('\n==================================================');
