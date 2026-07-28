@@ -40,16 +40,14 @@ async function sendEmail({ to, cc, bcc, subject, text, html, icalEvent }) {
       mailOptions.icalEvent = icalEvent;
     }
 
-    // Run email sending in the background (fire and forget)
-    transporter.sendMail(mailOptions)
-      .then((info) => {
-        console.log(`Email sent successfully to ${to}. Message ID: ${info.messageId}`);
-      })
-      .catch((err) => {
-        console.error(`Failed to send email to ${to} via SMTP (background):`, err);
-      });
-
-    return true; // Return immediately to unblock the caller
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`Email sent successfully to ${to}. Message ID: ${info.messageId}`);
+      return true;
+    } catch (err) {
+      console.error(`Failed to send email to ${to} via SMTP:`, err);
+      throw err; // Let the caller know delivery actually failed
+    }
   } else {
     // Local dev / no SMTP configured: log to console
     console.log('\n==================================================');
