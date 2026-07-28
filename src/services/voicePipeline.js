@@ -208,6 +208,7 @@ class VoicePipeline {
     this.direction = options.direction || 'outbound';
     this.customer = options.customer;
     this.merchant = options.merchant || options.agent?.user;
+    this.callSessionId = options.callSessionId || null;
 
     // Determine agent gender from voice
     let gender = 'neutral';
@@ -782,6 +783,9 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       const ActionService = require('./actionService');
       this._log('info', `[Action Execute] Running handler for: ${actionName}${actionPayload ? ` with payload: "${actionPayload}"` : ''}`);
       
+      // Save triggered action details into CallSession and CallLog
+      await this._saveActionToSessionAndLog(actionName, actionPayload);
+
       switch (actionName) {
         case 'send_join_link':
           await ActionService.sendJoinLink(this.customer, this.agent, this.merchant);
@@ -800,6 +804,33 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       }
     } catch (err) {
       this._log('error', `[Action Error] Failed executing action ${actionName}: ${err.message}`);
+    }
+  }
+
+  async _saveActionToSessionAndLog(actionName, actionPayload) {
+    if (!this.callSessionId) return;
+    try {
+      const { CallSession, CallLog } = require('../models');
+      const session = await CallSession.findByPk(this.callSessionId);
+      if (session) {
+        const currentActions = session.actions || [];
+        currentActions.push({
+          action: actionName,
+          payload: actionPayload,
+          timestamp: new Date()
+        });
+        session.actions = currentActions;
+        session.changed('actions', true); // Force Sequelize to track mutations on JSON
+        await session.save();
+      }
+
+      await CallLog.create({
+        callSessionId: this.callSessionId,
+        logLevel: 'info',
+        message: `[Action Triggered] Action: ${actionName}${actionPayload ? ` | Payload: ${actionPayload}` : ''}`,
+      });
+    } catch (err) {
+      this._log('error', `Failed to save action to session/log: ${err.message}`);
     }
   }
 

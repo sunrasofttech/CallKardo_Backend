@@ -70,6 +70,11 @@ CallSession.init(
       allowNull: true,
       field: 'end_time',
     },
+    actions: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      defaultValue: [],
+    },
   },
   {
     sequelize,

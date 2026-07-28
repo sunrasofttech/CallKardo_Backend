@@ -212,6 +212,7 @@ class VobizSocketHandler {
         customer: customer,
         merchant: session.user,
         direction: session.direction,
+        callSessionId: session.id,
         onAudioOutput: (pcmBuffer, targetRate) => {
           if (ws.readyState === ws.OPEN) {
             const format = ws.mediaFormat || { encoding: 'audio/x-mulaw', sampleRate: 8000 };

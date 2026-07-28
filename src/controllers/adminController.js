@@ -961,6 +961,7 @@ class AdminController {
         { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
         { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
+        { model: CallSession, as: 'session', attributes: ['id', 'actions'], required: false },
       ];
 
       if (search) {
@@ -1358,6 +1359,7 @@ class AdminController {
         { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
         { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
+        { model: CallSession, as: 'session', attributes: ['id', 'actions'], required: false },
       ];
 
       if (search) {

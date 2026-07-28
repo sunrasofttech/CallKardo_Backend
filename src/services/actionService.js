@@ -56,15 +56,18 @@ class ActionService {
     }
     try {
       const { Customer } = require('../models');
-      const { Op } = require('sequelize');
-      const whereClause = { email: { [Op.ne]: null } };
-      if (merchant?.id) whereClause.userId = merchant.id;
-      
-      const found = await Customer.findOne({
-        where: whereClause,
-        order: [['updatedAt', 'DESC']],
-      });
-      if (found && found.email && !found.email.includes('example.com')) {
+      let found = null;
+      if (customer?.id) {
+        found = await Customer.findByPk(customer.id);
+      } else if (customer?.mobile) {
+        found = await Customer.findOne({
+          where: {
+            mobile: customer.mobile,
+            ...(merchant?.id && { userId: merchant.id }),
+          }
+        });
+      }
+      if (found && found.email && found.email.includes('@') && !found.email.includes('example.com')) {
         return found.email;
       }
     } catch (err) {
