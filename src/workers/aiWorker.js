@@ -262,6 +262,14 @@ async function processCallAnalysis(event) {
     }
   } catch (dbErr) {
     console.error(`DB Update Error in AI worker for session ${callSessionId}:`, dbErr);
+    if (callSessionId) {
+      const { CallLog } = require('../models');
+      await CallLog.create({
+        callSessionId,
+        logLevel: 'error',
+        message: `AI Worker failed to create/update CallReport: ${dbErr.message}`,
+      }).catch(() => {});
+    }
   }
 }
 

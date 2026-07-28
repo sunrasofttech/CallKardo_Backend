@@ -65,11 +65,16 @@ async function dispatchRunningCampaigns() {
 
     for (const campaign of campaigns) {
       // --- Recovery: Detect and fix stuck 'calling' customers ---
-      // If a campaign_customer has been in 'calling' status for > 3 minutes,
-      // check if the corresponding call_session is still 'initiated' (never connected).
-      // If so, mark customer as 'failed' and session as 'failed' to unblock the campaign.
+      // If a campaign_customer has been in 'calling' status for > 3 minutes, inspect the
+      // actual call_session before touching anything:
+      //  - session still 'initiated' (never connected)      -> genuinely stuck, safe to fail + retry
+      //  - session 'connected'                                -> call is genuinely live, DO NOT touch it
+      //  - session 'completed'/'failed'                       -> call already finished but the report
+      //                                                          pipeline never flipped callStatus; just
+      //                                                          correct the status (never redial) and
+      //                                                          self-heal a missing CallReport.
       try {
-        const { CallSession } = require('../models');
+        const { CallSession, CallReport } = require('../models');
         const stuckThreshold = new Date(Date.now() - 3 * 60 * 1000); // 3 minutes ago
 
         const stuckCallingCustomers = await CampaignCustomer.findAll({
@@ -81,24 +86,69 @@ async function dispatchRunningCampaigns() {
         });
 
         for (const stuckCC of stuckCallingCustomers) {
-          // Find the most recent session for this campaign+customer
-          const stuckSession = await CallSession.findOne({
-            where: {
-              campaignId: campaign.id,
-              customerId: stuckCC.customerId,
-              status: { [Op.in]: ['initiated', 'connected'] },
-            },
+          // Find the most recent session for this campaign+customer, regardless of status
+          const latestSession = await CallSession.findOne({
+            where: { campaignId: campaign.id, customerId: stuckCC.customerId },
             order: [['createdAt', 'DESC']],
           });
 
-          if (stuckSession) {
-            console.log(`[Scheduler] Recovering stuck session ${stuckSession.id} (status: ${stuckSession.status}) for customer ${stuckCC.customerId}`);
-            stuckSession.status = 'failed';
-            stuckSession.endTime = new Date();
-            await stuckSession.save();
+          if (latestSession && latestSession.status === 'connected') {
+            // Genuinely ongoing conversation (can legitimately run past 3 minutes) — never redial mid-call.
+            console.log(`[Scheduler] Customer ${stuckCC.customerId} is still on a live call (session ${latestSession.id}). Skipping recovery.`);
+            continue;
+          }
 
-            // Deregister from active calls ZSET
-            await QueueService.deregisterActiveCall(campaign.id, stuckSession.id).catch(() => { });
+          if (latestSession && (latestSession.status === 'completed' || latestSession.status === 'failed')) {
+            // Call already ended but the AI-report pipeline never updated campaign_customer.
+            // Correct the status directly — redialing here would call an already-completed customer again.
+            const neverConnected = latestSession.status === 'failed' && !latestSession.startTime;
+            if (neverConnected) {
+              const newRetryCount = (stuckCC.retryCount || 0) + 1;
+              const maxRetries = campaign.maxRetries || 3;
+              stuckCC.retryCount = newRetryCount;
+              stuckCC.callStatus = newRetryCount >= maxRetries ? 'failed' : 'pending';
+            } else {
+              stuckCC.callStatus = 'completed';
+            }
+            await stuckCC.save();
+            console.log(`[Scheduler] Customer ${stuckCC.customerId}'s call (session ${latestSession.id}, status ${latestSession.status}) had already ended but was stuck on 'calling'. Corrected to '${stuckCC.callStatus}'.`);
+
+            // Self-heal: make sure a CallReport row exists for a call that actually connected,
+            // even if the original real-time report pipeline failed/lagged.
+            if (!neverConnected) {
+              try {
+                const existingReport = await CallReport.findOne({ where: { callSessionId: latestSession.id } });
+                if (!existingReport) {
+                  const duration = (latestSession.startTime && latestSession.endTime)
+                    ? Math.max(0, Math.round((new Date(latestSession.endTime) - new Date(latestSession.startTime)) / 1000))
+                    : 0;
+                  const { processCallAnalysis } = require('./aiWorker');
+                  await processCallAnalysis({
+                    callSessionId: latestSession.id,
+                    userId: latestSession.userId,
+                    campaignId: latestSession.campaignId,
+                    vobizNumberId: latestSession.vobizNumberId,
+                    customerId: latestSession.customerId,
+                    transcript: '',
+                    duration,
+                    recordingUrl: null,
+                  }).catch((repairErr) => console.error(`[Scheduler] Repair processCallAnalysis failed for session ${latestSession.id}:`, repairErr.message));
+                  console.log(`[Scheduler] No CallReport existed for completed session ${latestSession.id}. Triggered repair analysis.`);
+                }
+              } catch (repairCheckErr) {
+                console.error(`[Scheduler] Error checking/repairing CallReport for session ${latestSession.id}:`, repairCheckErr.message);
+              }
+            }
+            continue;
+          }
+
+          // Truly stuck: session still 'initiated' (never connected) or no session record at all.
+          if (latestSession && latestSession.status === 'initiated') {
+            console.log(`[Scheduler] Recovering stuck session ${latestSession.id} (status: ${latestSession.status}) for customer ${stuckCC.customerId}`);
+            latestSession.status = 'failed';
+            latestSession.endTime = new Date();
+            await latestSession.save();
+            await QueueService.deregisterActiveCall(campaign.id, latestSession.id).catch(() => { });
           }
 
           const newRetryCount = (stuckCC.retryCount || 0) + 1;
