@@ -176,7 +176,7 @@ const voiceAgent = defineAgent({
       console.log('[LiveKit Agent] Session closed. Handling final report compilation...');
       try {
         const endTime = new Date();
-        const startTime = dbSession?.startTime || new Date();
+        const startTime = dbSession?.startTime ? new Date(dbSession.startTime) : new Date();
         const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
 
         // Extract transcript from chat context with error handling

@@ -483,8 +483,8 @@ class VobizSocketHandler {
         await freshSession.save();
       }
 
-      const endTime = freshSession.endTime || new Date();
-      const startTime = freshSession.startTime || freshSession.createdAt;
+      const endTime = new Date(freshSession.endTime || Date.now());
+      const startTime = new Date(freshSession.startTime || freshSession.createdAt);
       const duration = Math.max(0, Math.round((endTime.getTime() - startTime.getTime()) / 1000));
 
       console.log(`[VoBiz Call Ended] Call Session ${session.id} (${freshSession.direction}) finished. Duration: ${duration} seconds.`);
