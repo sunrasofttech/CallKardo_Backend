@@ -4,6 +4,9 @@ const adminController = require('../controllers/adminController');
 const authController = require('../controllers/authController');
 const { authenticate, isAdmin } = require('../middleware/auth');
 
+// Public admin routes (no auth required)
+router.post('/password/reset', authController.forgotPassword);
+
 // All admin routes should require admin role
 router.use(authenticate);
 router.use(isAdmin);
@@ -87,7 +90,6 @@ router.get('/notifications', adminController.getAllNotifications);
 
 // Admin Password management routes
 router.post('/password/change', authController.changePassword);
-router.post('/password/reset', authController.forgotPassword);
 
 // Business Category management routes
 router.get('/categories', categoryController.getAll);
