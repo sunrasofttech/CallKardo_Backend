@@ -633,6 +633,12 @@ class VobizSocketHandler {
       ws.transcriptChunks = null;
     } catch (cleanError) {
       console.error('Error during call session cleanup:', cleanError);
+      await CallLog.create({
+        callSessionId: session.id,
+        logLevel: 'error',
+        message: `_cleanupSession crashed: ${cleanError.message}`,
+        details: { stack: cleanError.stack },
+      }).catch(() => {});
     }
   }
 }
