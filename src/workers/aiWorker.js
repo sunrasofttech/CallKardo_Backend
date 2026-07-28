@@ -162,6 +162,47 @@ async function processCallAnalysis(event) {
     const analysis = await AiAnalysisService.analyzeTranscript(finalTranscript);
     console.log(`[AI Analysis Result] Session: ${callSessionId} -> Outcome: ${analysis.outcome}, Score: ${analysis.leadScore}, Direction: ${session.direction}`);
 
+    // 3b. Safety net: the live voice model sometimes tells the customer a meeting was
+    // scheduled without ever emitting the {{action:schedule_meeting}} trigger token, so
+    // no email goes out. If the post-call transcript analysis independently concludes the
+    // outcome was 'Appointment Booked' but no schedule_meeting action ever ran during the
+    // call, send the confirmation email now as a fallback.
+    if (analysis.outcome === 'Appointment Booked') {
+      try {
+        const { Op } = require('sequelize');
+        const { CallLog, Agent: DBAgent, User: DBUser } = require('../models');
+        const alreadyHandled = await CallLog.findOne({
+          where: {
+            callSessionId,
+            message: { [Op.like]: '%schedule_meeting%' },
+          },
+        });
+
+        if (!alreadyHandled) {
+          const agentRecord = session.agentId ? await DBAgent.findByPk(session.agentId) : null;
+          const merchantRecord = finalUserId ? await DBUser.findByPk(finalUserId) : null;
+          const customerRecord = finalCustomerId ? await Customer.findByPk(finalCustomerId) : null;
+          const ActionService = require('../services/actionService');
+
+          await ActionService.scheduleMeeting(customerRecord, agentRecord, merchantRecord, null);
+          await CallLog.create({
+            callSessionId,
+            logLevel: 'info',
+            message: '[AI Worker] Safety-net: sent meeting-schedule email (schedule_meeting action was never triggered live).',
+          }).catch(() => {});
+          console.log(`[AI Worker] Safety-net meeting email sent for session ${callSessionId}.`);
+        }
+      } catch (safetyErr) {
+        console.error(`[AI Worker] Safety-net schedule_meeting email failed for session ${callSessionId}:`, safetyErr.message);
+        const { CallLog } = require('../models');
+        await CallLog.create({
+          callSessionId,
+          logLevel: 'error',
+          message: `[AI Worker] Safety-net schedule_meeting email failed: ${safetyErr.message}`,
+        }).catch(() => {});
+      }
+    }
+
     // 4. Save CallReport in DB idempotently
     const [report, created] = await CallReport.findOrCreate({
       where: { callSessionId },
