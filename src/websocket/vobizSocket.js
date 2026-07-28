@@ -580,7 +580,18 @@ class VobizSocketHandler {
           console.log(`Saved mixed call recording to ${filePath}`);
         } catch (recordErr) {
           console.error('Failed to save call recording:', recordErr);
+          await CallLog.create({
+            callSessionId: session.id,
+            logLevel: 'error',
+            message: `Failed to save call recording: ${recordErr.message}`,
+          }).catch(() => {});
         }
+      } else {
+        await CallLog.create({
+          callSessionId: session.id,
+          logLevel: 'warn',
+          message: 'No audio chunks captured during call — recording was not generated.',
+        }).catch(() => {});
       }
 
       // Re-fetch session to get any customerId that was resolved during the call
