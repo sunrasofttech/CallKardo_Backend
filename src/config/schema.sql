@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS `vobiz_numbers` (
   `user_id` VARCHAR(36) NOT NULL,
   `number` VARCHAR(20) NOT NULL,
   `status` VARCHAR(20) DEFAULT 'active', -- active, inactive
+  `rental_expiry_date` DATETIME NULL,
   `provider_data` JSON NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
