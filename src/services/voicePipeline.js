@@ -265,13 +265,14 @@ IMPORTANT: Address the customer by their name (${this.customer.name || 'there'})
 
     // Actions and Tool Triggers instruction
     const actionsInstruction = `
-\n\n[ACTION AND TOOL TRIGGERS:
+\n\n[ACTION AND TOOL TRIGGERS — CRITICAL, NON-NEGOTIABLE RULE:
 If the customer explicitly asks you to perform a specific action, acknowledge their request politely (e.g., "Sure, I have sent you the link" or "I've scheduled a meeting for tomorrow at 5 PM and emailed you the details"), and at the VERY END of your response text, append the exact corresponding token:
 - Customer asks for the join link / link to join -> append {{action:send_join_link}} at the end of your response.
 - Customer asks to send a "hi" or greeting on WhatsApp -> append {{action:send_whatsapp_hi}} at the end of your response.
 - Customer asks to email them info/details -> append {{action:send_email}} at the end of your response.
 - Customer asks to schedule a meeting -> append {{action:schedule_meeting:requested_date_and_time}} at the end of your response (e.g. {{action:schedule_meeting:tomorrow at 5pm}} or {{action:schedule_meeting:Friday 10am}} or {{action:schedule_meeting}}).
-Do not say these tokens aloud. Only append them as text at the very end of your response.]`;
+Do not say these tokens aloud. Only append them as text at the very end of your response.
+IMPORTANT: You must NEVER tell the customer an action is done (meeting scheduled, link sent, email sent, WhatsApp sent) unless you actually append its token in that SAME response. Saying it is done without appending the token means it will NOT actually happen — this is strictly forbidden. If you confirm a meeting/email/link to the customer, the token is mandatory in that exact response, every single time, with no exceptions.]`;
 
     // Call-ending instruction
     const endCallInstruction = `
