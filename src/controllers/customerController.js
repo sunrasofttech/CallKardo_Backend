@@ -266,8 +266,18 @@ class CustomerController {
    */
   async getLists(req, res, next) {
     try {
+      const { search, name } = req.query;
+      const whereClause = { userId: req.user.id };
+
+      if (search) {
+        whereClause.name = { [Op.like]: `%${search}%` };
+      } else if (name) {
+        whereClause.name = { [Op.like]: `%${name}%` };
+      }
+
       const lists = await CustomerList.findAll({
-        where: { userId: req.user.id },
+        where: whereClause,
+        order: [['createdAt', 'DESC']],
         attributes: {
           include: [
             [
