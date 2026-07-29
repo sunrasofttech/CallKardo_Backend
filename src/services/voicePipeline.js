@@ -770,7 +770,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     const hasScheduleMeeting = actionsToExecute.some(a => a.actionName === 'schedule_meeting');
 
     for (const action of actionsToExecute) {
-      if (hasScheduleMeeting && (action.actionName === 'send_join_link' || action.actionName === 'send_meeting_link')) {
+      if (hasScheduleMeeting && (action.actionName === 'send_join_link' || action.actionName === 'send_meeting_link' || action.actionName === 'send_email')) {
         this._log('info', `[Action Triggered] Skipping ${action.actionName} because schedule_meeting is also present in this turn.`);
         continue;
       }
