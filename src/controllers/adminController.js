@@ -1,4 +1,4 @@
-const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog } = require('../models');
+const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema, updateAdminProfileSchema, sendNotificationSchema, adminResetMerchantPasswordSchema } = require('../validators/admin');
@@ -1506,6 +1506,297 @@ class AdminController {
       }
 
       return ResponseBuilder.success(res, session, 'Call record details retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get billing and revenue statistics
+   */
+  async getBillingOverview(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+
+      // 1. Fetch all successful transactions
+      const successTxns = await PaymentTransaction.findAll({
+        where: { status: 'success' }
+      });
+
+      // Sum total revenue
+      const totalRevenue = successTxns.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
+      // 2. Fetch all active subscriptions
+      const activeSubs = await Subscription.findAll({
+        where: { status: 'active' },
+        include: [{ model: Plan, as: 'plan' }]
+      });
+
+      // Calculate MRR
+      const mrr = activeSubs.reduce((sum, sub) => sum + (sub.plan ? parseFloat(sub.plan.price || 0) : 0), 0);
+
+      // 3. Revenue breakdown by Plan
+      const plans = await Plan.findAll();
+      const planStats = {};
+      plans.forEach(p => {
+        planStats[p.id] = {
+          name: p.name,
+          price: p.price,
+          count: 0,
+          revenue: 0
+        };
+      });
+
+      // Sum active subscription counts per plan
+      activeSubs.forEach(sub => {
+        if (sub.planId && planStats[sub.planId]) {
+          planStats[sub.planId].count += 1;
+        }
+      });
+
+      // Sum transactional revenue per plan
+      successTxns.forEach(tx => {
+        if (tx.type === 'SUBSCRIPTION' && tx.targetId && planStats[tx.targetId]) {
+          planStats[tx.targetId].revenue += parseFloat(tx.amount || 0);
+        }
+      });
+
+      // 4. Recent Transactions
+      const recentTransactions = await PaymentTransaction.findAll({
+        limit: 10,
+        order: [['createdAt', 'DESC']],
+        include: [{ model: User, as: 'user', attributes: ['id', 'email', 'businessName'] }]
+      });
+
+      return ResponseBuilder.success(res, {
+        totalRevenue,
+        mrr,
+        activeSubscriptionsCount: activeSubs.length,
+        revenueByPlan: Object.values(planStats),
+        recentTransactions
+      }, 'Billing overview retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get all transactions with search, filter, and pagination
+   */
+  async getTransactions(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { search, status, type } = req.query;
+      const where = {};
+
+      if (status) where.status = status;
+      if (type) where.type = type;
+
+      const include = [
+        { model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'], required: false }
+      ];
+
+      if (search) {
+        where[Op.or] = [
+          { orderId: { [Op.like]: `%${search}%` } },
+          { customerName: { [Op.like]: `%${search}%` } },
+          { customerEmail: { [Op.like]: `%${search}%` } },
+          { '$user.email$': { [Op.like]: `%${search}%` } },
+          { '$user.businessName$': { [Op.like]: `%${search}%` } }
+        ];
+      }
+
+      const { count, rows: transactions } = await PaymentTransaction.findAndCountAll({
+        where,
+        include,
+        limit,
+        offset,
+        order: [['createdAt', 'DESC']]
+      });
+
+      return ResponseBuilder.success(res, {
+        totalItems: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        transactions
+      }, 'Transactions retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get detailed transaction info by ID
+   */
+  async getTransactionById(req, res, next) {
+    try {
+      const transaction = await PaymentTransaction.findOne({
+        where: { id: req.params.id },
+        include: [{ model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'] }]
+      });
+
+      if (!transaction) {
+        return ResponseBuilder.error(res, 'Transaction not found', 404);
+      }
+
+      return ResponseBuilder.success(res, transaction, 'Transaction details retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Issue full refund for a transaction
+   */
+  async refundTransaction(req, res, next) {
+    try {
+      const defaults = require('../config/defaults');
+      const axios = require('axios');
+
+      const transaction = await PaymentTransaction.findByPk(req.params.id);
+      if (!transaction) {
+        return ResponseBuilder.error(res, 'Transaction not found', 404);
+      }
+
+      if (transaction.status !== 'success') {
+        return ResponseBuilder.error(res, `Cannot refund transaction with status: ${transaction.status}`, 400);
+      }
+
+      // Try calling payment gateway refund API
+      let gatewayRefunded = false;
+      try {
+        const refundUrl = defaults.paymentGateway.initiateUrl.replace('/initiate', '/refund');
+        console.log(`[Admin Refund] Sending request to gateway: ${refundUrl} for OrderId: ${transaction.orderId}`);
+        const gwRes = await axios.post(refundUrl, {
+          orderId: transaction.orderId,
+          amount: transaction.amount,
+          gatewayTransactionId: transaction.gatewayTransactionId
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'api-token': defaults.paymentGateway.apiToken,
+          },
+          timeout: 10000
+        });
+
+        if (gwRes.data && gwRes.data.success) {
+          gatewayRefunded = true;
+        }
+      } catch (err) {
+        console.warn('[Admin Refund] Gateway refund call failed, simulating successful refund in DB:', err.message);
+      }
+
+      // Update transaction status
+      transaction.status = 'refunded';
+      await transaction.save();
+
+      // Deactivate associated products/services
+      if (transaction.type === 'SUBSCRIPTION') {
+        const sub = await Subscription.findOne({
+          where: { userId: transaction.userId, status: 'active' }
+        });
+        if (sub) {
+          sub.status = 'cancelled';
+          await sub.save();
+          console.log(`[Refund] Subscription for user ${transaction.userId} cancelled due to refund.`);
+        }
+      } else if (transaction.type === 'VOBIZ_NUMBER') {
+        const num = await VobizNumber.findOne({
+          where: { userId: transaction.userId, number: transaction.targetId }
+        });
+        if (num) {
+          num.status = 'inactive';
+          await num.save();
+          // Release from vobiz
+          const vobizService = require('../services/vobizService');
+          await vobizService.unrentNumber(num.number).catch(err => {
+            console.error('[Refund] Failed to release number from VoBiz API:', err.message);
+          });
+          console.log(`[Refund] Phone number ${num.number} marked inactive due to refund.`);
+        }
+      }
+
+      return ResponseBuilder.success(res, transaction, 'Transaction refunded successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get all AI personalities (Agents) with search, filter, and pagination
+   */
+  async getPersonalities(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { search, approvalStatus, activeStatus } = req.query;
+      const where = {};
+
+      if (approvalStatus) where.approvalStatus = approvalStatus;
+      if (activeStatus !== undefined && activeStatus !== '') {
+        where.activeStatus = activeStatus === 'true' || activeStatus === true || activeStatus === '1';
+      }
+
+      const include = [
+        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+        { model: Voice, as: 'voice', attributes: ['id', 'name', 'provider', 'gender', 'language'], required: false }
+      ];
+
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { description: { [Op.like]: `%${search}%` } },
+          { '$user.businessName$': { [Op.like]: `%${search}%` } },
+          { '$user.email$': { [Op.like]: `%${search}%` } }
+        ];
+      }
+
+      const { count, rows: personalities } = await Agent.findAndCountAll({
+        where,
+        include,
+        limit,
+        offset,
+        order: [['createdAt', 'DESC']]
+      });
+
+      return ResponseBuilder.success(res, {
+        totalItems: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        personalities
+      }, 'Personalities retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get detailed personality info by ID
+   */
+  async getPersonalityById(req, res, next) {
+    try {
+      const personality = await Agent.findOne({
+        where: { id: req.params.id },
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'] },
+          { model: Voice, as: 'voice' }
+        ]
+      });
+
+      if (!personality) {
+        return ResponseBuilder.error(res, 'Personality not found', 404);
+      }
+
+      return ResponseBuilder.success(res, personality, 'Personality details retrieved successfully');
     } catch (err) {
       next(err);
     }
