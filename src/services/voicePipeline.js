@@ -179,6 +179,7 @@ class VoicePipeline {
     this.isAgentSpeaking = false;
     this.speakingTimeout = null;
     this._ttsQueue = Promise.resolve();
+    this._actionSaveQueue = Promise.resolve();
     this._ttsGeneration = 0;
     this._activeTtsGeneration = null;
 
@@ -810,29 +811,36 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
 
   async _saveActionToSessionAndLog(actionName, actionPayload) {
     if (!this.callSessionId) return;
-    try {
-      const { CallSession, CallLog } = require('../models');
-      const session = await CallSession.findByPk(this.callSessionId);
-      if (session) {
-        const currentActions = session.actions || [];
-        currentActions.push({
-          action: actionName,
-          payload: actionPayload,
-          timestamp: new Date()
-        });
-        session.actions = currentActions;
-        session.changed('actions', true); // Force Sequelize to track mutations on JSON
-        await session.save();
-      }
 
-      await CallLog.create({
-        callSessionId: this.callSessionId,
-        logLevel: 'info',
-        message: `[Action Triggered] Action: ${actionName}${actionPayload ? ` | Payload: ${actionPayload}` : ''}`,
-      });
-    } catch (err) {
-      this._log('error', `Failed to save action to session/log: ${err.message}`);
-    }
+    this._actionSaveQueue = this._actionSaveQueue.then(async () => {
+      try {
+        const { CallSession, CallLog } = require('../models');
+        const session = await CallSession.findByPk(this.callSessionId);
+        if (session) {
+          const currentActions = session.actions || [];
+          currentActions.push({
+            action: actionName,
+            payload: actionPayload,
+            timestamp: new Date()
+          });
+          session.actions = currentActions;
+          session.changed('actions', true); // Force Sequelize to track mutations on JSON
+          await session.save();
+        }
+
+        await CallLog.create({
+          callSessionId: this.callSessionId,
+          logLevel: 'info',
+          message: `[Action Triggered] Action: ${actionName}${actionPayload ? ` | Payload: ${actionPayload}` : ''}`,
+        });
+      } catch (err) {
+        this._log('error', `Failed to save action to session/log: ${err.message}`);
+      }
+    }).catch(err => {
+      this._log('error', `Queue error in saving action: ${err.message}`);
+    });
+
+    await this._actionSaveQueue;
   }
 
   /**
