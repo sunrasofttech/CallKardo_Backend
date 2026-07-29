@@ -796,32 +796,35 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       const ActionService = require('./actionService');
       this._log('info', `[Action Execute] Running handler for: ${actionName}${actionPayload ? ` with payload: "${actionPayload}"` : ''}`);
       
-      // Save triggered action details into CallSession and CallLog
-      await this._saveActionToSessionAndLog(actionName, actionPayload);
+      let actionResult = null;
 
       switch (actionName) {
         case 'send_join_link':
         case 'send_meeting_link':
-          await ActionService.sendJoinLink(this.customer, this.agent, this.merchant);
+          actionResult = await ActionService.sendJoinLink(this.customer, this.agent, this.merchant);
           break;
         case 'send_whatsapp_hi':
-          await ActionService.sendWhatsAppHi(this.customer);
+          actionResult = await ActionService.sendWhatsAppHi(this.customer);
           break;
         case 'send_email':
-          await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant, null, actionPayload);
+          actionResult = await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant, null, actionPayload);
           break;
         case 'schedule_meeting':
-          await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload);
+          actionResult = await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload);
           break;
         default:
           this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);
       }
+
+      // Save triggered action details into CallSession and CallLog AFTER execution to include result
+      await this._saveActionToSessionAndLog(actionName, actionPayload, actionResult);
+
     } catch (err) {
       this._log('error', `[Action Error] Failed executing action ${actionName}: ${err.message}`);
     }
   }
 
-  async _saveActionToSessionAndLog(actionName, actionPayload) {
+  async _saveActionToSessionAndLog(actionName, actionPayload, actionResult = null) {
     if (!this.callSessionId) return;
 
     this._actionSaveQueue = this._actionSaveQueue.then(async () => {
@@ -833,6 +836,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           currentActions.push({
             action: actionName,
             payload: actionPayload,
+            result: actionResult,
             timestamp: new Date()
           });
           session.actions = currentActions;
@@ -843,7 +847,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         await CallLog.create({
           callSessionId: this.callSessionId,
           logLevel: 'info',
-          message: `[Action Triggered] Action: ${actionName}${actionPayload ? ` | Payload: ${actionPayload}` : ''}`,
+          message: `[Action Triggered] Action: ${actionName}${actionPayload ? ` | Payload: ${actionPayload}` : ''}${actionResult ? ` | Result: ${JSON.stringify(actionResult)}` : ''}`,
         });
       } catch (err) {
         this._log('error', `Failed to save action to session/log: ${err.message}`);
