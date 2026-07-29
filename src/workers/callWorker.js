@@ -6,6 +6,7 @@ const QueueService = require('../services/queueService');
 const SubscriptionService = require('../services/subscriptionService');
 const VobizService = require('../services/vobizService');
 const { Campaign, CampaignCustomer, CallSession, CallLog, VobizNumber, VobizAccount, User, Agent } = require('../models');
+const { Op } = require('sequelize');
 const { decrypt } = require('../utils/crypto');
 
 async function startCallWorker() {
@@ -115,7 +116,7 @@ async function processPlaceCall(payload) {
       include: ['customer']
     });
 
-    if (!customerMapping || customerMapping.callStatus !== 'pending') {
+    if (!customerMapping || (customerMapping.callStatus !== 'pending' && customerMapping.callStatus !== 'queued')) {
       console.log(`Customer ${customerId} is already processed or being processed. Skipping.`);
       return;
     }
@@ -133,7 +134,7 @@ async function processPlaceCall(payload) {
         where: {
           campaignId,
           customerId,
-          callStatus: 'pending'
+          callStatus: { [Op.in]: ['pending', 'queued'] }
         }
       }
     );

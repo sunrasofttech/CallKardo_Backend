@@ -221,7 +221,16 @@ class ActionService {
     const merchantEmail = merchant?.email || defaults.smtp.from;
 
     const parsedTime = this._parseRequestedMeetingTime(meetingTimeStr);
-    const timeLabel = meetingTimeStr ? `for ${meetingTimeStr}` : 'Scheduled Meeting';
+    const formattedDate = new Intl.DateTimeFormat('en-IN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    }).format(parsedTime.dateObj);
+    const timeLabel = `for ${formattedDate}`;
 
     // Generate dynamic unique Jitsi Meet room link unless overridden by env
     const roomId = 'CallKardo-Meet-' + Math.random().toString(36).substring(2, 8);

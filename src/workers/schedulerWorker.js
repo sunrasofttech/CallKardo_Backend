@@ -263,6 +263,10 @@ async function dispatchRunningCampaigns() {
       }
 
       for (const p of pending) {
+        // Mark as queued to prevent infinite duplicate enqueueing
+        p.callStatus = 'queued';
+        await p.save();
+
         // Enqueue the placement job
         await QueueService.enqueueJob('PLACE_CALL', {
           campaignId: campaign.id,
