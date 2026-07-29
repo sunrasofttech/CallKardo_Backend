@@ -5,14 +5,34 @@ const { normalizeMobile } = require('../utils/phone');
 const fs = require('fs');
 const csv = require('csv-parser');
 
+const { Op } = require('sequelize');
+
 class CustomerController {
   /**
    * Get all merchant's customers
    */
   async getAll(req, res, next) {
     try {
+      const { search, name, mobile } = req.query;
+      const whereClause = { userId: req.user.id };
+
+      if (search) {
+        whereClause[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { mobile: { [Op.like]: `%${search}%` } }
+        ];
+      } else {
+        if (name) {
+          whereClause.name = { [Op.like]: `%${name}%` };
+        }
+        if (mobile) {
+          whereClause.mobile = { [Op.like]: `%${mobile}%` };
+        }
+      }
+
       const customers = await Customer.findAll({
-        where: { userId: req.user.id },
+        where: whereClause,
+        order: [['createdAt', 'DESC']]
       });
       return ResponseBuilder.success(res, customers, 'Customers retrieved successfully');
     } catch (err) {
@@ -246,8 +266,18 @@ class CustomerController {
    */
   async getLists(req, res, next) {
     try {
+      const { search, name } = req.query;
+      const whereClause = { userId: req.user.id };
+
+      if (search) {
+        whereClause.name = { [Op.like]: `%${search}%` };
+      } else if (name) {
+        whereClause.name = { [Op.like]: `%${name}%` };
+      }
+
       const lists = await CustomerList.findAll({
-        where: { userId: req.user.id },
+        where: whereClause,
+        order: [['createdAt', 'DESC']],
         attributes: {
           include: [
             [

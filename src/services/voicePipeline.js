@@ -267,7 +267,7 @@ IMPORTANT: Address the customer by their name (${this.customer.name || 'there'})
     const actionsInstruction = `
 \n\n[ACTION AND TOOL TRIGGERS — CRITICAL, NON-NEGOTIABLE RULE:
 If the customer explicitly asks you to perform a specific action, acknowledge their request politely (e.g., "Sure, I have sent you the link" or "I've scheduled a meeting for tomorrow at 5 PM and emailed you the details"), and at the VERY END of your response text, append the exact corresponding token:
-- Customer asks for the join link / link to join -> append {{action:send_join_link}} at the end of your response.
+- Customer asks for the join link / meeting link / link to join -> append {{action:send_join_link}} at the end of your response.
 - Customer asks to send a "hi" or greeting on WhatsApp -> append {{action:send_whatsapp_hi}} at the end of your response.
 - Customer asks to email them info/details -> append {{action:send_email}} at the end of your response.
 - Customer asks to schedule a meeting -> append {{action:schedule_meeting:requested_date_and_time}} at the end of your response (e.g. {{action:schedule_meeting:tomorrow at 5pm}} or {{action:schedule_meeting:Friday 10am}} or {{action:schedule_meeting}}).
@@ -789,6 +789,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
 
       switch (actionName) {
         case 'send_join_link':
+        case 'send_meeting_link':
           await ActionService.sendJoinLink(this.customer, this.agent, this.merchant);
           break;
         case 'send_whatsapp_hi':
