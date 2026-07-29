@@ -248,6 +248,18 @@ class CustomerController {
     try {
       const lists = await CustomerList.findAll({
         where: { userId: req.user.id },
+        attributes: {
+          include: [
+            [
+              sequelize.literal(`(
+                SELECT COUNT(*)
+                FROM customer_list_members AS member
+                WHERE member.customer_list_id = CustomerList.id
+              )`),
+              'memberCount'
+            ]
+          ]
+        }
       });
       return ResponseBuilder.success(res, lists, 'Customer lists retrieved successfully');
     } catch (err) {
