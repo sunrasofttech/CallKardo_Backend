@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const axios = require('axios');
 const defaults = require('../config/defaults');
 
 /**
@@ -6,9 +7,46 @@ const defaults = require('../config/defaults');
  * If SMTP configuration is missing, prints to console (useful in local dev).
  */
 async function sendEmail({ to, cc, bcc, subject, text, html, icalEvent }) {
+  const brevoApiKey = process.env.BREVO_API_KEY;
   const { host, port, user, pass, from } = defaults.smtp;
+  const isValidEmail = (addr) => addr && typeof addr === 'string' && addr.includes('@') && !addr.includes('example.com');
 
-  if (host && user && pass) {
+  if (brevoApiKey) {
+    // Send via Brevo API (avoids SMTP port blocks)
+    const payload = {
+      sender: { name: 'CallKardo AI', email: from || 'ai@callkardo.com' },
+      to: [{ email: to }],
+      subject: subject,
+      textContent: text,
+    };
+    
+    if (html) payload.htmlContent = html;
+    if (isValidEmail(cc) && cc !== to) payload.cc = [{ email: cc }];
+    if (isValidEmail(bcc) && bcc !== to) payload.bcc = [{ email: bcc }];
+    
+    if (icalEvent) {
+      payload.attachment = [{
+        name: icalEvent.filename,
+        content: Buffer.from(icalEvent.content).toString('base64')
+      }];
+    }
+
+    axios.post('https://api.brevo.com/v3/smtp/email', payload, {
+      headers: {
+        'api-key': brevoApiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    })
+    .then(response => {
+      console.log(`Email sent successfully to ${to} via Brevo API. Message ID: ${response.data.messageId}`);
+    })
+    .catch(err => {
+      console.error(`Failed to send email to ${to} via Brevo API:`, err.response?.data || err.message);
+    });
+
+    return true;
+  } else if (host && user && pass) {
     const transporter = nodemailer.createTransport({
       host,
       port,
