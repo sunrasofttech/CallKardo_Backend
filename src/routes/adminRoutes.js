@@ -105,5 +105,17 @@ router.post('/plans', PlanController.create);
 router.put('/plans/:id', PlanController.update);
 router.delete('/plans/:id', PlanController.delete);
 
+// Billing overview
+router.get('/billing/overview', adminController.getBillingOverview);
+
+// Payment Transaction management routes
+router.get('/transactions', adminController.getTransactions);
+router.get('/transactions/:id', adminController.getTransactionById);
+router.post('/transactions/:id/refund', adminController.refundTransaction);
+
+// AI Personalities (Agent) routes
+router.get('/personalities', adminController.getPersonalities);
+router.get('/personalities/:id', adminController.getPersonalityById);
+
 module.exports = router;
 
