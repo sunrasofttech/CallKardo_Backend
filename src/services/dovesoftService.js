@@ -16,7 +16,12 @@ class DovesoftService {
     }
 
     // Clean mobile number (remove '+' or any non-numeric characters)
-    const cleanMobileNo = (mobileno || '').toString().replace(/\D/g, '');
+    let cleanMobileNo = (mobileno || '').toString().replace(/\D/g, '');
+
+    // Dovesoft requires the country code (91 for India). Auto-append if exactly 10 digits.
+    if (cleanMobileNo.length === 10) {
+      cleanMobileNo = '91' + cleanMobileNo;
+    }
 
     const endpoint = 'https://api.dovesoft.io//REST/direct/sendRCS';
 

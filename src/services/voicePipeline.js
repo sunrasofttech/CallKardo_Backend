@@ -757,20 +757,32 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     const actionRegex = /\{\{action:([a-zA-Z0-9_]+)(?::([^}]+))?\}\}/g;
     let match;
     
+    const actionsToExecute = [];
     while ((match = actionRegex.exec(text)) !== null) {
-      const fullToken = match[0];
-      const actionName = match[1];
-      const actionPayload = match[2] ? match[2].trim() : null;
+      actionsToExecute.push({
+        fullToken: match[0],
+        actionName: match[1],
+        actionPayload: match[2] ? match[2].trim() : null
+      });
+    }
+
+    const hasScheduleMeeting = actionsToExecute.some(a => a.actionName === 'schedule_meeting');
+
+    for (const action of actionsToExecute) {
+      if (hasScheduleMeeting && (action.actionName === 'send_join_link' || action.actionName === 'send_meeting_link')) {
+        this._log('info', `[Action Triggered] Skipping ${action.actionName} because schedule_meeting is also present in this turn.`);
+        continue;
+      }
 
       const now = Date.now();
       if (!this._recentActions) this._recentActions = new Map();
-      const lastRun = this._recentActions.get(fullToken) || 0;
+      const lastRun = this._recentActions.get(action.fullToken) || 0;
 
       if (now - lastRun > 3000) {
-        this._recentActions.set(fullToken, now);
-        this._log('info', `[Action Triggered] Detected action token: ${actionName}${actionPayload ? ` (Payload: "${actionPayload}")` : ''}`);
-        this._executeAction(actionName, actionPayload).catch(err => {
-          this._log('error', `Failed to execute action ${actionName}: ${err.message}`);
+        this._recentActions.set(action.fullToken, now);
+        this._log('info', `[Action Triggered] Detected action token: ${action.actionName}${action.actionPayload ? ` (Payload: "${action.actionPayload}")` : ''}`);
+        this._executeAction(action.actionName, action.actionPayload).catch(err => {
+          this._log('error', `Failed to execute action ${action.actionName}: ${err.message}`);
         });
       }
     }
