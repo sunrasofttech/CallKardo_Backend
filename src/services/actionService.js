@@ -119,6 +119,21 @@ class ActionService {
       });
     }
 
+    if (mobile !== 'Unknown') {
+      try {
+        const DovesoftService = require('./dovesoftService');
+        // Fire and forget RCS message
+        DovesoftService.sendRCS(mobile, 'ramaapplink', {
+          user_name: name,
+          app_link: joinLink,
+          website_url: 'https://callkardo.com',
+          support_mobile: merchant?.mobile || ''
+        }).catch(err => console.error(`[Action: send_join_link] RCS failed: ${err.message}`));
+      } catch (err) {
+        console.error(`[Action: send_join_link] Failed to initiate RCS to ${mobile}:`, err.message);
+      }
+    }
+
     return { success: true, joinLink };
   }
 
@@ -268,6 +283,21 @@ class ActionService {
         text: `A meeting was scheduled (${timeLabel}) during a call with ${name} (${mobile}) by Agent "${agent?.name || 'AI Agent'}".\n\nMeeting Link: ${meetingLink}\n\n(This email was sent to you because the customer did not have a registered email address.)`,
         icalEvent,
       });
+    }
+
+    if (mobile !== 'Unknown') {
+      try {
+        const DovesoftService = require('./dovesoftService');
+        // Fire and forget RCS message
+        DovesoftService.sendRCS(mobile, 'ramaapplink', {
+          user_name: name,
+          app_link: meetingLink,
+          website_url: 'https://callkardo.com',
+          support_mobile: merchant?.mobile || ''
+        }).catch(err => console.error(`[Action: schedule_meeting] RCS failed: ${err.message}`));
+      } catch (err) {
+        console.error(`[Action: schedule_meeting] Failed to initiate RCS to ${mobile}:`, err.message);
+      }
     }
 
     return { success: true, meetingLink, scheduledTime: timeLabel };

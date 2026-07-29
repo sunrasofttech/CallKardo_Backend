@@ -1,61 +1,57 @@
 const axios = require('axios');
 
 class DovesoftService {
-  /**
-   * Send an RCS message using the Dovesoft API with the 'ramaapplink' template.
-   *
-   * @param {string} mobileNo - The recipient's mobile number (e.g., '+919876543210' or '919876543210')
-   * @param {Object} params - Dynamic parameters for the template
-   * @param {string} params.user_name - The user's name
-   * @param {string} params.app_link - The app link URL
-   * @param {string} params.website_url - The website URL
-   * @param {string} params.support_mobile - The support mobile number
-   * @returns {Promise<Object>} The API response data
-   */
-  async sendRamaAppLinkRCS(mobileNo, { user_name, app_link, website_url, support_mobile }) {
-    const rcsKey = process.env.DOVESOFT_RCS_KEY;
+  static async sendRCS(mobileno, templateCode, customParams) {
+    const key = process.env.DOVESOFT_RCS_KEY;
     const botId = process.env.DOVESOFT_BOT_ID;
 
-    if (!rcsKey || !botId) {
-      throw new Error('Dovesoft API credentials (DOVESOFT_RCS_KEY, DOVESOFT_BOT_ID) are missing from environment variables.');
+    if (!key) {
+      throw new Error("Missing environment variable: DOVESOFT_RCS_KEY.");
+    }
+    if (!botId) {
+      throw new Error("Missing environment variable: DOVESOFT_BOT_ID.");
+    }
+    if (!templateCode) {
+      throw new Error("Cannot send via RCS: 'templateCode' is required.");
     }
 
     // Clean mobile number (remove '+' or any non-numeric characters)
-    const cleanMobileNo = (mobileNo || '').toString().replace(/\D/g, '');
+    const cleanMobileNo = (mobileno || '').toString().replace(/\D/g, '');
 
-    if (!cleanMobileNo) {
-      throw new Error('Invalid mobile number provided to DovesoftService.');
-    }
+    const endpoint = 'https://api.dovesoft.io//REST/direct/sendRCS';
 
-    const payload = {
-      contentMessage: {
-        templateMessage: {
-          templateCode: 'ramaapplink',
-          customParams: {
-            user_name: user_name || '',
-            app_link: app_link || '',
-            website_url: website_url || '',
-            support_mobile: support_mobile || ''
-          }
-        },
-        mobileno: cleanMobileNo,
-        botId: botId
-      }
-    };
+    console.log(`[MessagingService] Sending RCS to ${cleanMobileNo} with template ${templateCode}...`);
 
     try {
-      const response = await axios.post('https://api.dovesoft.io//REST/direct/sendRCS', payload, {
-        headers: {
-          'key': rcsKey,
-          'content-type': 'application/json'
+      const response = await axios.post(
+        endpoint,
+        {
+          contentMessage: {
+            templateMessage: {
+              customParams,
+              templateCode
+            },
+            mobileno: cleanMobileNo,
+            botId
+          }
+        },
+        {
+          headers: {
+            'key': key,
+            'content-type': 'application/json',
+            'Cookie': 'JSESSIONID=3DFE6BB850E604CBE09C348FB6B2663B; JSESSIONID=CEEF245534E0771C5B83EC86969C6EF9'
+          }
         }
-      });
-      return response.data;
+      );
+
+      console.log('[MessagingService] RCS response:', JSON.stringify(response.data));
+      return { success: true, data: response.data };
     } catch (error) {
-      console.error('[DovesoftService] Failed to send RCS message:', error.response?.data || error.message);
-      throw error;
+      const errorDetail = error.response?.data || error.message;
+      console.error('[MessagingService] RCS send failed:', JSON.stringify(errorDetail));
+      throw new Error(`RCS send failed: ${JSON.stringify(errorDetail)}`);
     }
   }
 }
 
-module.exports = new DovesoftService();
+module.exports = DovesoftService;
