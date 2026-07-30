@@ -55,16 +55,53 @@ class VobizController {
         searchNumbers.push(base, `0${base}`);
       }
       
-      // Look up the registered VobizNumber record
-      const vobizNumber = await VobizNumber.findOne({
+      // Look up all registered VobizNumber records matching the dialed number
+      const vobizNumbers = await VobizNumber.findAll({
         where: {
-          number: {
-            [Op.in]: searchNumbers
-          },
+          number: { [Op.in]: searchNumbers },
           status: 'active'
         },
         include: [{ model: Agent, as: 'agent' }]
       });
+
+      let vobizNumber = null;
+
+      if (vobizNumbers.length === 1) {
+        vobizNumber = vobizNumbers[0];
+      } else if (vobizNumbers.length > 1) {
+        // Shared number scenario (e.g. demo number used by multiple merchants)
+        // Find which merchant this customer interacted with last.
+        const lastSession = await CallSession.findOne({
+          include: [{
+            model: Customer,
+            as: 'customer',
+            where: { mobile: fromNum }
+          }],
+          order: [['createdAt', 'DESC']]
+        });
+
+        if (lastSession) {
+          // Find the vobizNumber matching the merchant of the last session
+          vobizNumber = vobizNumbers.find(n => n.userId === lastSession.userId);
+        }
+
+        // If no call session found, check if they exist as a Customer for any of these merchants
+        if (!vobizNumber) {
+          const userIds = vobizNumbers.map(n => n.userId);
+          const lastCustomer = await Customer.findOne({
+            where: { mobile: fromNum, userId: { [Op.in]: userIds } },
+            order: [['createdAt', 'DESC']]
+          });
+          if (lastCustomer) {
+            vobizNumber = vobizNumbers.find(n => n.userId === lastCustomer.userId);
+          }
+        }
+
+        // Fallback to the most recently created vobizNumber if completely unknown
+        if (!vobizNumber) {
+          vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
+        }
+      }
 
       if (!vobizNumber || !vobizNumber.agentId || !vobizNumber.agent) {
         console.warn(`No active agent configured for VoBiz inbound number: ${toNum}`);
