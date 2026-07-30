@@ -64,6 +64,7 @@ router.delete('/voices/:id', adminController.deleteVoice);
 router.get('/audit-logs', adminController.getAuditLogs);
 
 // Global Call Reports routes
+router.get('/reports/actions', adminController.getCustomerActionsReport);
 router.get('/reports', adminController.getGlobalCallReports);
 router.get('/reports/:id', adminController.getCallRecordDetails);
 router.get('/call-records/:id', adminController.getCallRecordDetails);

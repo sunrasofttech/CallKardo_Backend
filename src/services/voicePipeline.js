@@ -813,6 +813,9 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         case 'schedule_meeting':
           actionResult = await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload);
           break;
+        case 'request_callback':
+          actionResult = await ActionService.requestCallback(this.customer, this.agent, this.merchant, actionPayload);
+          break;
         default:
           this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);
       }

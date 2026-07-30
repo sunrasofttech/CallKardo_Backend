@@ -301,6 +301,35 @@ class ActionService {
     }
 
     return { success: true, meetingLink, scheduledTime: timeLabel };
+  /**
+   * Handle Request Callback action
+   */
+  async requestCallback(customer, agent, merchant, meetingTimeStr) {
+    const name = customer?.name || 'Customer';
+    const mobile = customer?.mobile || 'Unknown';
+    const merchantEmail = merchant?.email || defaults.smtp.from;
+
+    const parsedTime = this._parseRequestedMeetingTime(meetingTimeStr);
+    const formattedDate = new Intl.DateTimeFormat('en-IN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    }).format(parsedTime.dateObj);
+    const timeLabel = `for ${formattedDate}`;
+
+    console.log(`[Action: request_callback] Callback requested by ${name} (${timeLabel}). Sending alert to merchant at ${merchantEmail}`);
+
+    await sendEmail({
+      to: merchantEmail,
+      subject: `[CallKardo Alert] Callback Requested (${timeLabel}) with ${name}`,
+      text: `Customer ${name} (${mobile}) has requested a callback ${timeLabel} during their call with Agent "${agent?.name || 'AI Agent'}".\n\nPlease ensure you follow up with them at the requested time.\n\nCustomer Details:\nName: ${name}\nMobile: ${mobile}`,
+    });
+
+    return { success: true, scheduledTime: timeLabel };
   }
 }
 

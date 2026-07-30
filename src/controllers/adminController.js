@@ -1801,6 +1801,88 @@ class AdminController {
       next(err);
     }
   }
+
+  /**
+   * Get Customer Actions Report (Admin)
+   */
+  async getCustomerActionsReport(req, res, next) {
+    try {
+      const { Op, literal } = require('sequelize');
+      const page = parseInt(req.query.page || '1', 10);
+      const limit = parseInt(req.query.limit || '20', 10);
+      const offset = (page - 1) * limit;
+      const { merchantId, actionName } = req.query;
+
+      // Ensure actions is not null and has items
+      const whereClause = {
+        [Op.and]: [
+          { actions: { [Op.not]: null } },
+          literal("JSON_LENGTH(actions) > 0")
+        ]
+      };
+
+      if (merchantId) {
+        whereClause.userId = merchantId;
+      }
+
+      if (actionName) {
+        // Simple string search fallback to ensure it matches the action
+        whereClause[Op.and].push(
+          literal(`actions LIKE '%"action":"${actionName}"%'`)
+        );
+      }
+
+      const { count, rows } = await CallSession.findAndCountAll({
+        where: whereClause,
+        limit,
+        offset,
+        order: [['createdAt', 'DESC']],
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
+          { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile', 'email'] },
+          { model: Agent, as: 'agent', attributes: ['id', 'name'] }
+        ]
+      });
+
+      // Flatten the actions for the report
+      const reportItems = [];
+      rows.forEach(session => {
+        let actionsArr = session.actions || [];
+        if (typeof actionsArr === 'string') {
+          try { actionsArr = JSON.parse(actionsArr); } catch(e) { actionsArr = []; }
+        }
+
+        actionsArr.forEach(actionObj => {
+          if (actionName && actionObj.action !== actionName) return;
+
+          reportItems.push({
+            sessionId: session.id,
+            action: actionObj.action,
+            payload: actionObj.payload,
+            result: actionObj.result,
+            timestamp: actionObj.timestamp || session.createdAt,
+            merchant: session.user,
+            customer: session.customer,
+            agent: session.agent,
+            callStartTime: session.startTime,
+            callEndTime: session.endTime
+          });
+        });
+      });
+
+      return ResponseBuilder.success(res, {
+        actions: reportItems,
+        pagination: {
+          total: count,
+          page,
+          limit,
+          totalPages: Math.ceil(count / limit) || 1,
+        }
+      }, 'Customer actions report retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new AdminController();
