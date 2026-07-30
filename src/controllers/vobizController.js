@@ -191,9 +191,6 @@ class VobizController {
         apiKey: `${apiKey.substring(0, 4)}...`,
       };
 
-      // Remove trial demo number upon successful onboarding of real account
-      await removeTrialDemoNumber(req.user.id);
-
       return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account connected successfully');
     } catch (err) {
       next(err);
@@ -401,9 +398,6 @@ class VobizController {
         customerId: account.customerId,
         apiKey: `${subAccountData.authId.substring(0, 4)}...`,
       };
-
-      // Remove trial demo number upon successful creation of sub-account
-      await removeTrialDemoNumber(user.id);
 
       return ResponseBuilder.success(res, sanitizedResponse, 'Vobiz sub-account created successfully', 201);
     } catch (err) {
