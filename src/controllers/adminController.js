@@ -1840,7 +1840,8 @@ class AdminController {
         include: [
           { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
           { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile', 'email'] },
-          { model: Agent, as: 'agent', attributes: ['id', 'name'] }
+          { model: Agent, as: 'agent', attributes: ['id', 'name'] },
+          { model: Campaign, as: 'campaign', attributes: ['id', 'name'] }
         ]
       });
 
@@ -1864,6 +1865,7 @@ class AdminController {
             merchant: session.user,
             customer: session.customer,
             agent: session.agent,
+            campaign: session.campaign,
             callStartTime: session.startTime,
             callEndTime: session.endTime
           });
