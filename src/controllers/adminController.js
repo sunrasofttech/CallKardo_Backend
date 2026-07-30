@@ -1811,7 +1811,7 @@ class AdminController {
       const page = parseInt(req.query.page || '1', 10);
       const limit = parseInt(req.query.limit || '20', 10);
       const offset = (page - 1) * limit;
-      const { merchantId, actionName } = req.query;
+      const { merchantId, actionName, campaignId } = req.query;
 
       // Ensure actions is not null and has items
       const whereClause = {
@@ -1823,6 +1823,10 @@ class AdminController {
 
       if (merchantId) {
         whereClause.userId = merchantId;
+      }
+
+      if (campaignId) {
+        whereClause.campaignId = campaignId;
       }
 
       if (actionName) {
