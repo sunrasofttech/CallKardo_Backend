@@ -66,6 +66,7 @@ function stripMarkdown(text) {
     .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/^\s*\d+\.\s+/gm, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\{\{[^}]+\}\}/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -307,7 +308,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           if (role === 'agent') {
             const textAfterActions = this._processActionTriggers(text);
             this._checkForCallEndRequest(textAfterActions, 'agent');
-            const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+            const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
             if (cleanText && this.onAgentTranscription) {
               this.onAgentTranscription(cleanText);
             }
@@ -344,7 +345,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
             this._accumulatedAgentText = textAfterActions;
             
             this._checkForCallEndRequest(textAfterActions, 'agent');
-            const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+            const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
             if (cleanText && this.onAgentTranscription) {
               this.onAgentTranscription(text);
             }
@@ -531,7 +532,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           
           // Check for AI hangup signal and strip it
           this._checkForCallEndRequest(textAfterActions, 'agent');
-          const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+          const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
           if (!cleanText) return; // Only {{hangup}} — nothing to say, just end
           this._log('info', `Agent completed response: ${cleanText}`);
           if (this.onAgentTranscription) this.onAgentTranscription(cleanText);
@@ -542,7 +543,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       onResponseSentence: async (sentenceText, ttsGeneration) => {
         // Strip action tokens and {{hangup}} from individual sentences before TTS
         const sentenceAfterActions = this._processActionTriggers(sentenceText);
-        const cleanSentence = sentenceAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+        const cleanSentence = sentenceAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
         if (cleanSentence) {
           this._enqueueTtsPhrase(cleanSentence, ttsGeneration);
         }
@@ -574,7 +575,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           
           // Check for AI hangup signal and strip it
           this._checkForCallEndRequest(textAfterActions, 'agent');
-          const cleanText = textAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+          const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
           if (!cleanText) return; // Only {{hangup}} — nothing to say, just end
           this._log('info', `Agent completed response: ${cleanText}`);
           if (this.onAgentTranscription) this.onAgentTranscription(cleanText);
@@ -585,7 +586,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       onResponseSentence: async (sentenceText, ttsGeneration) => {
         // Strip action tokens and {{hangup}} from individual sentences before TTS
         const sentenceAfterActions = this._processActionTriggers(sentenceText);
-        const cleanSentence = sentenceAfterActions.replace(/\{\{hangup\}\}/g, '').trim();
+        const cleanSentence = sentenceAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
         if (cleanSentence) {
           this._enqueueTtsPhrase(cleanSentence, ttsGeneration);
         }
@@ -754,8 +755,8 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
   _processActionTriggers(text) {
     if (!text) return text;
     
-    // Regular expression to match {{action:xyz}} or {{action:xyz:payload}}
-    const actionRegex = /\{\{action:([a-zA-Z0-9_]+)(?::([^}]+))?\}\}/g;
+    // Regular expression to match {{action:xyz}} or {{action:xyz:payload}} with optional spacing
+    const actionRegex = /\{\{\s*action\s*:\s*([a-zA-Z0-9_]+)(?:\s*:\s*([^}]+?))?\s*\}\}/gi;
     let match;
     
     const actionsToExecute = [];

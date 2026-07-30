@@ -233,7 +233,7 @@ async function processCallAnalysis(event) {
     console.log(`[AI Worker] CallReport created successfully for session ${callSessionId} (${session.direction}). CustomerId: ${finalCustomerId || 'none'}, Transcript length: ${finalTranscript.length}`);
 
     // 7. Deduct call credit from merchant's subscription
-    if (finalUserId) {
+    if (created && finalUserId) {
       try {
         await SubscriptionService.recordCallUsage(finalUserId);
       } catch (subErr) {
