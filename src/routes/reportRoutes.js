@@ -7,6 +7,8 @@ const router = express.Router();
 router.use(authenticate, isMerchant);
 
 // Fetch reports
+router.get('/actions/calendar', ReportController.getCalendarActionsReport);
+router.get('/actions/user', ReportController.getUserActionsReport);
 router.get('/', ReportController.getAllReports);
 router.get('/recent', ReportController.getRecentCalls);
 router.get('/session/:sessionId', ReportController.getReportBySession);
