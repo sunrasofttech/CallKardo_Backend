@@ -531,6 +531,11 @@ class VobizService {
       for (const num of numbersToInactivate) {
         console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) is within 2 days of expiration (${num.rentalExpiryDate}). Marking status as inactive.`);
         await num.update({ status: 'inactive' });
+
+        // Notify about impending expiration
+        const NotificationService = require('./notificationService');
+        await NotificationService.notifyMerchant(num.userId, 'Number Expiring Soon', `Your VoBiz number ${num.number} is expiring within 2 days and has been marked inactive. Please renew it.`, 'payments');
+        await NotificationService.notifyAdmin('Number Expiring Soon', `Merchant (User ID: ${num.userId}) VoBiz number ${num.number} is expiring within 2 days.`, null, 'payments');
       }
 
       // 2. Auto-cancel (unrent) from VoBiz 1 day before expiration

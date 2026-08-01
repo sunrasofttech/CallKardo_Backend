@@ -2,12 +2,17 @@ const { Op } = require('sequelize');
 const { Subscription, Plan, User } = require('../models');
 const { removeTrialDemoNumber } = require('./trialDemoNumberService');
 
+const NotificationService = require('./notificationService');
+
 class SubscriptionService {
   async expireDueSubscriptions() {
+    const now = new Date();
+    
+    // 1. Handle actually expired subscriptions
     const expiredSubscriptions = await Subscription.findAll({
       where: {
         status: 'active',
-        expiryDate: { [Op.lt]: new Date() },
+        expiryDate: { [Op.lt]: now },
       },
     });
 
@@ -15,6 +20,32 @@ class SubscriptionService {
       subscription.status = 'expired';
       await subscription.save();
       await removeTrialDemoNumber(subscription.userId);
+
+      await NotificationService.notifyMerchant(subscription.userId, 'Plan Expired', `Your subscription plan has expired. Please upgrade to continue making calls.`, 'payments');
+      await NotificationService.notifyAdmin('Plan Expired', `Merchant (User ID: ${subscription.userId})'s subscription plan has expired.`, null, 'payments');
+    }
+
+    // 2. Handle subscriptions expiring in 3 days (notified only once)
+    const threeDaysFromNow = new Date();
+    threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+
+    const expiringSubscriptions = await Subscription.findAll({
+      where: {
+        status: 'active',
+        isExpiringNotified: false,
+        expiryDate: { 
+          [Op.not]: null,
+          [Op.lte]: threeDaysFromNow 
+        },
+      },
+    });
+
+    for (const sub of expiringSubscriptions) {
+      sub.isExpiringNotified = true;
+      await sub.save();
+
+      await NotificationService.notifyMerchant(sub.userId, 'Plan Expiring Soon', `Your subscription plan is expiring within 3 days. Please upgrade to avoid service interruption.`, 'payments');
+      await NotificationService.notifyAdmin('Plan Expiring Soon', `Merchant (User ID: ${sub.userId})'s subscription plan is expiring within 3 days.`, null, 'payments');
     }
 
     return expiredSubscriptions.length;

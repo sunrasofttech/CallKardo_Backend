@@ -9,3 +9,4 @@ yarn-error.log*
 .idea/
 .vscode/
 uploads/
+src/config/callkardouser-firebase-adminsdk.json

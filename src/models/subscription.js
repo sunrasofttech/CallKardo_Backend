@@ -50,6 +50,11 @@ Subscription.init(
       type: DataTypes.STRING(20),
       defaultValue: 'active', // active, expired, cancelled
     },
+    isExpiringNotified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'is_expiring_notified',
+    },
   },
   {
     sequelize,

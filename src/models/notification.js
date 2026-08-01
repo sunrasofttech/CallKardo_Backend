@@ -12,8 +12,23 @@ Notification.init(
     },
     userId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'user_id',
+    },
+    adminId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'admin_id',
+    },
+    type: {
+      type: DataTypes.ENUM('MERCHANT', 'ADMIN'),
+      allowNull: false,
+      defaultValue: 'MERCHANT',
+    },
+    category: {
+      type: DataTypes.ENUM('meeting', 'payments', 'call', 'general'),
+      allowNull: false,
+      defaultValue: 'general',
     },
     title: {
       type: DataTypes.STRING(150),

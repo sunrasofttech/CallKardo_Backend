@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS `admins` (
   `first_name` VARCHAR(50) NULL,
   `last_name` VARCHAR(50) NULL,
   `role` VARCHAR(20) DEFAULT 'super_admin',
-  `is_verified` TINYINT(1) DEFAULT 0,
+  `is_verified` TINYINT(1) DEFAULT 1,
   `verification_token` VARCHAR(255) NULL,
   `reset_token` VARCHAR(255) NULL,
   `reset_token_expires` DATETIME NULL,
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `business_name` VARCHAR(100) NOT NULL,
   `category_id` VARCHAR(36) NULL,
   `role` VARCHAR(20) DEFAULT 'merchant',
-  `is_verified` TINYINT(1) DEFAULT 0,
+  `is_verified` TINYINT(1) DEFAULT 1,
   `verification_token` VARCHAR(255) NULL,
   `reset_token` VARCHAR(255) NULL,
   `reset_token_expires` DATETIME NULL,
@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   `expiry_date` DATETIME NULL,
   `calls_used` INT DEFAULT 0,
   `calls_remaining` INT DEFAULT 0,
-  `status` VARCHAR(20) DEFAULT 'active', -- active, expired, cancelled
+  `status` VARCHAR(20) DEFAULT 'active',
+  `is_expiring_notified` TINYINT(1) DEFAULT 0,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME NULL,
@@ -348,7 +349,10 @@ CREATE TABLE IF NOT EXISTS `call_reports` (
 -- Table: notifications
 CREATE TABLE IF NOT EXISTS `notifications` (
   `id` VARCHAR(36) NOT NULL,
-  `user_id` VARCHAR(36) NOT NULL,
+  `user_id` VARCHAR(36) NULL,
+  `admin_id` VARCHAR(36) NULL,
+  `type` ENUM('MERCHANT', 'ADMIN') NOT NULL DEFAULT 'MERCHANT',
+  `category` ENUM('meeting', 'payments', 'call', 'general') NOT NULL DEFAULT 'general',
   `title` VARCHAR(150) NOT NULL,
   `message` TEXT NOT NULL,
   `is_read` TINYINT(1) DEFAULT 0,
@@ -356,7 +360,9 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  INDEX `idx_notifications_user` (`user_id`)
+  FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE CASCADE,
+  INDEX `idx_notifications_user` (`user_id`),
+  INDEX `idx_notifications_admin` (`admin_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Table: audit_logs

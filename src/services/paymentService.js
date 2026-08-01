@@ -5,6 +5,7 @@ const { PaymentTransaction, User, Plan, Subscription, VobizAccount, VobizNumber 
 const vobizService = require('./vobizService');
 const { removeTrialDemoNumber } = require('./trialDemoNumberService');
 const { decrypt } = require('../utils/crypto');
+const NotificationService = require('./notificationService');
 
 class PaymentService {
   /**
@@ -336,6 +337,10 @@ class PaymentService {
 
     await removeTrialDemoNumber(tx.userId).catch(() => { });
     console.log(`[Fulfill Subscription] Successfully upgraded user ${tx.userId} to ${plan.name} plan.`);
+
+    // Notifications
+    await NotificationService.notifyMerchant(tx.userId, 'Payment Completed', `Your payment for the ${plan.name} plan was successful.`, 'payments');
+    await NotificationService.notifyAdmin('Plan Upgraded', `Merchant (User ID: ${tx.userId}) upgraded to the ${plan.name} plan.`, null, 'payments');
   }
 
   /**
@@ -402,6 +407,10 @@ class PaymentService {
     });
 
     console.log(`[Fulfill VoBiz Number] Number ${number} purchased and added for user ${tx.userId} with expiry ${rentalExpiryDate}.`);
+
+    // Notifications
+    await NotificationService.notifyMerchant(tx.userId, 'Payment Completed', `Your payment for VoBiz number ${number} was successful.`, 'payments');
+    await NotificationService.notifyAdmin('Number Purchased', `Merchant (User ID: ${tx.userId}) purchased a new VoBiz number: ${number}.`, null, 'payments');
   }
 }
 

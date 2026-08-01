@@ -6,6 +6,7 @@ const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = requir
 const ResponseBuilder = require('../utils/response');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const { sendSMSVerification } = require('../utils/sms');
+const NotificationService = require('../services/notificationService');
 
 function hashToken(token) {
   if (!token) return null;
@@ -112,6 +113,12 @@ class AuthController {
       // Save Refresh Token for validation (hashed)
       merchant.refreshToken = hashToken(refreshToken);
       await merchant.save();
+
+      // Notify Admins about new signup
+      await NotificationService.notifyAdmin(
+        'New Merchant Signup',
+        `A new merchant has registered with mobile: ${mobile}${email ? ` and email: ${email}` : ''}.`
+      );
 
       const profile = {
         id: merchant.id,
