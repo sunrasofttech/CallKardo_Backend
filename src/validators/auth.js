@@ -12,6 +12,7 @@ const merchantRegisterSchema = Joi.object({
     'string.min': 'Password must be at least 6 characters long',
     'any.required': 'Password is required',
   }),
+  fcmToken: Joi.string().optional().allow(''),
 });
 
 const adminRegisterSchema = Joi.object({
@@ -20,6 +21,7 @@ const adminRegisterSchema = Joi.object({
   password: Joi.string().min(6).required(),
   firstName: Joi.string().optional(),
   lastName: Joi.string().optional(),
+  fcmToken: Joi.string().optional().allow(''),
 });
 
 const loginSchema = Joi.object({

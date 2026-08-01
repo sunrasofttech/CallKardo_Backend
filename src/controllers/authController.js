@@ -36,7 +36,7 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, mobile, password } = value;
+      const { email, mobile, password, fcmToken } = value;
 
       // 1. Check if user already exists
       if (email) {
@@ -64,6 +64,7 @@ class AuthController {
         mobile,
         passwordHash,
         verificationToken,
+        fcmToken: fcmToken || null,
       });
 
       // 5. Setup Initial Starter Subscription Plan
@@ -151,7 +152,7 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, mobile, password, firstName, lastName } = value;
+      const { email, mobile, password, firstName, lastName, fcmToken } = value;
 
       if (email) {
         const existingAdmin = await Admin.findOne({ where: { email } });
@@ -179,6 +180,7 @@ class AuthController {
         role: 'super_admin',
         isVerified: true, // admin auto-verified for local dev simplicity, token is saved
         verificationToken,
+        fcmToken: fcmToken || null,
       });
 
       // Generate login tokens

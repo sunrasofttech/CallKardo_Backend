@@ -62,6 +62,7 @@ router.put('/voices/:id', adminController.updateVoice);
 // Notifications routes
 const notificationController = require('../controllers/notificationController');
 router.get('/notifications', notificationController.getAdminNotifications);
+router.post('/notifications/broadcast', notificationController.broadcastNotification);
 router.put('/notifications/read-all', notificationController.markAdminAllAsRead);
 router.put('/notifications/:id/read', notificationController.markAdminAsRead);
 router.delete('/voices/:id', adminController.deleteVoice);
