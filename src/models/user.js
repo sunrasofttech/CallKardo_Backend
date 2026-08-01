@@ -68,7 +68,7 @@ User.init(
     },
     isVerified: {
       type: DataTypes.BOOLEAN,
-      defaultValue: false,
+      defaultValue: true,
       field: 'is_verified',
     },
     verificationToken: {

@@ -58,6 +58,12 @@ router.post('/kyc-rate-limit', adminController.updateKycRateLimit);
 router.get('/voices', adminController.getVoices);
 router.post('/voices', adminController.createVoice);
 router.put('/voices/:id', adminController.updateVoice);
+
+// Notifications routes
+const notificationController = require('../controllers/notificationController');
+router.get('/notifications', notificationController.getAdminNotifications);
+router.put('/notifications/read-all', notificationController.markAdminAllAsRead);
+router.put('/notifications/:id/read', notificationController.markAdminAsRead);
 router.delete('/voices/:id', adminController.deleteVoice);
 
 // Audit Logs routes

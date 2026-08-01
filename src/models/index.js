@@ -174,6 +174,10 @@ CallReport.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
 User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
 Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Admin <-> Notification
+Admin.hasMany(Notification, { foreignKey: 'admin_id', as: 'notifications' });
+Notification.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
+
 // User <-> PaymentTransaction
 User.hasMany(PaymentTransaction, { foreignKey: 'user_id', as: 'paymentTransactions' });
 PaymentTransaction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });

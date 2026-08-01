@@ -3,6 +3,7 @@ const AiAnalysisService = require('../services/aiAnalysisService');
 const SubscriptionService = require('../services/subscriptionService');
 const QueueService = require('../services/queueService');
 const { CallReport, CallSession, Customer, CampaignCustomer, Campaign, sequelize } = require('../models');
+const NotificationService = require('../services/notificationService');
 
 async function startAiWorker() {
   console.log('AI Worker started.');
@@ -190,6 +191,28 @@ async function processCallAnalysis(event) {
     }
 
     console.log(`[AI Worker] CallReport created successfully for session ${callSessionId} (${session.direction}). CustomerId: ${finalCustomerId || 'none'}, Transcript length: ${finalTranscript.length}`);
+
+    // Notify Merchant of Call Report Generation
+    if (created && finalUserId) {
+      await NotificationService.notifyMerchant(
+        finalUserId,
+        'Call Report Generated',
+        `A new call report was generated for a recent call. Outcome: ${analysis.outcome}`,
+        'call'
+      );
+    }
+
+    // Notify Merchant if action is required (e.g. Meeting or Callback)
+    // We check this even if updated, assuming we want to notify whenever the outcome is set to these
+    if (analysis.outcome === 'Callback Requested' || analysis.outcome === 'Appointment Booked') {
+      await NotificationService.notifyMerchant(
+        finalUserId,
+        `Action Required: ${analysis.outcome}`,
+        `A customer from a recent call (Session: ${callSessionId}) resulted in: ${analysis.outcome}. Please review the call report.`,
+        'meeting'
+      );
+    }
+
 
     // 7. Deduct call credit from merchant's subscription
     if (created && finalUserId) {
