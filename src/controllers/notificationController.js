@@ -101,9 +101,16 @@ class NotificationController {
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
 
+      const { Op } = require('sequelize');
       const { category } = req.query;
 
-      const whereClause = { adminId };
+      const whereClause = {
+        [Op.or]: [
+          { adminId },
+          { adminId: null } // Show existing/global data to admin
+        ]
+      };
+
       if (category) {
         whereClause.category = category;
       }
