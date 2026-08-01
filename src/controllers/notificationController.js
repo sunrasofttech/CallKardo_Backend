@@ -96,7 +96,7 @@ class NotificationController {
    */
   async getAdminNotifications(req, res, next) {
     try {
-      const adminId = req.admin.id;
+      const adminId = req.user.id;
       const page = parseInt(req.query.page, 10) || 1;
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
@@ -144,7 +144,7 @@ class NotificationController {
   async markAdminAsRead(req, res, next) {
     try {
       const { id } = req.params;
-      const adminId = req.admin.id;
+      const adminId = req.user.id;
 
       const notification = await Notification.findOne({
         where: { id, adminId },
@@ -168,7 +168,7 @@ class NotificationController {
    */
   async markAdminAllAsRead(req, res, next) {
     try {
-      const adminId = req.admin.id;
+      const adminId = req.user.id;
 
       await Notification.update(
         { isRead: true },
