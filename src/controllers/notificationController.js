@@ -180,6 +180,26 @@ class NotificationController {
       next(err);
     }
   }
+
+  /**
+   * Broadcast Notification to all Merchants
+   */
+  async broadcastNotification(req, res, next) {
+    try {
+      const { title, message, category } = req.body;
+
+      if (!title || !message) {
+        return ResponseBuilder.error(res, 'Title and message are required', 400);
+      }
+
+      const NotificationService = require('../services/notificationService');
+      const result = await NotificationService.broadcastToMerchants(title, message, category || 'general');
+
+      return ResponseBuilder.success(res, { count: result.count }, 'Broadcasted notification successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new NotificationController();

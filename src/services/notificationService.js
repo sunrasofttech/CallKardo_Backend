@@ -88,6 +88,41 @@ class NotificationService {
       console.error(`[NotificationService] Failed to notify admins:`, err);
     }
   }
+
+  /**
+   * Broadcast a notification to all merchants
+   * @param {string} title - Notification title
+   * @param {string} message - Notification message
+   * @param {string} category - Category ('meeting', 'payments', 'call', 'general')
+   */
+  async broadcastToMerchants(title, message, category = 'general') {
+    try {
+      // 1. Send push notification to the "all_merchants" FCM topic
+      await fcmService.sendTopicPushNotification('all_merchants', title, message, { category });
+
+      // 2. Fetch all users to create individual DB records for their notification history
+      const users = await User.findAll({ attributes: ['id'] });
+
+      if (users.length > 0) {
+        const notificationsData = users.map(user => ({
+          userId: user.id,
+          type: 'MERCHANT',
+          category,
+          title,
+          message,
+          isRead: false
+        }));
+
+        await Notification.bulkCreate(notificationsData);
+      }
+
+      console.log(`[Notification] Broadcasted to ${users.length} Merchants via DB and 'all_merchants' Topic [${category}]: ${title}`);
+      return { success: true, count: users.length };
+    } catch (err) {
+      console.error(`[NotificationService] Failed to broadcast to merchants:`, err);
+      throw err;
+    }
+  }
 }
 
 module.exports = new NotificationService();
