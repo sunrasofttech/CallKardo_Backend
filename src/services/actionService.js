@@ -301,6 +301,8 @@ class ActionService {
     }
 
     return { success: true, meetingLink, scheduledTime: timeLabel };
+  }
+
   /**
    * Handle Request Callback action
    */
