@@ -68,7 +68,7 @@ class SubscriptionController {
           activePlan: targetPlan.name,
           startDate: now,
           expiryDate,
-          callsRemaining: targetPlan.callLimit === -1 ? 999999 : targetPlan.callLimit, // Large value for unlimited
+          callsRemaining: targetPlan.callLimit === -1 ? 999999 : targetPlan.callLimit,
           status: 'active',
         });
       }

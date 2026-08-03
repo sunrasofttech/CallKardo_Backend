@@ -330,7 +330,7 @@ class PaymentService {
         activePlan: plan.name,
         startDate: now,
         expiryDate,
-        callsRemaining: callLimitVal,
+        callsRemaining: callLimitVal, // Do not carry forward old calls
         status: 'active',
       });
     }

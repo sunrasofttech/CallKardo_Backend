@@ -552,20 +552,24 @@ class AdminController {
         callsRemaining = plan.callLimit === -1 ? 999999 : plan.callLimit;
       }
 
+      let subscription = await Subscription.findOne({ where: { userId: merchant.id } });
+
       const values = {
         planId: plan.id,
         activePlan: plan.name,
         startDate: now,
         expiryDate,
-        callsUsed: req.body.resetCallsUsed !== false ? 0 : undefined,
-        callsRemaining,
+        callsRemaining, // Set exactly to the new call limit
         status: req.body.status || 'active',
       };
-      if (values.callsUsed === undefined) delete values.callsUsed;
+      
+      // Only reset callsUsed if explicitly requested
+      if (req.body.resetCallsUsed === true) {
+        values.callsUsed = 0;
+      }
 
-      let subscription = await Subscription.findOne({ where: { userId: merchant.id } });
       if (!subscription) {
-        subscription = await Subscription.create({ userId: merchant.id, ...values });
+        subscription = await Subscription.create({ userId: merchant.id, callsUsed: 0, ...values });
       } else {
         await subscription.update(values);
       }
