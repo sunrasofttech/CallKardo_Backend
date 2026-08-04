@@ -333,6 +333,37 @@ class ActionService {
 
     return { success: true, scheduledTime: timeLabel };
   }
+
+  /**
+   * Handle Send Website Link action
+   */
+  async sendWebsiteLink(customer, agent, merchant) {
+    const mobile = customer?.mobile || 'Unknown';
+    const name = customer?.name || 'Customer';
+    const businessUrl = merchant?.businessUrl;
+
+    if (!businessUrl) {
+      console.log(`[Action: send_website_link] No businessUrl found for merchant, skipping RCS.`);
+      return { success: false, message: 'No business website configured' };
+    }
+
+    if (mobile !== 'Unknown') {
+      try {
+        const DovesoftService = require('./dovesoftService');
+        // Fire and forget RCS message using ramaapplink template
+        DovesoftService.sendRCS(mobile, 'ramaapplink', {
+          user_name: name,
+          app_link: businessUrl,
+          website_url: businessUrl,
+          support_mobile: merchant?.mobile || ''
+        }).catch(err => console.error(`[Action: send_website_link] RCS failed: ${err.message}`));
+      } catch (err) {
+        console.error(`[Action: send_website_link] Failed to initiate RCS to ${mobile}:`, err.message);
+      }
+    }
+
+    return { success: true, websiteLink: businessUrl };
+  }
 }
 
 module.exports = new ActionService();

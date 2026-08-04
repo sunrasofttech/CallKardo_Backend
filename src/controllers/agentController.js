@@ -3,6 +3,7 @@ const ResponseBuilder = require('../utils/response');
 const { createAgentSchema, updateAgentSchema } = require('../validators/agent');
 const { Op } = require('sequelize');
 const SarvamService = require('../services/sarvamService');
+const DocumentParser = require('../services/documentParser');
 const fs = require('fs');
 const path = require('path');
 
@@ -311,6 +312,51 @@ class AgentController {
       await agent.destroy();
       return ResponseBuilder.success(res, null, 'Custom agent deleted successfully');
     } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Upload and parse knowledge base document
+   */
+  async uploadKnowledgeBase(req, res, next) {
+    let newPath = null;
+    try {
+      const agent = await Agent.findByPk(req.params.id);
+      if (!agent) {
+        return ResponseBuilder.error(res, 'Agent not found', 404);
+      }
+
+      if (agent.userId !== req.user.id) {
+        return ResponseBuilder.error(res, 'Forbidden: You cannot modify this agent', 403);
+      }
+
+      if (!req.file) {
+        return ResponseBuilder.error(res, 'No file uploaded', 400);
+      }
+
+      const filePath = req.file.path;
+      const mimeType = req.file.mimetype;
+      const originalName = req.file.originalname;
+
+      newPath = filePath + path.extname(originalName);
+      fs.renameSync(filePath, newPath);
+
+      const parsedText = await DocumentParser.parseFile(newPath, mimeType);
+
+      await agent.update({ knowledgeBase: parsedText });
+
+      if (fs.existsSync(newPath)) {
+        fs.unlinkSync(newPath);
+      }
+
+      return ResponseBuilder.success(res, agent, 'Knowledge base uploaded and parsed successfully');
+    } catch (err) {
+      if (newPath && fs.existsSync(newPath)) {
+        fs.unlinkSync(newPath);
+      } else if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
       next(err);
     }
   }

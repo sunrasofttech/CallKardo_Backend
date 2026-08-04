@@ -29,6 +29,11 @@ Agent.init(
       allowNull: false,
       field: 'system_prompt',
     },
+    knowledgeBase: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'knowledge_base',
+    },
     firstMessage: {
       type: DataTypes.TEXT,
       allowNull: true,
