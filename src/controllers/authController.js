@@ -499,7 +499,7 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { businessName, businessUrl, categoryId, businessType } = value;
+      const { businessName, businessUrl, categoryId, business_type } = value;
 
       // 1. Verify category exists
       const category = await Category.findByPk(categoryId);
@@ -513,7 +513,7 @@ class AuthController {
 
       user.businessName = businessName;
       user.businessUrl = businessUrl || null;
-      user.businessType = businessType;
+      user.businessType = business_type;
       user.categoryId = categoryId;
       await user.save();
 
