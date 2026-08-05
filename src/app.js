@@ -170,6 +170,11 @@ app.get('/test-call', (req, res) => {
   res.render('test-call', { agentId, wsUrl });
 });
 
+// Account Deletion Instructions (Public for Play Store)
+app.get('/delete-account', (req, res) => {
+  res.render('delete-account');
+});
+
 // 5. Global 404 Route
 app.use((req, res, next) => {
   res.status(404).json({
