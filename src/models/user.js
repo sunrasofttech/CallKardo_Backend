@@ -52,6 +52,11 @@ User.init(
       allowNull: true,
       field: 'business_url',
     },
+    businessType: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      field: 'business_type',
+    },
     categoryId: {
       type: DataTypes.UUID,
       allowNull: true,

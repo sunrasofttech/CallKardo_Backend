@@ -43,11 +43,15 @@ CREATE TABLE `admins` (
   UNIQUE KEY `mobile_3` (`mobile`),
   UNIQUE KEY `mobile_4` (`mobile`),
   UNIQUE KEY `mobile_5` (`mobile`),
+  UNIQUE KEY `mobile_6` (`mobile`),
+  UNIQUE KEY `mobile_7` (`mobile`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `email_2` (`email`),
   UNIQUE KEY `email_3` (`email`),
   UNIQUE KEY `email_4` (`email`),
-  UNIQUE KEY `email_5` (`email`)
+  UNIQUE KEY `email_5` (`email`),
+  UNIQUE KEY `email_6` (`email`),
+  UNIQUE KEY `email_7` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `agents`
@@ -78,9 +82,9 @@ CREATE TABLE `agents` (
   KEY `user_id` (`user_id`),
   KEY `voice_id` (`voice_id`),
   KEY `category_id` (`category_id`),
-  CONSTRAINT `agents_ibfk_10` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `agents_ibfk_11` FOREIGN KEY (`voice_id`) REFERENCES `voices` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `agents_ibfk_12` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `agents_ibfk_16` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `agents_ibfk_17` FOREIGN KEY (`voice_id`) REFERENCES `voices` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `agents_ibfk_18` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `audit_logs`
@@ -139,11 +143,11 @@ CREATE TABLE `call_reports` (
   KEY `call_session_id` (`call_session_id`),
   KEY `vobiz_number_id` (`vobiz_number_id`),
   KEY `customer_id` (`customer_id`),
-  CONSTRAINT `call_reports_ibfk_16` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_reports_ibfk_17` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_reports_ibfk_18` FOREIGN KEY (`call_session_id`) REFERENCES `call_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_reports_ibfk_19` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_reports_ibfk_20` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `call_reports_ibfk_26` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_reports_ibfk_27` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_reports_ibfk_28` FOREIGN KEY (`call_session_id`) REFERENCES `call_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_reports_ibfk_29` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_reports_ibfk_30` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `call_sessions`
@@ -172,16 +176,18 @@ CREATE TABLE `call_sessions` (
   UNIQUE KEY `ws_session_token_3` (`ws_session_token`),
   UNIQUE KEY `ws_session_token_4` (`ws_session_token`),
   UNIQUE KEY `ws_session_token_5` (`ws_session_token`),
+  UNIQUE KEY `ws_session_token_6` (`ws_session_token`),
+  UNIQUE KEY `ws_session_token_7` (`ws_session_token`),
   KEY `user_id` (`user_id`),
   KEY `campaign_id` (`campaign_id`),
   KEY `agent_id` (`agent_id`),
   KEY `vobiz_number_id` (`vobiz_number_id`),
   KEY `customer_id` (`customer_id`),
-  CONSTRAINT `call_sessions_ibfk_16` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_sessions_ibfk_17` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_sessions_ibfk_18` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_sessions_ibfk_19` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_sessions_ibfk_20` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `call_sessions_ibfk_26` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_sessions_ibfk_27` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_sessions_ibfk_28` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_sessions_ibfk_29` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_sessions_ibfk_30` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `campaign_customers`
@@ -201,8 +207,8 @@ CREATE TABLE `campaign_customers` (
   UNIQUE KEY `uq_campaign_customer` (`campaign_id`,`customer_id`),
   KEY `idx_campaign_status` (`campaign_id`,`call_status`),
   KEY `customer_id` (`customer_id`),
-  CONSTRAINT `campaign_customers_ibfk_7` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `campaign_customers_ibfk_8` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `campaign_customers_ibfk_11` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `campaign_customers_ibfk_12` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `campaigns`
@@ -226,10 +232,10 @@ CREATE TABLE `campaigns` (
   KEY `vobiz_number_id` (`vobiz_number_id`),
   KEY `agent_id` (`agent_id`),
   KEY `customer_list_id` (`customer_list_id`),
-  CONSTRAINT `campaigns_ibfk_13` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `campaigns_ibfk_14` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `campaigns_ibfk_15` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `campaigns_ibfk_16` FOREIGN KEY (`customer_list_id`) REFERENCES `customer_lists` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `campaigns_ibfk_21` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `campaigns_ibfk_22` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `campaigns_ibfk_23` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `campaigns_ibfk_24` FOREIGN KEY (`customer_list_id`) REFERENCES `customer_lists` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `categories`
@@ -250,6 +256,8 @@ CREATE TABLE `categories` (
   UNIQUE KEY `name_3` (`name`),
   UNIQUE KEY `name_4` (`name`),
   UNIQUE KEY `name_5` (`name`),
+  UNIQUE KEY `name_6` (`name`),
+  UNIQUE KEY `name_7` (`name`),
   KEY `default_voice_id` (`default_voice_id`),
   CONSTRAINT `categories_ibfk_1` FOREIGN KEY (`default_voice_id`) REFERENCES `voices` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -266,8 +274,8 @@ CREATE TABLE `customer_list_members` (
   UNIQUE KEY `customer_list_members_customer_id_customer_list_id_unique` (`customer_list_id`,`customer_id`),
   UNIQUE KEY `uq_list_customer` (`customer_list_id`,`customer_id`),
   KEY `customer_id` (`customer_id`),
-  CONSTRAINT `customer_list_members_ibfk_7` FOREIGN KEY (`customer_list_id`) REFERENCES `customer_lists` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `customer_list_members_ibfk_8` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `customer_list_members_ibfk_11` FOREIGN KEY (`customer_list_id`) REFERENCES `customer_lists` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `customer_list_members_ibfk_12` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `customer_lists`
@@ -339,8 +347,8 @@ CREATE TABLE `notifications` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `admin_id` (`admin_id`),
-  CONSTRAINT `notifications_ibfk_3` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `notifications_ibfk_4` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `notifications_ibfk_7` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `notifications_ibfk_8` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `payment_transactions`
@@ -377,6 +385,8 @@ CREATE TABLE `payment_transactions` (
   UNIQUE KEY `order_id_7` (`order_id`),
   UNIQUE KEY `order_id_8` (`order_id`),
   UNIQUE KEY `order_id_9` (`order_id`),
+  UNIQUE KEY `order_id_10` (`order_id`),
+  UNIQUE KEY `order_id_11` (`order_id`),
   KEY `idx_payment_tx_user` (`user_id`),
   KEY `idx_payment_tx_order` (`order_id`),
   KEY `idx_payment_tx_status` (`status`),
@@ -399,7 +409,9 @@ CREATE TABLE `plans` (
   UNIQUE KEY `name_2` (`name`),
   UNIQUE KEY `name_3` (`name`),
   UNIQUE KEY `name_4` (`name`),
-  UNIQUE KEY `name_5` (`name`)
+  UNIQUE KEY `name_5` (`name`),
+  UNIQUE KEY `name_6` (`name`),
+  UNIQUE KEY `name_7` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `settings`
@@ -415,7 +427,9 @@ CREATE TABLE `settings` (
   UNIQUE KEY `key` (`key`),
   UNIQUE KEY `key_2` (`key`),
   UNIQUE KEY `key_3` (`key`),
-  UNIQUE KEY `key_4` (`key`)
+  UNIQUE KEY `key_4` (`key`),
+  UNIQUE KEY `key_5` (`key`),
+  UNIQUE KEY `key_6` (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `subscriptions`
@@ -437,8 +451,8 @@ CREATE TABLE `subscriptions` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `plan_id` (`plan_id`),
-  CONSTRAINT `subscriptions_ibfk_7` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `subscriptions_ibfk_8` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `subscriptions_ibfk_11` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `subscriptions_ibfk_12` FOREIGN KEY (`plan_id`) REFERENCES `plans` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `users`
@@ -462,17 +476,22 @@ CREATE TABLE `users` (
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
   `deleted_at` datetime DEFAULT NULL,
+  `business_type` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `mobile` (`mobile`),
   UNIQUE KEY `mobile_2` (`mobile`),
   UNIQUE KEY `mobile_3` (`mobile`),
   UNIQUE KEY `mobile_4` (`mobile`),
   UNIQUE KEY `mobile_5` (`mobile`),
+  UNIQUE KEY `mobile_6` (`mobile`),
+  UNIQUE KEY `mobile_7` (`mobile`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `email_2` (`email`),
   UNIQUE KEY `email_3` (`email`),
   UNIQUE KEY `email_4` (`email`),
   UNIQUE KEY `email_5` (`email`),
+  UNIQUE KEY `email_6` (`email`),
+  UNIQUE KEY `email_7` (`email`),
   KEY `category_id` (`category_id`),
   CONSTRAINT `users_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -509,8 +528,8 @@ CREATE TABLE `vobiz_numbers` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_merchant_number` (`user_id`,`number`),
   KEY `agent_id` (`agent_id`),
-  CONSTRAINT `vobiz_numbers_ibfk_7` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `vobiz_numbers_ibfk_8` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `vobiz_numbers_ibfk_11` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `vobiz_numbers_ibfk_12` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `voices`

@@ -46,6 +46,10 @@ const setupBusinessSchema = Joi.object({
   businessUrl: Joi.string().uri().optional().allow('').messages({
     'string.uri': 'Please enter a valid URL',
   }),
+  businessType: Joi.string().valid('individual', 'proprietorship', 'private_limited', 'llp', 'partnership', 'public_limited', 'trust', 'society', 'huf', 'government').required().messages({
+    'any.only': 'Invalid business type',
+    'any.required': 'Business type is required',
+  }),
   categoryId: Joi.string().uuid().required().messages({
     'string.uuid': 'Invalid category ID format',
     'any.required': 'Business category is required',

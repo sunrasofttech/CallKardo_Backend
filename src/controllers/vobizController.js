@@ -421,7 +421,7 @@ class VobizController {
         subAccountName, 
         user.email, 
         'customer_use', 
-        'company'
+        user.businessType || 'individual'
       );
 
       const encryptEnabled = defaults.vobiz.encryptCredentials;
