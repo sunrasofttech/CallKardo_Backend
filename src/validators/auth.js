@@ -54,7 +54,7 @@ const setupBusinessSchema = Joi.object({
     'string.uuid': 'Invalid category ID format',
     'any.required': 'Business category is required',
   }),
-});
+}).unknown(true);
 
 const forgotPasswordSchema = Joi.object({
   email: Joi.string().email().required(),
