@@ -21,6 +21,7 @@ const Notification = require('./notification');
 const AuditLog = require('./auditLog');
 const Setting = require('./setting');
 const PaymentTransaction = require('./paymentTransaction');
+const KycDetail = require('./kycDetail');
 
 // Establish Relationships
 
@@ -205,4 +206,5 @@ module.exports = {
   AuditLog,
   Setting,
   PaymentTransaction,
+  KycDetail,
 };

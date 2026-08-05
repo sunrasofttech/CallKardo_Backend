@@ -217,7 +217,7 @@ class VobizService {
    * Create a SubAccount for a merchant
    * POST /accounts/{auth_id}/sub-accounts/
    */
-  async createSubAccount(name) {
+  async createSubAccount(name, email = null, kycMode = null, businessType = null) {
     if (this._isParentMock()) {
       const mockAuthId = `mock-auth-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
       const mockAuthToken = `mock-token-${Math.random().toString(36).substring(2, 15)}`;
@@ -234,6 +234,10 @@ class VobizService {
         name: name,
         enabled: true
       };
+      
+      if (email) payload.email = email;
+      if (kycMode) payload.kyc_mode = kycMode;
+      if (businessType) payload.business_type = businessType;
       
       const response = await client.post(`/accounts/${defaults.vobiz.parentAuthId}/sub-accounts/`, payload);
       
@@ -565,6 +569,50 @@ class VobizService {
 
     } catch (error) {
       console.error('Error in checkNumberRentals:', error.message);
+    }
+  }
+  /**
+   * Generate KYC Session (Email Flow)
+   */
+  async generateKycSession(authId, authToken, customerEmail, webhookUrl) {
+    if (this._isMock(authId)) {
+      console.log(`[VoBiz Service Mock] Generating KYC session for authId ${authId}`);
+      return { success: true, session_id: 'mock-session-id', status: 'email_sent' };
+    }
+
+    const client = this._getClient(authId, authToken);
+    try {
+      const payload = {
+        flow_type: 'email',
+        customer_email: customerEmail,
+        webhook_url: webhookUrl
+      };
+
+      console.log(`[VoBiz Service] Generating KYC session for authId ${authId}`);
+      
+      const response = await client.post(`/sub-accounts/${authId}/kyc-sessions`, payload);
+      return { success: true, ...response.data };
+    } catch (err) {
+      console.error(`Vobiz generateKycSession Error:`, err.response?.data || err.message);
+      return { success: false, error: this._getErrorMessage(err, 'Failed to generate KYC session') };
+    }
+  }
+
+  /**
+   * Check KYC aggregated status
+   */
+  async getKycStatus(authId, authToken) {
+    if (this._isMock(authId)) {
+      return { success: true, overall_status: 'verified', kyc_calls_blocked: false };
+    }
+    
+    const client = this._getClient(authId, authToken);
+    try {
+      const response = await client.get(`/sub-accounts/${authId}/kyc/status`);
+      return { success: true, ...response.data };
+    } catch (err) {
+      console.error('Vobiz getKycStatus Error:', err.response?.data || err.message);
+      return { success: false, error: this._getErrorMessage(err, 'Failed to retrieve KYC status') };
     }
   }
 }

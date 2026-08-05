@@ -1,4 +1,4 @@
-const { VobizAccount, VobizNumber, User, Agent, Customer, CallSession, CallLog } = require('../models');
+const { VobizAccount, VobizNumber, User, Agent, Customer, CallSession, CallLog, KycDetail } = require('../models');
 const { Op } = require('sequelize');
 const ResponseBuilder = require('../utils/response');
 const { connectAccountSchema, addNumberSchema, updateNumberSchema, buyNumberSchema } = require('../validators/vobiz');
@@ -417,7 +417,12 @@ class VobizController {
         user.phoneNumber
       ].filter(Boolean).join(' | ').substring(0, 100); // Vobiz name limit might apply
 
-      const subAccountData = await vobizService.createSubAccount(subAccountName);
+      const subAccountData = await vobizService.createSubAccount(
+        subAccountName, 
+        user.email, 
+        'customer_use', 
+        'company'
+      );
 
       const encryptEnabled = defaults.vobiz.encryptCredentials;
       const finalApiKey = encryptEnabled ? encrypt(subAccountData.authId) : subAccountData.authId;
@@ -429,6 +434,9 @@ class VobizController {
         apiKey: finalApiKey,
         apiSecret: finalApiSecret,
       });
+
+      // Update user KYC status to pending since it's a customer_use subaccount
+      await user.update({ kycStatus: 'pending' });
 
       const sanitizedResponse = {
         id: account.id,
@@ -518,6 +526,157 @@ class VobizController {
       return ResponseBuilder.success(res, vobizNumber, 'Phone number purchased and assigned successfully', 201);
     } catch (err) {
       next(err);
+    }
+  }
+  /**
+   * Generate KYC Session (Hosted Email Flow)
+   */
+  async generateKycSession(req, res, next) {
+    try {
+      const user = await User.findByPk(req.user.id);
+      if (!user) return ResponseBuilder.error(res, 'User not found', 404);
+
+      const account = await VobizAccount.findOne({ where: { userId: user.id } });
+      if (!account) {
+        return ResponseBuilder.error(res, 'Vobiz sub-account not found. Please provision one first.', 404);
+      }
+
+      // Decrypt credentials
+      const encryptEnabled = defaults.vobiz.encryptCredentials;
+      const decryptedAuthToken = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
+      const authId = account.customerId;
+
+      // Ensure we have an email
+      if (!user.email) {
+        return ResponseBuilder.error(res, 'User email is required for KYC email flow', 400);
+      }
+
+      // Webhook URL (Construct based on your environment)
+      // Assuming a generic pattern for now or pulling from env if configured
+      const hostUrl = req.protocol + '://' + req.get('host');
+      const webhookUrl = `${hostUrl}/api/v1/vobiz/kyc/webhook`;
+
+      // Call Vobiz Service
+      const result = await vobizService.generateKycSession(authId, decryptedAuthToken, user.email, webhookUrl);
+
+      if (result.success) {
+        // Log the session in DB
+        await KycDetail.create({
+          userId: user.id,
+          sessionId: result.session_id,
+          status: result.status || 'email_sent',
+          vobizResponse: result
+        });
+
+        return ResponseBuilder.success(res, result, 'KYC session generated and email sent');
+      } else {
+        return ResponseBuilder.error(res, result.error, 400);
+      }
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get overall KYC Status from Vobiz
+   */
+  async getKycStatus(req, res, next) {
+    try {
+      const user = await User.findByPk(req.user.id);
+      const account = await VobizAccount.findOne({ where: { userId: req.user.id } });
+      if (!account) {
+        return ResponseBuilder.error(res, 'Vobiz sub-account not found.', 404);
+      }
+
+      const encryptEnabled = defaults.vobiz.encryptCredentials;
+      const decryptedAuthToken = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
+      const authId = account.customerId;
+
+      const result = await vobizService.getKycStatus(authId, decryptedAuthToken);
+      
+      if (result.success) {
+        // If overall status is verified, mark user as full
+        if (result.overall_status === 'verified' && result.kyc_calls_blocked === false) {
+          if (user.kycStatus !== 'full') {
+            await user.update({ kycStatus: 'full' });
+          }
+        }
+        return ResponseBuilder.success(res, result, 'KYC status retrieved');
+      } else {
+        return ResponseBuilder.error(res, result.error, 400);
+      }
+    } catch (err) {
+      next(err);
+    }
+  }
+  /**
+   * Webhook to receive automated KYC status updates from Vobiz
+   */
+  async kycWebhook(req, res, next) {
+    try {
+      const payload = req.body;
+      console.log('[VoBiz KYC Webhook] Received event:', payload);
+
+      // Attempt to extract the sub-account auth ID from common field names
+      const authId = payload.sub_auth_id || payload.auth_id || payload.customer_id;
+
+      if (!authId) {
+        console.warn('[VoBiz KYC Webhook] Missing authId in payload. Acknowledging anyway.');
+        return res.status(200).send('OK');
+      }
+
+      const account = await VobizAccount.findOne({ where: { customerId: authId } });
+      if (!account) {
+        console.warn(`[VoBiz KYC Webhook] No matching sub-account found for authId: ${authId}`);
+        return res.status(200).send('OK');
+      }
+
+      const user = await User.findByPk(account.userId);
+      if (!user) {
+        return res.status(200).send('OK');
+      }
+
+      // Store the webhook payload in KycDetail
+      let kycRecord = await KycDetail.findOne({
+        where: { userId: user.id },
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (!kycRecord) {
+        kycRecord = await KycDetail.create({
+          userId: user.id,
+          status: 'webhook_received',
+          vobizResponse: payload
+        });
+      } else {
+        await kycRecord.update({
+          vobizResponse: payload,
+          status: payload.status || kycRecord.status
+        });
+      }
+
+      // We actively fetch the latest status to verify it securely rather than relying solely on the payload
+      const encryptEnabled = defaults.vobiz.encryptCredentials;
+      const decryptedAuthToken = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
+      
+      const statusResult = await vobizService.getKycStatus(authId, decryptedAuthToken);
+      
+      if (statusResult.success) {
+        if (statusResult.overall_status === 'verified' && statusResult.kyc_calls_blocked === false) {
+          if (user.kycStatus !== 'full') {
+            await user.update({ kycStatus: 'full' });
+            console.log(`[VoBiz KYC Webhook] Successfully updated User ${user.id} kycStatus to 'full'`);
+          }
+        } else if (statusResult.overall_status === 'failed') {
+          // You could potentially add notification logic here to alert the merchant they failed
+          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC failed or still blocked.`);
+        }
+      }
+
+      return res.status(200).send('OK');
+    } catch (err) {
+      console.error('[VoBiz KYC Webhook] Processing Error:', err);
+      return res.status(500).send('Internal Error'); // 500 will trigger Vobiz exponential backoff retries
     }
   }
 }
