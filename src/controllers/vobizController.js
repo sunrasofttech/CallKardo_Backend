@@ -428,10 +428,6 @@ class VobizController {
         user.businessType || 'individual'
       );
 
-      if (!subAccountData.success) {
-        return ResponseBuilder.error(res, subAccountData.error || 'Failed to provision Vobiz account', 400);
-      }
-
       const encryptEnabled = defaults.vobiz.encryptCredentials;
       const finalApiKey = encryptEnabled ? encrypt(subAccountData.authId) : subAccountData.authId;
       const finalApiSecret = encryptEnabled ? encrypt(subAccountData.authToken) : subAccountData.authToken;
