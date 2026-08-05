@@ -616,6 +616,7 @@ class AuthController {
         id: user.id,
         email: user.email,
         mobile: user.mobile,
+        kycStatus: user.kycStatus,
         role,
         vobizOnboarded,
         ...(role === 'merchant'
