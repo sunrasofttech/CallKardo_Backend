@@ -104,6 +104,61 @@ const swaggerSpec = {
         },
       },
     },
+    '/auth/me': {
+      get: {
+        summary: 'Get current authenticated user profile',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'User profile retrieved successfully' },
+          401: { description: 'Unauthorized' },
+        },
+      },
+      delete: {
+        summary: 'Delete current authenticated user account',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'Account permanently deleted' },
+          401: { description: 'Unauthorized' },
+        },
+      },
+    },
+    '/vobiz/kyc/generate-session': {
+      post: {
+        summary: 'Generate a Vobiz KYC session (Email Flow)',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'KYC session generated and email sent' },
+          400: { description: 'Error generating session' },
+        },
+      },
+    },
+    '/vobiz/kyc/status': {
+      get: {
+        summary: 'Get latest KYC verification status from Vobiz',
+        security: [{ BearerAuth: [] }],
+        responses: {
+          200: { description: 'KYC status retrieved' },
+          404: { description: 'Sub-account not found' },
+        },
+      },
+    },
+    '/vobiz/kyc/webhook': {
+      post: {
+        summary: 'Vobiz KYC Status Webhook',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Webhook received successfully' },
+        },
+      },
+    },
     '/campaigns': {
       get: {
         summary: 'Get all merchant campaigns',
