@@ -552,7 +552,7 @@ class VobizController {
 
       // Ensure we have an email
       if (!user.email) {
-        return ResponseBuilder.error(res, 'User email is required for KYC email flow', 400);
+        return ResponseBuilder.error(res, 'User email is required for KYC', 400);
       }
 
       // Webhook URL (Construct based on your environment)
@@ -568,11 +568,11 @@ class VobizController {
         await KycDetail.create({
           userId: user.id,
           sessionId: result.session_id,
-          status: result.status || 'email_sent',
+          status: result.status || 'link_ready',
           vobizResponse: result
         });
 
-        return ResponseBuilder.success(res, result, 'KYC session generated and email sent');
+        return ResponseBuilder.success(res, result, 'KYC session generated successfully');
       } else {
         return ResponseBuilder.error(res, result.error, 400);
       }

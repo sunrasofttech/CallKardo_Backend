@@ -572,18 +572,19 @@ class VobizService {
     }
   }
   /**
-   * Generate KYC Session (Email Flow)
+   * Generate KYC Session (Redirect Flow)
    */
   async generateKycSession(authId, authToken, customerEmail, webhookUrl) {
     if (this._isMock(authId)) {
       console.log(`[VoBiz Service Mock] Generating KYC session for authId ${authId}`);
-      return { success: true, session_id: 'mock-session-id', status: 'email_sent' };
+      return { success: true, session_id: 'mock-session-id', status: 'link_ready', widget_url: 'https://mock.kyc.vobiz.ai/verify' };
     }
 
-    const client = this._getClient(authId, authToken);
+    const client = this._getParentClient();
     try {
       const payload = {
-        flow_type: 'email',
+        flow_type: 'redirect',
+        account_auth_id: authId,
         customer_email: customerEmail,
         webhook_url: webhookUrl
       };
