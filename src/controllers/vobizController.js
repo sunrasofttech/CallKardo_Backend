@@ -409,6 +409,10 @@ class VobizController {
         return ResponseBuilder.error(res, 'User not found', 404);
       }
 
+      if (!user.email) {
+        return ResponseBuilder.error(res, 'Email is required to provision a Vobiz account', 400);
+      }
+
       // Combine merchant details to save in Vobiz since they only accept 'name'
       const subAccountName = [
         user.businessName, 
@@ -423,6 +427,10 @@ class VobizController {
         'customer_use', 
         user.businessType || 'individual'
       );
+
+      if (!subAccountData.success) {
+        return ResponseBuilder.error(res, subAccountData.error || 'Failed to provision Vobiz account', 400);
+      }
 
       const encryptEnabled = defaults.vobiz.encryptCredentials;
       const finalApiKey = encryptEnabled ? encrypt(subAccountData.authId) : subAccountData.authId;

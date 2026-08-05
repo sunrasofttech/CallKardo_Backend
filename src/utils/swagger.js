@@ -53,6 +53,33 @@ const swaggerSpec = {
         },
       },
     },
+    '/auth/setup-business': {
+      post: {
+        summary: 'Setup Merchant Business Details',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  email: { type: 'string' },
+                  businessName: { type: 'string' },
+                  businessUrl: { type: 'string' },
+                  businessType: { type: 'string', enum: ['individual', 'proprietorship', 'private_limited', 'llp', 'partnership', 'public_limited', 'trust', 'society', 'huf', 'government'] },
+                  categoryId: { type: 'string', format: 'uuid' },
+                },
+                required: ['businessName', 'categoryId', 'businessType'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Business details saved successfully' },
+          400: { description: 'Validation or duplicate error' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         summary: 'Authenticate Merchant or Admin',
