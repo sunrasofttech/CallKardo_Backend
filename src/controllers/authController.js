@@ -693,6 +693,26 @@ class AuthController {
       next(err);
     }
   }
+
+  /**
+   * Delete current authenticated user's account
+   */
+  async deleteAccount(req, res, next) {
+    try {
+      const user = req.user;
+      if (!user) {
+        return ResponseBuilder.error(res, 'User session invalid', 401);
+      }
+
+      // Note: Sequelize associations with onDelete: 'CASCADE' will handle deleting related child rows
+      // such as CallLogs, Agents, etc. Make sure cascading is set up correctly in the models.
+      await user.destroy();
+
+      return ResponseBuilder.success(res, null, 'Account permanently deleted');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new AuthController();

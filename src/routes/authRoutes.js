@@ -40,5 +40,8 @@ router.post('/fcm-token', authenticate, AuthController.updateFcmToken);
 // Get User Profile
 router.get('/me', authenticate, AuthController.getMe);
 
+// Delete User Account
+router.delete('/me', authenticate, AuthController.deleteAccount);
+
 module.exports = router;
 
