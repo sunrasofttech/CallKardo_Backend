@@ -261,12 +261,20 @@ class VobizController {
    */
   async getNumbers(req, res, next) {
     try {
-      const numbers = await VobizNumber.findAll({ where: { userId: req.user.id } });
+      const numbers = await VobizNumber.findAll({ 
+        where: { userId: req.user.id },
+        include: [{ model: Agent, as: 'agent', attributes: ['name'] }]
+      });
       
       const demoNumber = defaults.vobiz.demoNumber;
       const formattedNumbers = numbers.map(num => {
         const plainNum = num.toJSON();
         plainNum.is_demo_number = (plainNum.number === demoNumber);
+        
+        if (plainNum.agent && plainNum.agent.name) {
+          plainNum.agent_name = plainNum.agent.name;
+        }
+        
         return plainNum;
       });
 
