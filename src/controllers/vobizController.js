@@ -262,7 +262,15 @@ class VobizController {
   async getNumbers(req, res, next) {
     try {
       const numbers = await VobizNumber.findAll({ where: { userId: req.user.id } });
-      return ResponseBuilder.success(res, numbers, 'VoBiz numbers retrieved successfully');
+      
+      const demoNumber = defaults.vobiz.demoNumber;
+      const formattedNumbers = numbers.map(num => {
+        const plainNum = num.toJSON();
+        plainNum.is_demo_number = (plainNum.number === demoNumber);
+        return plainNum;
+      });
+
+      return ResponseBuilder.success(res, formattedNumbers, 'VoBiz numbers retrieved successfully');
     } catch (err) {
       next(err);
     }
