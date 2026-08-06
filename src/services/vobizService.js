@@ -20,7 +20,7 @@ class VobizService {
   async initiateCall({ apiKey, apiSecret, fromNumber, toNumber, wsToken }) {
     const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
     const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
-    const defaultFromNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918071583805';
+    const defaultFromNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918065355001';
 
     let authId = apiKey;
     let authToken = apiSecret;
@@ -92,7 +92,7 @@ class VobizService {
 
       client.on('open', () => {
         console.log('[VoBiz Simulator] Customer answered. WebSocket streaming started.');
-        
+
         // Send a start event frame
         client.send(JSON.stringify({
           event: 'start',
@@ -165,11 +165,11 @@ class VobizService {
   _getParentClient() {
     const parentAuthId = defaults.vobiz.parentAuthId;
     const parentAuthToken = defaults.vobiz.parentAuthToken;
-    
+
     if (!parentAuthId || !parentAuthToken) {
       throw new Error('VOBIZ_PARENT_AUTH_ID or VOBIZ_PARENT_AUTH_TOKEN is not configured');
     }
-    
+
     return this._getClient(parentAuthId, parentAuthToken);
   }
 
@@ -234,24 +234,24 @@ class VobizService {
         name: name,
         enabled: true
       };
-      
+
       if (email) payload.email = email;
       if (kycMode) payload.kyc_mode = kycMode;
       if (businessType) payload.business_type = businessType;
-      
+
       const response = await client.post(`/accounts/${defaults.vobiz.parentAuthId}/sub-accounts/`, payload);
-      
+
       const resData = response.data;
       const authId = resData?.auth_credentials?.auth_id || resData?.sub_account?.auth_id || resData?.auth_id;
       const authToken = resData?.auth_credentials?.auth_token || resData?.sub_account?.auth_token || resData?.auth_token;
       const subAccountName = resData?.sub_account?.name || resData?.name;
-      
+
       if (authId) {
-         return {
-           authId: authId,
-           authToken: authToken,
-           name: subAccountName
-         };
+        return {
+          authId: authId,
+          authToken: authToken,
+          name: subAccountName
+        };
       }
       return resData;
     } catch (err) {
@@ -284,7 +284,7 @@ class VobizService {
       if (pattern) {
         params.pattern = pattern;
       }
-      
+
       const response = await client.get(`/Account/${defaults.vobiz.parentAuthId}/inventory/numbers`, { params });
       return response.data;
     } catch (err) {
@@ -330,7 +330,7 @@ class VobizService {
       const payload = {
         subaccount: subAccountAuthId
       };
-      
+
       const response = await client.post(`/Account/${defaults.vobiz.parentAuthId}/Number/${encodeURIComponent(e164)}/`, payload);
       return response.data;
     } catch (err) {
@@ -373,7 +373,7 @@ class VobizService {
 
     try {
       const client = this._getClient(authId, authToken);
-      
+
       // 1. Check if application already exists
       let appId = null;
       let apps = [];
@@ -403,7 +403,7 @@ class VobizService {
         const appName = 'AILIVE_INBOUND';
         const answerUrl = `https://${defaults.ws.host}/api/v1/vobiz/answer`;
         console.log(`[VoBiz Service] Creating Application "${appName}" with answerUrl: ${answerUrl}`);
-        
+
         let createAppResponse;
         try {
           createAppResponse = await client.post(`/Account/${authId}/Application/`, {
@@ -421,7 +421,7 @@ class VobizService {
             answer_method: 'POST'
           });
         }
-        
+
         appId = createAppResponse.data?.app_id || createAppResponse.data?.id;
         if (!appId) {
           throw new Error('Application creation did not return app_id or id');
@@ -432,7 +432,7 @@ class VobizService {
       // 3. Link the phone number to this application
       const e164 = number.startsWith('+') ? number : `+${number}`;
       console.log(`[VoBiz Service] Linking phone number ${e164} to Application ${appId}`);
-      
+
       let linkResponse;
       try {
         linkResponse = await client.post(`/Account/${authId}/Application/${appId}/`, {
@@ -451,7 +451,7 @@ class VobizService {
           });
         }
       }
-      
+
       console.log(`[VoBiz Service] Successfully linked number ${e164} to Application.`);
       return { success: true, appId };
     } catch (err) {
@@ -590,7 +590,7 @@ class VobizService {
       };
 
       console.log(`[VoBiz Service] Generating KYC session for authId ${authId}`);
-      
+
       const response = await client.post(`/sub-accounts/${authId}/kyc-sessions`, payload);
       return { success: true, ...response.data };
     } catch (err) {
@@ -606,7 +606,7 @@ class VobizService {
     if (this._isMock(authId)) {
       return { success: true, overall_status: 'verified', kyc_calls_blocked: false };
     }
-    
+
     // Sub-accounts are blocked during KYC, so we must use the parent client
     const client = this._getParentClient();
     try {

@@ -17,7 +17,7 @@ async function testCampaignRun() {
       console.log('No active VoBiz number found. Creating a test active number record...');
       number = await VobizNumber.create({
         userId,
-        number: '+918071583805',
+        number: '+918065355001',
         status: 'active',
       });
     }

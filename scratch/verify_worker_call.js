@@ -40,7 +40,7 @@ async function testWorkerExecution() {
     const dialResponse = await VobizService.initiateCall({
       apiKey: decryptedApiKey,
       apiSecret: decryptedApiSecret,
-      fromNumber: '+918071583805',
+      fromNumber: '+918065355001',
       toNumber: '+918308773519',
       wsToken,
     });

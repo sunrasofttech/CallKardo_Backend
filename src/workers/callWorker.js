@@ -11,10 +11,10 @@ const { decrypt } = require('../utils/crypto');
 
 async function startCallWorker() {
   console.log('Call Worker started.');
-  
+
   // Create duplicate redis client for blocking BLPOP command
   const client = await duplicateClient();
-  
+
   const CALL_QUEUE = 'call_queue';
 
   while (true) {
@@ -22,7 +22,7 @@ async function startCallWorker() {
       // BLPOP returns: [keyName, elementValue]
       // Wait up to 30 seconds for a job
       const jobData = await client.blPop(CALL_QUEUE, 30);
-      
+
       if (!jobData) {
         continue; // Timeout, loop again
       }
@@ -72,7 +72,7 @@ async function processPlaceCall(payload) {
       console.log(`Merchant ${userId} subscription limits exceeded: ${limitCheck.reason}. Failing campaign.`);
       campaign.status = 'failed';
       await campaign.save();
-      
+
       // Update pending customers to failed
       await CampaignCustomer.update(
         { callStatus: 'failed' },
@@ -82,7 +82,7 @@ async function processPlaceCall(payload) {
     }
 
     // 3. Concurrency Control — first purge stale ZSET entries
-    await QueueService.purgeStaleActiveCalls(campaignId).catch(() => {});
+    await QueueService.purgeStaleActiveCalls(campaignId).catch(() => { });
 
     const activeCalls = await QueueService.getActiveCalls(campaignId);
     if (activeCalls >= campaign.maxConcurrentCalls) {
@@ -99,7 +99,7 @@ async function processPlaceCall(payload) {
       });
       let totalUserActiveCalls = 0;
       for (const uc of userCampaigns) {
-        await QueueService.purgeStaleActiveCalls(uc.id).catch(() => {});
+        await QueueService.purgeStaleActiveCalls(uc.id).catch(() => { });
         totalUserActiveCalls += await QueueService.getActiveCalls(uc.id);
       }
 
@@ -149,7 +149,7 @@ async function processPlaceCall(payload) {
     const defaults = require('../config/defaults');
     const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
     const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
-    const parentDemoNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918071583805';
+    const parentDemoNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918065355001';
 
     let apiKey = parentAuthId;
     let apiSecret = parentAuthToken;
@@ -172,7 +172,7 @@ async function processPlaceCall(payload) {
         try {
           key = decrypt(key) || key;
           secret = decrypt(secret) || secret;
-        } catch (_) {}
+        } catch (_) { }
 
         if (key && !key.includes('your_') && !key.includes('mock') && !key.includes('real_key') && !key.includes('default') && key !== 'parent_auth_id') {
           apiKey = key;
@@ -227,7 +227,7 @@ async function processPlaceCall(payload) {
 
     // Create session token and db call record
     const wsToken = crypto.randomBytes(32).toString('hex');
-    
+
     const session = await CallSession.create({
       userId,
       campaignId,
@@ -261,7 +261,7 @@ async function processPlaceCall(payload) {
 
     if (!dialResponse.success) {
       console.error(`[Campaign Call Failed] VoBiz dial failed for customer ${customer.mobile}:`, dialResponse.error);
-      
+
       // Dial failed instantly: clean up session
       session.status = 'failed';
       session.endTime = new Date();
