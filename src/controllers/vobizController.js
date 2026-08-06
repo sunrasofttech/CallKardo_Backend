@@ -619,7 +619,31 @@ class VobizController {
   async kycWebhook(req, res, next) {
     try {
       const payload = req.body;
+      const signatureHeader = req.headers['x-vobiz-signature'];
+      
       console.log('[VoBiz KYC Webhook] Received event:', JSON.stringify(payload, null, 2));
+
+      // Verify HMAC Signature if rawBody is available
+      if (req.rawBody && signatureHeader) {
+        const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
+        if (parentAuthToken) {
+          const expected = 'sha256=' + crypto.createHmac('sha256', parentAuthToken).update(req.rawBody).digest('hex');
+          // Using a simple timingSafeEqual if lengths match
+          try {
+            if (expected.length === signatureHeader.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader))) {
+              console.log('[VoBiz KYC Webhook] Signature verified successfully.');
+            } else {
+              console.error('[VoBiz KYC Webhook] Signature mismatch! Unauthorized request.');
+              return res.status(401).send('Unauthorized');
+            }
+          } catch (e) {
+            console.error('[VoBiz KYC Webhook] Error comparing signature:', e.message);
+            return res.status(401).send('Unauthorized');
+          }
+        }
+      } else if (!req.rawBody) {
+         console.warn('[VoBiz KYC Webhook] req.rawBody not available to verify signature.');
+      }
 
       // Attempt to extract the sub-account auth ID from common field names
       const authId = payload.sub_auth_id || payload.auth_id || payload.customer_id || payload.account_auth_id;
@@ -653,18 +677,21 @@ class VobizController {
         order: [['createdAt', 'DESC']]
       });
 
+      // Status extraction based on documentation
+      const newStatus = payload.session_status || payload.event || payload.status;
+
       if (!kycRecord) {
         console.log(`[VoBiz KYC Webhook] Creating new KycDetail record for User ${user.id}`);
         kycRecord = await KycDetail.create({
           userId: user.id,
-          status: 'webhook_received',
+          status: newStatus || 'webhook_received',
           vobizResponse: payload
         });
       } else {
         console.log(`[VoBiz KYC Webhook] Updating existing KycDetail record for User ${user.id}`);
         await kycRecord.update({
           vobizResponse: payload,
-          status: payload.status || kycRecord.status
+          status: newStatus || kycRecord.status
         });
       }
 
