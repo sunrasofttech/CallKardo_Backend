@@ -619,26 +619,33 @@ class VobizController {
   async kycWebhook(req, res, next) {
     try {
       const payload = req.body;
-      console.log('[VoBiz KYC Webhook] Received event:', payload);
+      console.log('[VoBiz KYC Webhook] Received event:', JSON.stringify(payload, null, 2));
 
       // Attempt to extract the sub-account auth ID from common field names
-      const authId = payload.sub_auth_id || payload.auth_id || payload.customer_id;
+      const authId = payload.sub_auth_id || payload.auth_id || payload.customer_id || payload.account_auth_id;
 
       if (!authId) {
         console.warn('[VoBiz KYC Webhook] Missing authId in payload. Acknowledging anyway.');
         return res.status(200).send('OK');
       }
 
+      console.log('[VoBiz KYC Webhook] Extracted authId:', authId);
+
       const account = await VobizAccount.findOne({ where: { customerId: authId } });
       if (!account) {
-        console.warn(`[VoBiz KYC Webhook] No matching sub-account found for authId: ${authId}`);
+        console.warn(`[VoBiz KYC Webhook] No matching sub-account found in DB for authId: ${authId}`);
         return res.status(200).send('OK');
       }
 
+      console.log(`[VoBiz KYC Webhook] Found matching account for authId: ${authId}, userId: ${account.userId}`);
+
       const user = await User.findByPk(account.userId);
       if (!user) {
+        console.warn(`[VoBiz KYC Webhook] User not found for userId: ${account.userId}`);
         return res.status(200).send('OK');
       }
+
+      console.log(`[VoBiz KYC Webhook] Processing update for User ${user.id}`);
 
       // Store the webhook payload in KycDetail
       let kycRecord = await KycDetail.findOne({
@@ -647,12 +654,14 @@ class VobizController {
       });
 
       if (!kycRecord) {
+        console.log(`[VoBiz KYC Webhook] Creating new KycDetail record for User ${user.id}`);
         kycRecord = await KycDetail.create({
           userId: user.id,
           status: 'webhook_received',
           vobizResponse: payload
         });
       } else {
+        console.log(`[VoBiz KYC Webhook] Updating existing KycDetail record for User ${user.id}`);
         await kycRecord.update({
           vobizResponse: payload,
           status: payload.status || kycRecord.status
@@ -663,18 +672,27 @@ class VobizController {
       const encryptEnabled = defaults.vobiz.encryptCredentials;
       const decryptedAuthToken = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
       
+      console.log(`[VoBiz KYC Webhook] Fetching live KYC status from VoBiz for authId: ${authId}`);
       const statusResult = await vobizService.getKycStatus(authId, decryptedAuthToken);
       
+      console.log(`[VoBiz KYC Webhook] Live KYC status result:`, JSON.stringify(statusResult, null, 2));
+
       if (statusResult.success) {
         if (statusResult.overall_status === 'verified' && statusResult.kyc_calls_blocked === false) {
           if (user.kycStatus !== 'full') {
             await user.update({ kycStatus: 'full' });
             console.log(`[VoBiz KYC Webhook] Successfully updated User ${user.id} kycStatus to 'full'`);
+          } else {
+            console.log(`[VoBiz KYC Webhook] User ${user.id} is already marked as 'full' in DB`);
           }
         } else if (statusResult.overall_status === 'failed') {
           // You could potentially add notification logic here to alert the merchant they failed
-          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC failed or still blocked.`);
+          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC failed or still blocked. Overall status: ${statusResult.overall_status}, calls blocked: ${statusResult.kyc_calls_blocked}`);
+        } else {
+          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC status is pending/incomplete. Overall status: ${statusResult.overall_status}`);
         }
+      } else {
+         console.warn(`[VoBiz KYC Webhook] Failed to fetch live KYC status:`, statusResult.error);
       }
 
       return res.status(200).send('OK');
