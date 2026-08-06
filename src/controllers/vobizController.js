@@ -611,7 +611,7 @@ class VobizController {
       
       if (result.success) {
         // If overall status is verified, mark user as full
-        if (result.overall_status === 'verified' && result.kyc_calls_blocked === false) {
+        if (result.kyc_status === 'verified') {
           if (user.kycStatus !== 'full') {
             await user.update({ kycStatus: 'full' });
           }
@@ -713,18 +713,18 @@ class VobizController {
       console.log(`[VoBiz KYC Webhook] Live KYC status result:`, JSON.stringify(statusResult, null, 2));
 
       if (statusResult.success) {
-        if (statusResult.overall_status === 'verified' && statusResult.kyc_calls_blocked === false) {
+        if (statusResult.kyc_status === 'verified') {
           if (user.kycStatus !== 'full') {
             await user.update({ kycStatus: 'full' });
             console.log(`[VoBiz KYC Webhook] Successfully updated User ${user.id} kycStatus to 'full'`);
           } else {
             console.log(`[VoBiz KYC Webhook] User ${user.id} is already marked as 'full' in DB`);
           }
-        } else if (statusResult.overall_status === 'failed') {
+        } else if (statusResult.kyc_status === 'failed') {
           // You could potentially add notification logic here to alert the merchant they failed
-          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC failed or still blocked. Overall status: ${statusResult.overall_status}, calls blocked: ${statusResult.kyc_calls_blocked}`);
+          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC failed. Status: ${statusResult.kyc_status}`);
         } else {
-          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC status is pending/incomplete. Overall status: ${statusResult.overall_status}`);
+          console.log(`[VoBiz KYC Webhook] User ${user.id} KYC status is pending/incomplete. Status: ${statusResult.kyc_status}`);
         }
       } else {
          console.warn(`[VoBiz KYC Webhook] Failed to fetch live KYC status:`, statusResult.error);
