@@ -50,6 +50,7 @@ const setupBusinessSchema = Joi.object({
     'any.only': 'Invalid business type',
     'any.required': 'Business type is required',
   }),
+  businessType: Joi.any().strip(),
   categoryId: Joi.string().uuid().required().messages({
     'string.uuid': 'Invalid category ID format',
     'any.required': 'Business category is required',

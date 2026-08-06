@@ -494,6 +494,10 @@ class AuthController {
    */
   async setupBusiness(req, res, next) {
     try {
+      if (!req.body.business_type && req.body.businessType) {
+        req.body.business_type = req.body.businessType;
+      }
+      
       const { error, value } = setupBusinessSchema.validate(req.body);
       if (error) {
         return ResponseBuilder.error(res, error.details[0].message, 400);
