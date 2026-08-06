@@ -602,12 +602,13 @@ class VobizService {
   /**
    * Check KYC aggregated status
    */
-  async getKycStatus(authId, authToken) {
+  async getKycStatus(authId) {
     if (this._isMock(authId)) {
       return { success: true, overall_status: 'verified', kyc_calls_blocked: false };
     }
     
-    const client = this._getClient(authId, authToken);
+    // Sub-accounts are blocked during KYC, so we must use the parent client
+    const client = this._getParentClient();
     try {
       const response = await client.get(`/sub-accounts/${authId}/kyc/status`);
       return { success: true, ...response.data };

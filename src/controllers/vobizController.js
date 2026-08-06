@@ -592,11 +592,9 @@ class VobizController {
         return ResponseBuilder.error(res, 'Vobiz sub-account not found.', 404);
       }
 
-      const encryptEnabled = defaults.vobiz.encryptCredentials;
-      const decryptedAuthToken = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
       const authId = account.customerId;
 
-      const result = await vobizService.getKycStatus(authId, decryptedAuthToken);
+      const result = await vobizService.getKycStatus(authId);
       
       if (result.success) {
         // If overall status is verified, mark user as full
@@ -696,11 +694,8 @@ class VobizController {
       }
 
       // We actively fetch the latest status to verify it securely rather than relying solely on the payload
-      const encryptEnabled = defaults.vobiz.encryptCredentials;
-      const decryptedAuthToken = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
-      
       console.log(`[VoBiz KYC Webhook] Fetching live KYC status from VoBiz for authId: ${authId}`);
-      const statusResult = await vobizService.getKycStatus(authId, decryptedAuthToken);
+      const statusResult = await vobizService.getKycStatus(authId);
       
       console.log(`[VoBiz KYC Webhook] Live KYC status result:`, JSON.stringify(statusResult, null, 2));
 
