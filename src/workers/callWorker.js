@@ -155,26 +155,43 @@ async function processPlaceCall(payload) {
     let apiSecret = parentAuthToken;
     let fromNumber = parentDemoNumber;
 
+    // Fetch user to check KYC status
+    const merchant = await User.findByPk(userId);
+    const isKycFull = merchant && merchant.kycStatus === 'full';
+
     // Check if merchant has their own valid custom VoBiz Account
     const merchantAccount = await VobizAccount.findOne({ where: { userId } });
-    if (merchantAccount && merchantAccount.apiKey && merchantAccount.apiSecret) {
-      let key = merchantAccount.apiKey;
-      let secret = merchantAccount.apiSecret;
-      try {
-        key = decrypt(key) || key;
-        secret = decrypt(secret) || secret;
-      } catch (_) {}
-
-      // If valid custom merchant credentials (not placeholders/dummies), use merchant keys
-      if (key && !key.includes('your_') && !key.includes('mock') && !key.includes('real_key') && !key.includes('default') && key !== 'parent_auth_id') {
-        apiKey = key;
-        apiSecret = secret;
-        console.log(`[callWorker] Using custom VoBiz Account credentials for merchant ${userId}`);
-      } else {
-        console.log(`[callWorker] Merchant ${userId} has placeholder credentials. Falling back to Parent VoBiz credentials (${parentAuthId})`);
-      }
+    if (!isKycFull) {
+      console.log(`[callWorker] Merchant ${userId} KYC is not 'full' (Status: ${merchant?.kycStatus}). Using Parent VoBiz credentials (${parentAuthId})`);
     } else {
-      console.log(`[callWorker] No custom VoBiz Account for trial merchant ${userId}. Using Parent VoBiz credentials (${parentAuthId})`);
+      // KYC is full. strictly use merchant token only
+      let validMerchantToken = false;
+      if (merchantAccount && merchantAccount.apiKey && merchantAccount.apiSecret) {
+        let key = merchantAccount.apiKey;
+        let secret = merchantAccount.apiSecret;
+        try {
+          key = decrypt(key) || key;
+          secret = decrypt(secret) || secret;
+        } catch (_) {}
+
+        if (key && !key.includes('your_') && !key.includes('mock') && !key.includes('real_key') && !key.includes('default') && key !== 'parent_auth_id') {
+          apiKey = key;
+          apiSecret = secret;
+          validMerchantToken = true;
+          console.log(`[callWorker] Merchant ${userId} KYC is 'full'. Using custom VoBiz Account credentials.`);
+        }
+      }
+
+      if (!validMerchantToken) {
+        console.warn(`[callWorker] Merchant ${userId} KYC is 'full', but no valid VoBiz Account credentials found. Failing call.`);
+        await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
+        await CallLog.create({
+          callSessionId: null,
+          logLevel: 'error',
+          message: `Call failed: Merchant KYC is full but valid VoBiz credentials are missing.`,
+        });
+        return;
+      }
     }
 
     // Resolve VoBiz Number

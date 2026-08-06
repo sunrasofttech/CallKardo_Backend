@@ -287,31 +287,46 @@ class VobizSocketHandler {
           if (session.vobizCallUuid) {
             try {
               const defaults = require('../config/defaults');
+              const isCampaignCall = !!session.campaignId;
+              const merchant = await User.findByPk(session.userId);
+              const isKycFull = merchant && merchant.kycStatus === 'full';
+              
               const vobizAccount = await VobizAccount.findOne({ where: { userId: session.userId } });
               let authId = defaults.vobiz.parentAuthId;
               let authToken = defaults.vobiz.parentAuthToken;
 
-              if (vobizAccount && vobizAccount.apiKey && vobizAccount.apiSecret) {
-                let decryptedId = vobizAccount.apiKey;
-                let decryptedToken = vobizAccount.apiSecret;
-                try {
-                  const crypto = require('../utils/crypto');
-                  decryptedId = crypto.decrypt(decryptedId) || decryptedId;
-                  decryptedToken = crypto.decrypt(decryptedToken) || decryptedToken;
-                } catch (_) { }
+              if (!isCampaignCall || isKycFull) {
+                let validMerchantToken = false;
+                if (vobizAccount && vobizAccount.apiKey && vobizAccount.apiSecret) {
+                  let decryptedId = vobizAccount.apiKey;
+                  let decryptedToken = vobizAccount.apiSecret;
+                  try {
+                    const crypto = require('../utils/crypto');
+                    decryptedId = crypto.decrypt(decryptedId) || decryptedId;
+                    decryptedToken = crypto.decrypt(decryptedToken) || decryptedToken;
+                  } catch (_) { }
 
-                // Use sub-account keys if they look valid and are not placeholders
-                if (decryptedId && !decryptedId.includes('your_') && !decryptedId.includes('mock') && decryptedId !== 'YOUR_AUTH_ID') {
-                  authId = decryptedId;
-                  authToken = decryptedToken;
+                  // Use sub-account keys if they look valid and are not placeholders
+                  if (decryptedId && !decryptedId.includes('your_') && !decryptedId.includes('mock') && decryptedId !== 'YOUR_AUTH_ID') {
+                    authId = decryptedId;
+                    authToken = decryptedToken;
+                    validMerchantToken = true;
+                  }
+                }
+                
+                if (isCampaignCall && isKycFull && !validMerchantToken) {
+                  console.warn(`[VoBiz Call] Campaign hangup failed: Merchant KYC is full but valid VoBiz credentials are missing.`);
+                  return;
                 }
               }
 
               console.log(`[VoBiz Call] Triggering hangup for call ${session.vobizCallUuid} with Auth ID: ${authId}`);
               const res = await VobizService.hangupCall({ authId, authToken, callUuid: session.vobizCallUuid });
 
+              const canFallback = (isCampaignCall && isKycFull) ? false : true;
+
               // Fallback: If sub-account keys failed with 401 (unauthorized), retry with parent keys
-              if (!res.success && authId !== defaults.vobiz.parentAuthId) {
+              if (!res.success && authId !== defaults.vobiz.parentAuthId && canFallback) {
                 console.log(`[VoBiz Call] Sub-account hangup failed. Retrying with parent credentials...`);
                 await VobizService.hangupCall({
                   authId: defaults.vobiz.parentAuthId,
