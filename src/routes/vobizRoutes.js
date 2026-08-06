@@ -7,6 +7,7 @@ const router = express.Router();
 // Webhooks from VoBiz (must not require merchant authentication)
 router.all('/answer', VobizController.answerCallWebhook);
 router.post('/kyc/webhook', VobizController.kycWebhook);
+router.get('/kyc/success', VobizController.kycSuccess);
 
 // Merchant scope only
 router.use(authenticate, isMerchant);

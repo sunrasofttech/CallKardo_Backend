@@ -574,7 +574,7 @@ class VobizService {
   /**
    * Generate KYC Session (Redirect Flow)
    */
-  async generateKycSession(authId, authToken, customerEmail, webhookUrl) {
+  async generateKycSession(authId, webhookUrl, redirectUrl) {
     if (this._isMock(authId)) {
       console.log(`[VoBiz Service Mock] Generating KYC session for authId ${authId}`);
       return { success: true, session_id: 'mock-session-id', status: 'link_ready', widget_url: 'https://mock.kyc.vobiz.ai/verify' };
@@ -585,8 +585,8 @@ class VobizService {
       const payload = {
         flow_type: 'redirect',
         account_auth_id: authId,
-        customer_email: customerEmail,
-        webhook_url: webhookUrl
+        webhook_url: webhookUrl,
+        redirect_url: redirectUrl
       };
 
       console.log(`[VoBiz Service] Generating KYC session for authId ${authId}`);

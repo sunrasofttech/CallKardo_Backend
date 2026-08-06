@@ -551,17 +551,14 @@ class VobizController {
       const authId = account.customerId;
 
       // Ensure we have an email
-      if (!user.email) {
-        return ResponseBuilder.error(res, 'User email is required for KYC', 400);
-      }
-
       // Webhook URL (Construct based on your environment)
       // Assuming a generic pattern for now or pulling from env if configured
       const hostUrl = req.protocol + '://' + req.get('host');
       const webhookUrl = `${hostUrl}/api/v1/vobiz/kyc/webhook`;
+      const redirectUrl = `${hostUrl}/api/v1/vobiz/kyc/success`;
 
       // Call Vobiz Service
-      const result = await vobizService.generateKycSession(authId, decryptedAuthToken, user.email, webhookUrl);
+      const result = await vobizService.generateKycSession(authId, webhookUrl, redirectUrl);
 
       if (result.success) {
         // Log the session in DB
@@ -722,6 +719,36 @@ class VobizController {
       console.error('[VoBiz KYC Webhook] Processing Error:', err);
       return res.status(500).send('Internal Error'); // 500 will trigger Vobiz exponential backoff retries
     }
+  }
+
+  /**
+   * KYC Success Redirect Page
+   */
+  async kycSuccess(req, res) {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>KYC Completed</title>
+        <style>
+          body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f9fafb; margin: 0; }
+          .container { text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+          h1 { color: #10b981; margin-top: 0; }
+          p { color: #4b5563; margin-top: 10px; font-size: 1.1rem; }
+          a { display: inline-block; margin-top: 25px; padding: 12px 24px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; transition: background 0.2s; }
+          a:hover { background: #2563eb; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Your KYC is done!</h1>
+          <p>You have successfully completed the KYC process.</p>
+          <a href="/">Go back to Home</a>
+        </div>
+      </body>
+      </html>
+    `;
+    return res.status(200).send(html);
   }
 }
 
