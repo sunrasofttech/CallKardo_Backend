@@ -230,12 +230,28 @@ class PaymentService {
 
     const resolvedAmount = amount || tx.amount;
     const isSuccess = String(status || '').toLowerCase() === 'success';
-    // We do NOT set the local transaction status to success here. 
-    // This endpoint is unauthenticated by the gateway, so it is just a proxy 
-    // to submit the URN to ABC Gate. Real fulfillment happens in the Webhook.
+    const finalStatus = isSuccess ? 'success' : 'failed';
 
     if (urn_number) {
       tx.urnNumber = urn_number;
+    }
+
+    tx.status = finalStatus;
+    await tx.save();
+
+    if (isSuccess) {
+      console.log(`[PaymentService AppCallback] OrderId ${order_id} marked SUCCESS. Fulfilling ${tx.type} (target: ${tx.targetId})...`);
+      try {
+        if (tx.type === 'SUBSCRIPTION') {
+          await this._fulfillSubscriptionPurchase(tx);
+        } else if (tx.type === 'VOBIZ_NUMBER') {
+          await this._fulfillVobizNumberPurchase(tx);
+        }
+      } catch (fulfillErr) {
+        console.error(`[PaymentService AppCallback] Fulfillment error for orderId ${order_id}:`, fulfillErr);
+      }
+    } else {
+      console.log(`[PaymentService AppCallback] OrderId ${order_id} marked FAILED.`);
     }
 
     await tx.save();
@@ -272,10 +288,10 @@ class PaymentService {
 
     return {
       success: true,
-      message: `Payment callback processed successfully and forwarded to gateway`,
+      message: `Payment callback processed successfully (status: ${finalStatus})`,
       data: {
         orderId: order_id,
-        status: tx.status,
+        status: finalStatus,
         abcGateCallbackSent: abcGateCallbackSuccess,
       },
     };
