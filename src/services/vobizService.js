@@ -581,8 +581,9 @@ class VobizService {
         const redisKey = `warning:1day:${num.id}`;
         const hasWarned = await redisClient.get(redisKey);
         if (!hasWarned) {
-          console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) expires in 1 day. Sending final warning.`);
-          await NotificationService.notifyMerchant(num.userId, 'Number Expiring Tomorrow', `URGENT: Your VoBiz number ${num.number} expires tomorrow. Renew immediately or the number will be lost permanently.`, 'payments');
+          console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) expires in 1 day. Marking inactive and sending final warning.`);
+          await num.update({ status: 'inactive' });
+          await NotificationService.notifyMerchant(num.userId, 'Number Expiring Tomorrow', `URGENT: Your VoBiz number ${num.number} expires tomorrow and has been marked inactive. Renew immediately or the number will be lost permanently.`, 'payments');
           await redisClient.setEx(redisKey, 2 * 24 * 60 * 60, '1'); // Expire key after 2 days
         }
       }
