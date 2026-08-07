@@ -402,23 +402,24 @@ class VobizService {
       if (!appId) {
         const appName = 'AILIVE_INBOUND';
         const answerUrl = `https://${defaults.ws.host}/api/v1/vobiz/answer`;
+        const hangupUrl = `https://${defaults.ws.host}/api/v1/vobiz/answer`;
         console.log(`[VoBiz Service] Creating Application "${appName}" with answerUrl: ${answerUrl}`);
 
         let createAppResponse;
         try {
           createAppResponse = await client.post(`/Account/${authId}/Application/`, {
-            name: appName,
             app_name: appName,
             answer_url: answerUrl,
-            answer_method: 'POST'
+            answer_method: 'POST',
+            hangup_url: hangupUrl
           });
         } catch (createErr) {
           console.warn(`[VoBiz Service] Create via /Application/ failed (${createErr.message}), trying /applications/`);
           createAppResponse = await client.post(`/Account/${authId}/applications/`, {
-            name: appName,
             app_name: appName,
             answer_url: answerUrl,
-            answer_method: 'POST'
+            answer_method: 'POST',
+            hangup_url: hangupUrl
           });
         }
 
@@ -435,21 +436,14 @@ class VobizService {
 
       let linkResponse;
       try {
+        linkResponse = await client.post(`/Account/${authId}/numbers/${encodeURIComponent(e164)}/application`, {
+          application_id: appId
+        });
+      } catch (err1) {
+        console.warn(`[VoBiz Service] Link via /numbers/.../application failed (${err1.message}), trying fallback to /Application/`);
         linkResponse = await client.post(`/Account/${authId}/Application/${appId}/`, {
           numbers: [e164]
         });
-      } catch (err1) {
-        console.warn(`[VoBiz Service] Link via Application sub-resource failed (${err1.message}), trying /Number/`);
-        try {
-          linkResponse = await client.post(`/Account/${authId}/Number/${encodeURIComponent(e164)}/`, {
-            app_id: appId
-          });
-        } catch (err2) {
-          console.warn(`[VoBiz Service] Link via /Number/ failed (${err2.message}), trying /numbers/`);
-          linkResponse = await client.post(`/Account/${authId}/numbers/${encodeURIComponent(e164)}/`, {
-            app_id: appId
-          });
-        }
       }
 
       console.log(`[VoBiz Service] Successfully linked number ${e164} to Application.`);
