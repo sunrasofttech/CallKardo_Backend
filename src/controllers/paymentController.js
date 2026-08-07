@@ -1,5 +1,6 @@
 const paymentService = require('../services/paymentService');
-const { Plan, PaymentTransaction } = require('../models');
+const vobizService = require('../services/vobizService');
+const { Plan, PaymentTransaction, VobizNumber } = require('../models');
 const ResponseBuilder = require('../utils/response');
 
 class PaymentController {
@@ -81,26 +82,77 @@ class PaymentController {
    */
   async initiateNumberPurchasePayment(req, res, next) {
     try {
-      const { number, amount, customer_name, customer_mobile, customer_email } = req.body;
+      const { number, customer_name, customer_mobile, customer_email } = req.body;
 
       if (!number) {
         return ResponseBuilder.error(res, 'Phone number (number) is required', 400);
       }
 
-      const numAmount = amount || 500; // Default price if not specified
+      const e164 = number.startsWith('+') ? number : `+${number}`;
+      
+      // Fetch number details from Vobiz inventory to get setup and monthly costs
+      const numberData = await vobizService.listAvailableNumbers('IN', 'local', e164, 1, 100);
+      const specificNumberInfo = (numberData.numbers || []).find(n => n.e164 === e164);
+      
+      if (!specificNumberInfo) {
+        return ResponseBuilder.error(res, 'Phone number not found in Vobiz inventory', 404);
+      }
+
+      const setupFee = specificNumberInfo.setup_fee || 0;
+      const monthlyFee = specificNumberInfo.monthly_fee || 0;
+      const totalAmount = setupFee + monthlyFee;
 
       const result = await paymentService.initiatePayment({
         userId: req.user.id,
         type: 'VOBIZ_NUMBER',
-        targetId: number,
-        amount: numAmount,
-        note: `VoBiz Number Purchase: ${number}`,
+        targetId: `${e164}|${setupFee}|${monthlyFee}`, // Pass fees via targetId
+        amount: totalAmount,
+        note: `VoBiz Number Purchase: ${e164} (Setup: ${setupFee}, Monthly: ${monthlyFee})`,
         customerName: customer_name,
         customerMobile: customer_mobile,
         customerEmail: customer_email,
       });
 
       return ResponseBuilder.success(res, result.data, 'VoBiz number purchase payment initiated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Initiate payment specifically for renewing a VoBiz phone number
+   */
+  async initiateNumberRenewalPayment(req, res, next) {
+    try {
+      const { number, customer_name, customer_mobile, customer_email } = req.body;
+
+      if (!number) {
+        return ResponseBuilder.error(res, 'Phone number (number) is required', 400);
+      }
+
+      const e164 = number.startsWith('+') ? number : `+${number}`;
+      
+      const existingNumber = await VobizNumber.findOne({ where: { userId: req.user.id, number: e164 } });
+      
+      if (!existingNumber) {
+        return ResponseBuilder.error(res, 'Phone number not found in your account', 404);
+      }
+
+      const providerData = existingNumber.providerData || {};
+      const monthlyFee = providerData.monthlyFee || 500; // Fallback to 500 if unknown
+
+      const result = await paymentService.initiatePayment({
+        userId: req.user.id,
+        type: 'VOBIZ_NUMBER',
+        targetId: e164, // Just the number since it's a renewal
+        amount: monthlyFee,
+        note: `VoBiz Number Renewal: ${e164} (Monthly: ${monthlyFee})`,
+        customerName: customer_name,
+        customerMobile: customer_mobile,
+        customerEmail: customer_email,
+      });
+
+      return ResponseBuilder.success(res, result.data, 'VoBiz number renewal payment initiated successfully');
     } catch (err) {
       next(err);
     }

@@ -27,6 +27,7 @@ router.delete('/numbers/:id', VobizController.deleteNumber);
 router.get('/available-numbers', VobizController.listAvailableNumbers);
 router.post('/buy-number', VobizController.buyNumber);
 router.post('/initiate-buy-number', require('../controllers/paymentController').initiateNumberPurchasePayment);
+router.post('/initiate-renew-number', require('../controllers/paymentController').initiateNumberRenewalPayment);
 
 // KYC
 router.post('/kyc/generate-session', VobizController.generateKycSession);

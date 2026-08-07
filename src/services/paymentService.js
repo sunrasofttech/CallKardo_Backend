@@ -347,7 +347,7 @@ class PaymentService {
    * Helper: Fulfill VoBiz phone number purchase after successful payment
    */
   async _fulfillVobizNumberPurchase(tx) {
-    const number = tx.targetId;
+    const [number, setupFeeStr, monthlyFeeStr] = tx.targetId.split('|');
 
     // Check if number already registered
     const existing = await VobizNumber.findOne({ where: { userId: tx.userId, number } });
@@ -398,12 +398,16 @@ class PaymentService {
     const rentalExpiryDate = new Date();
     rentalExpiryDate.setMonth(rentalExpiryDate.getMonth() + 1);
 
+    const providerData = purchaseResult || {};
+    if (setupFeeStr !== undefined) providerData.monthlyFee = parseInt(monthlyFeeStr, 10);
+    if (setupFeeStr !== undefined) providerData.setupFee = parseInt(setupFeeStr, 10);
+
     await VobizNumber.create({
       userId: tx.userId,
       number: number,
       status: 'active',
       rentalExpiryDate,
-      providerData: purchaseResult,
+      providerData,
     });
 
     console.log(`[Fulfill VoBiz Number] Number ${number} purchased and added for user ${tx.userId} with expiry ${rentalExpiryDate}.`);
