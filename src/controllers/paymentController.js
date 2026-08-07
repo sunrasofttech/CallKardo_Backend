@@ -90,16 +90,16 @@ class PaymentController {
 
       const e164 = number.startsWith('+') ? number : `+${number}`;
       
-      // Fetch number details from Vobiz inventory to get setup and monthly costs
-      const numberData = await vobizService.listAvailableNumbers('IN', 'local', e164, 1, 100);
-      const specificNumberInfo = (numberData.numbers || []).find(n => n.e164 === e164);
+      // Fetch standard pricing for this region (since API doesn't filter exact numbers)
+      const numberData = await vobizService.listAvailableNumbers('IN', 'local', '', 1, 1);
+      const standardPricing = numberData.numbers && numberData.numbers[0];
       
-      if (!specificNumberInfo) {
-        return ResponseBuilder.error(res, 'Phone number not found in Vobiz inventory', 404);
+      if (!standardPricing) {
+        return ResponseBuilder.error(res, 'Could not fetch pricing for VoBiz inventory', 404);
       }
 
-      const setupFee = specificNumberInfo.setup_fee || 0;
-      const monthlyFee = specificNumberInfo.monthly_fee || 0;
+      const setupFee = standardPricing.setup_fee || 0;
+      const monthlyFee = standardPricing.monthly_fee || 0;
       const totalAmount = setupFee + monthlyFee;
 
       const result = await paymentService.initiatePayment({
