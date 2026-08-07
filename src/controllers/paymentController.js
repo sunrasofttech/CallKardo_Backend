@@ -93,12 +93,18 @@ class PaymentController {
       let setupFee = 0;
       let monthlyFee = 0;
 
-      if (setup_fee !== undefined && monthly_fee !== undefined) {
-        // Use exact pricing passed from the frontend (which already fetched the specific number)
+      // Dynamically fetch exact pricing for this specific number from VoBiz API inventory
+      const exactNumberData = await vobizService.getNumberFromInventory(e164);
+      
+      if (exactNumberData) {
+        setupFee = exactNumberData.setup_fee || 0;
+        monthlyFee = exactNumberData.monthly_fee || 0;
+      } else if (setup_fee !== undefined && monthly_fee !== undefined) {
+        // Fallback 1: Use exact pricing passed from the frontend
         setupFee = Number(setup_fee);
         monthlyFee = Number(monthly_fee);
       } else {
-        // Fallback: Fetch standard pricing for this region
+        // Fallback 2: Fetch standard pricing for this region
         const numberData = await vobizService.listAvailableNumbers('IN', 'local', '', 1, 1);
         const standardPricing = numberData.items && numberData.items[0];
         setupFee = standardPricing ? (standardPricing.setup_fee || 0) : 0;

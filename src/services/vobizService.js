@@ -293,8 +293,31 @@ class VobizService {
     }
   }
 
+
   /**
-   * Buy a specific phone number under the parent account
+   * Fetch exact number details from inventory
+   */
+  async getNumberFromInventory(e164) {
+    if (this._isParentMock()) {
+      return null;
+    }
+    const client = this._getParentClient();
+    try {
+      const formattedNumber = e164.startsWith('+') ? e164 : '+' + e164;
+      const response = await client.get(`/Account/${defaults.vobiz.parentAuthId}/inventory/numbers`, { 
+        params: { search: formattedNumber } 
+      });
+      const items = response.data?.items || [];
+      return items.find(item => item.e164 === formattedNumber) || null;
+    } catch (err) {
+      console.error('Vobiz getNumberFromInventory Error:', err.response?.data || err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Buy a specific phone number
+ under the parent account
    * POST /Account/{auth_id}/numbers/purchase-from-inventory
    */
   async buyNumber(number) {
