@@ -92,10 +92,10 @@ class PaymentController {
       
       // Fetch standard pricing for this region (since API doesn't filter exact numbers)
       const numberData = await vobizService.listAvailableNumbers('IN', 'local', '', 1, 1);
-      const standardPricing = numberData.numbers && numberData.numbers[0];
+      const standardPricing = numberData.items && numberData.items[0];
       
       if (!standardPricing) {
-        return ResponseBuilder.error(res, 'Could not fetch pricing for VoBiz inventory', 404);
+        return ResponseBuilder.error(res, 'Could not fetch pricing from VoBiz inventory', 404);
       }
 
       const setupFee = standardPricing.setup_fee || 0;
