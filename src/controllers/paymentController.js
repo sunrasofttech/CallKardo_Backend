@@ -82,7 +82,7 @@ class PaymentController {
    */
   async initiateNumberPurchasePayment(req, res, next) {
     try {
-      const { number, customer_name, customer_mobile, customer_email } = req.body;
+      const { number, setup_fee, monthly_fee, customer_name, customer_mobile, customer_email } = req.body;
 
       if (!number) {
         return ResponseBuilder.error(res, 'Phone number (number) is required', 400);
@@ -90,16 +90,21 @@ class PaymentController {
 
       const e164 = number.startsWith('+') ? number : `+${number}`;
       
-      // Fetch standard pricing for this region (since API doesn't filter exact numbers)
-      const numberData = await vobizService.listAvailableNumbers('IN', 'local', '', 1, 1);
-      const standardPricing = numberData.items && numberData.items[0];
-      
-      if (!standardPricing) {
-        return ResponseBuilder.error(res, 'Could not fetch pricing from VoBiz inventory', 404);
+      let setupFee = 0;
+      let monthlyFee = 0;
+
+      if (setup_fee !== undefined && monthly_fee !== undefined) {
+        // Use exact pricing passed from the frontend (which already fetched the specific number)
+        setupFee = Number(setup_fee);
+        monthlyFee = Number(monthly_fee);
+      } else {
+        // Fallback: Fetch standard pricing for this region
+        const numberData = await vobizService.listAvailableNumbers('IN', 'local', '', 1, 1);
+        const standardPricing = numberData.items && numberData.items[0];
+        setupFee = standardPricing ? (standardPricing.setup_fee || 0) : 0;
+        monthlyFee = standardPricing ? (standardPricing.monthly_fee || 0) : 0;
       }
 
-      const setupFee = standardPricing.setup_fee || 0;
-      const monthlyFee = standardPricing.monthly_fee || 0;
       const totalAmount = setupFee + monthlyFee;
 
       const result = await paymentService.initiatePayment({
