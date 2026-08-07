@@ -142,7 +142,7 @@ app.get('/api-docs', (req, res) => {
 });
 
 // 4. API v1 Routing
-app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth', authLimiter, authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/plans', planRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
