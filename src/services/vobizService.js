@@ -526,60 +526,88 @@ class VobizService {
 
   /**
    * Periodically check VoBiz phone number rentals:
-   * 1. 2 days before rentalExpiryDate: Auto-mark the number as 'inactive'.
-   * 2. 1 day before rentalExpiryDate: Cancel the number from VoBiz and delete the record.
+   * 1. 2 days before rentalExpiryDate: Send a warning notification.
+   * 2. 1 day before rentalExpiryDate: Send a final warning notification.
+   * 3. On rentalExpiryDate: Cancel the number from VoBiz and delete the record.
    */
   async checkNumberRentals() {
     try {
       const { VobizNumber } = require('../models');
       const { Op } = require('sequelize');
+      const { redisClient } = require('../config/redis');
+      const NotificationService = require('./notificationService');
       const now = new Date();
 
-      // 1. Auto-mark as inactive 2 days before expiration
+      // 1. Auto-warn 2 days before expiration
       const twoDaysFromNow = new Date();
       twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+      const twoDaysStart = new Date(twoDaysFromNow.getTime() - 24 * 60 * 60 * 1000); // Between 1 and 2 days away
 
-      const numbersToInactivate = await VobizNumber.findAll({
+      const numbersTwoDays = await VobizNumber.findAll({
         where: {
-          status: 'active',
           rentalExpiryDate: {
             [Op.not]: null,
-            [Op.lte]: twoDaysFromNow
+            [Op.lte]: twoDaysFromNow,
+            [Op.gt]: twoDaysStart
           }
         }
       });
 
-      for (const num of numbersToInactivate) {
-        console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) is within 2 days of expiration (${num.rentalExpiryDate}). Marking status as inactive.`);
-        await num.update({ status: 'inactive' });
-
-        // Notify about impending expiration
-        const NotificationService = require('./notificationService');
-        await NotificationService.notifyMerchant(num.userId, 'Number Expiring Soon', `Your VoBiz number ${num.number} is expiring within 2 days and has been marked inactive. Please renew it.`, 'payments');
-        await NotificationService.notifyAdmin('Number Expiring Soon', `Merchant (User ID: ${num.userId}) VoBiz number ${num.number} is expiring within 2 days.`, null, 'payments');
+      for (const num of numbersTwoDays) {
+        const redisKey = `warning:2days:${num.id}`;
+        const hasWarned = await redisClient.get(redisKey);
+        if (!hasWarned) {
+          console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) expires in 2 days. Sending warning.`);
+          await NotificationService.notifyMerchant(num.userId, 'Number Expiring Soon', `Your VoBiz number ${num.number} is expiring within 2 days. Please renew it to prevent it from being released.`, 'payments');
+          await redisClient.setEx(redisKey, 3 * 24 * 60 * 60, '1'); // Expire key after 3 days
+        }
       }
 
-      // 2. Auto-cancel (unrent) from VoBiz 1 day before expiration
+      // 2. Auto-warn 1 day before expiration
       const oneDayFromNow = new Date();
       oneDayFromNow.setDate(oneDayFromNow.getDate() + 1);
 
-      const numbersToCancel = await VobizNumber.findAll({
+      const numbersOneDay = await VobizNumber.findAll({
         where: {
           rentalExpiryDate: {
             [Op.not]: null,
-            [Op.lte]: oneDayFromNow
+            [Op.lte]: oneDayFromNow,
+            [Op.gt]: now
           }
         }
       });
 
-      for (const num of numbersToCancel) {
-        console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) is within 1 day of expiration (${num.rentalExpiryDate}) and unpaid. Releasing/Unrenting from VoBiz...`);
+      for (const num of numbersOneDay) {
+        const redisKey = `warning:1day:${num.id}`;
+        const hasWarned = await redisClient.get(redisKey);
+        if (!hasWarned) {
+          console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) expires in 1 day. Sending final warning.`);
+          await NotificationService.notifyMerchant(num.userId, 'Number Expiring Tomorrow', `URGENT: Your VoBiz number ${num.number} expires tomorrow. Renew immediately or the number will be lost permanently.`, 'payments');
+          await redisClient.setEx(redisKey, 2 * 24 * 60 * 60, '1'); // Expire key after 2 days
+        }
+      }
+
+      // 3. Auto-cancel (unrent) from VoBiz on expiration
+      const expiredNumbers = await VobizNumber.findAll({
+        where: {
+          rentalExpiryDate: {
+            [Op.not]: null,
+            [Op.lte]: now
+          }
+        }
+      });
+
+      for (const num of expiredNumbers) {
+        console.log(`[Rental Check] Number ${num.number} (merchant: ${num.userId}) has expired (${num.rentalExpiryDate}). Releasing/Unrenting from VoBiz...`);
         try {
           await this.unrentNumber(num.number);
           console.log(`[Rental Check] Successfully unrented number ${num.number} from VoBiz.`);
         } catch (err) {
           console.error(`[Rental Check] Failed to unrent number ${num.number} from VoBiz:`, err.message);
         }
+        
+        await NotificationService.notifyMerchant(num.userId, 'Number Released', `Your VoBiz number ${num.number} has expired and has been permanently released.`, 'payments');
+        
         await num.destroy();
         console.log(`[Rental Check] Destroyed VobizNumber record for ${num.number}.`);
       }
