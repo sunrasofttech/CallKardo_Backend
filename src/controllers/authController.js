@@ -571,6 +571,34 @@ class AuthController {
   }
 
   /**
+   * Get business details for merchant
+   */
+  async getBusinessDetails(req, res, next) {
+    try {
+      const user = req.user;
+
+      const profile = {
+        id: user.id,
+        email: user.email,
+        mobile: user.mobile,
+        businessName: user.businessName,
+        businessUrl: user.businessUrl,
+        categoryId: user.categoryId,
+        businessType: user.businessType,
+        role: req.userRole,
+      };
+
+      return ResponseBuilder.success(
+        res,
+        { profile },
+        'Business profile retrieved successfully'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Get current authenticated user profile
    */
   async getMe(req, res, next) {
