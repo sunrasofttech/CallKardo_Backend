@@ -151,7 +151,7 @@ async function processCallAnalysis(event) {
       try {
         session.customerId = finalCustomerId;
         await session.save();
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (!finalUserId) {
@@ -190,7 +190,7 @@ async function processCallAnalysis(event) {
             callSessionId,
             logLevel: 'info',
             message: '[AI Worker] Safety-net: sent meeting-schedule email (schedule_meeting action was never triggered live).',
-          }).catch(() => {});
+          }).catch(() => { });
           console.log(`[AI Worker] Safety-net meeting email sent for session ${callSessionId}.`);
         }
       } catch (safetyErr) {
@@ -200,7 +200,7 @@ async function processCallAnalysis(event) {
           callSessionId,
           logLevel: 'error',
           message: `[AI Worker] Safety-net schedule_meeting email failed: ${safetyErr.message}`,
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
 
@@ -266,13 +266,15 @@ async function processCallAnalysis(event) {
 
     // 8. Update campaign customer status (only for outbound campaign calls)
     if (finalCampaignId && finalCustomerId) {
-      // Use session status as the primary indicator - only retry if the call never connected
+      // Use session status as the primary indicator
       const sessionNeverConnected = (session.status === 'failed' && !session.startTime);
-      const isNoAnswer = (analysis.outcome === 'No Answer' || analysis.outcome === 'Wrong Number');
+      const isNoAnswer = (analysis.outcome === 'No Answer');
+      const isWrongNumber = (analysis.outcome === 'Wrong Number');
 
-      // A call is a true failure/retry-eligible only if it never connected (not picked up)
-      // If it connected but had a poor outcome, it's still "completed" from a campaign perspective
-      const callStatus = (sessionNeverConnected || (isNoAnswer && !session.startTime)) ? 'failed' : 'completed';
+      // A call is a true failure/retry-eligible if it never connected OR if the outcome is 'No Answer'
+      // (meaning the agent failed to connect or the customer hung up without speaking).
+      // Wrong number is considered completed if it connected.
+      const callStatus = (sessionNeverConnected || isNoAnswer || (isWrongNumber && !session.startTime)) ? 'failed' : 'completed';
 
       const campaign = await Campaign.findByPk(finalCampaignId);
       const maxRetries = campaign?.maxRetries || 3;
@@ -283,15 +285,15 @@ async function processCallAnalysis(event) {
 
       if (mapping) {
         if (mapping.callStatus === 'calling' || mapping.callStatus === 'pending') {
-          if (sessionNeverConnected) {
+          if (callStatus === 'failed') {
             const newRetry = (mapping.retryCount || 0) + 1;
             mapping.retryCount = newRetry;
             if (newRetry < maxRetries) {
               mapping.callStatus = 'pending'; // Retry eligible
-              console.log(`[AI Worker] Call failed to connect. Resetting customer ${finalCustomerId} to 'pending' (retry ${newRetry}/${maxRetries})`);
+              console.log(`[AI Worker] Call failed/no answer. Resetting customer ${finalCustomerId} to 'pending' (retry ${newRetry}/${maxRetries})`);
             } else {
               mapping.callStatus = 'failed'; // Max retries reached
-              console.log(`[AI Worker] Call failed to connect. Max retries reached for customer ${finalCustomerId} (${newRetry}/${maxRetries}). Marked 'failed'.`);
+              console.log(`[AI Worker] Call failed/no answer. Max retries reached for customer ${finalCustomerId} (${newRetry}/${maxRetries}). Marked 'failed'.`);
             }
           } else {
             mapping.callStatus = 'completed';
@@ -332,7 +334,7 @@ async function processCallAnalysis(event) {
         callSessionId,
         logLevel: 'error',
         message: `AI Worker failed to create/update CallReport: ${dbErr.message}`,
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }
 }

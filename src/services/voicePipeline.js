@@ -229,8 +229,8 @@ class VoicePipeline {
     const genderContext = gender === 'female'
       ? "You have a FEMALE voice. You should act and speak as a female agent."
       : gender === 'male'
-      ? "You have a MALE voice. You should act and speak as a male agent."
-      : "You have a gender-neutral voice.";
+        ? "You have a MALE voice. You should act and speak as a male agent."
+        : "You have a gender-neutral voice.";
 
     // Inject call direction context into the system prompt so the LLM is aware
     const directionContext = this.direction === 'inbound'
@@ -349,7 +349,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
             this._accumulatedAgentText = (this._accumulatedAgentText || '') + text;
             const textAfterActions = this._processActionTriggers(this._accumulatedAgentText);
             this._accumulatedAgentText = textAfterActions;
-            
+
             this._checkForCallEndRequest(textAfterActions, 'agent');
             const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
             if (cleanText && this.onAgentTranscription) {
@@ -388,18 +388,48 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     let hasPreRecordedFirstMessage = false;
     let preRecordedFilePath = null;
 
+    // Enable pre-recorded first messages for custom providers (exclude Gemini Live and ElevenLabs)
     if (this.activeProvider !== 'geminilive' && this.activeProvider !== 'elevenlabs' && this.agent.firstMessageAudioPath) {
       preRecordedFilePath = path.resolve(process.cwd(), this.agent.firstMessageAudioPath);
       if (fs.existsSync(preRecordedFilePath)) {
-        hasPreRecordedFirstMessage = true;
+        try {
+          const fd = fs.openSync(preRecordedFilePath, 'r');
+          const header = Buffer.alloc(12);
+          fs.readSync(fd, header, 0, 12, 0);
+          fs.closeSync(fd);
+          if (header.toString('utf8', 0, 4) === 'RIFF' && header.toString('utf8', 8, 12) === 'WAVE') {
+            hasPreRecordedFirstMessage = true;
+          } else {
+            this._log('warn', `[Fast Connect] Pre-recorded audio is not a valid WAV file (MP3 not supported). Falling back to AI generated greeting.`);
+          }
+        } catch (e) {
+          this._log('warn', `[Fast Connect] Failed to read pre-recorded audio header. Falling back to AI generated greeting.`);
+        }
       }
     }
 
-    this.geminiSession.connect(hasPreRecordedFirstMessage, this.firstMessage);
+    const canSkipLlmGreeting = !!this.firstMessage && this._usesSarvamRealtime();
+    const skipLlmGreeting = hasPreRecordedFirstMessage || canSkipLlmGreeting;
+
+    this.geminiSession.connect(skipLlmGreeting, this.firstMessage);
 
     if (hasPreRecordedFirstMessage) {
       setImmediate(() => {
         this._playPreRecordedFirstMessage(preRecordedFilePath);
+      });
+    } else if (canSkipLlmGreeting) {
+      setImmediate(() => {
+        this._log('info', `[Fast Connect] Instantly synthesizing first message via TTS: "${this.firstMessage}"`);
+        const textAfterActions = this._processActionTriggers(this.firstMessage);
+        const cleanMessage = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
+        if (cleanMessage) {
+          const ttsGen = ++this._ttsGeneration;
+          this._activeTtsGeneration = ttsGen;
+          this._enqueueTtsPhrase(cleanMessage, ttsGen);
+          if (this.onAgentTranscription) {
+            this.onAgentTranscription(cleanMessage);
+          }
+        }
       });
     }
   }
@@ -501,7 +531,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     this._ttsGeneration++;
     this._activeTtsGeneration = null;
     this.isAgentSpeaking = false;
-    
+
     // Clear warning state if customer interrupts the warning
     this.hasWarnedSilence = false;
     if (this.silenceWarningTimeout) {
@@ -535,7 +565,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         try {
           // Process and strip action tokens
           const textAfterActions = this._processActionTriggers(text);
-          
+
           // Check for AI hangup signal and strip it
           this._checkForCallEndRequest(textAfterActions, 'agent');
           const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
@@ -578,7 +608,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         try {
           // Process and strip action tokens
           const textAfterActions = this._processActionTriggers(text);
-          
+
           // Check for AI hangup signal and strip it
           this._checkForCallEndRequest(textAfterActions, 'agent');
           const cleanText = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
@@ -650,9 +680,26 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       hasPreRecordedFirstMessage = fs.existsSync(preRecordedFilePath);
     }
 
-    this.geminiSession.connect(hasPreRecordedFirstMessage, this.firstMessage);
+    const canSkipLlmGreeting = !!this.firstMessage;
+    const skipLlmGreeting = hasPreRecordedFirstMessage || canSkipLlmGreeting;
+
+    this.geminiSession.connect(skipLlmGreeting, this.firstMessage);
     if (hasPreRecordedFirstMessage) {
       setImmediate(() => this._playPreRecordedFirstMessage(preRecordedFilePath));
+    } else if (canSkipLlmGreeting) {
+      setImmediate(() => {
+        this._log('info', `[Fast Connect] Instantly synthesizing first message via TTS on fallback: "${this.firstMessage}"`);
+        const textAfterActions = this._processActionTriggers(this.firstMessage);
+        const cleanMessage = textAfterActions.replace(/\{\{\s*hangup\s*\}\}/gi, '').trim();
+        if (cleanMessage) {
+          const ttsGen = ++this._ttsGeneration;
+          this._activeTtsGeneration = ttsGen;
+          this._enqueueTtsPhrase(cleanMessage, ttsGen);
+          if (this.onAgentTranscription) {
+            this.onAgentTranscription(cleanMessage);
+          }
+        }
+      });
     }
 
     // Start the inactivity monitor — call will auto-end after silenceTimeoutMs of no activity
@@ -681,7 +728,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
   _resetSilenceTimer() {
     if (!this.isConnected || !this.silenceTimeoutMs) return;
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
-    
+
     // Clear warning state if customer speaks/interacts
     this.hasWarnedSilence = false;
     if (this.silenceWarningTimeout) {
@@ -691,7 +738,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
 
     this.silenceTimer = setTimeout(() => {
       if (!this.isConnected) return;
-      
+
       // If we haven't warned yet, say the warning and schedule the actual hangup
       if (!this.hasWarnedSilence) {
         this._sayWarningAndEndCall();
@@ -718,25 +765,25 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
   async _sayWarningAndEndCall() {
     if (!this.isConnected) return;
     this.hasWarnedSilence = true;
-    
+
     // Resolve user's active/detected language
     const activeLang = (this.sarvamTtsStream ? this.sarvamTtsStream.languageCode : null) || this.agent.language || defaults.sarvam.defaultLanguageCode;
     const normalizedLang = activeLang.toLowerCase().trim();
-    
+
     // Fallback to English if the language is not mapped
     const warningText = SILENCE_WARNING_MESSAGES[normalizedLang] || SILENCE_WARNING_MESSAGES['en-in'];
     this._log('info', `[Silence Warning] Customer inactive in language "${activeLang}". Speaking: "${warningText}"`);
-    
+
     if (this.onAgentTranscription) {
       this.onAgentTranscription(warningText);
     }
-    
+
     const ttsGen = ++this._ttsGeneration;
     this._activeTtsGeneration = ttsGen;
-    
+
     // Synthesize and play warning
     await this._synthesizeAndPlay(warningText, ttsGen);
-    
+
     // Wait for the warning speech to finish (approx 2 seconds) before hanging up
     this.silenceWarningTimeout = setTimeout(() => {
       if (!this.isConnected) return;
@@ -760,11 +807,11 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
 
   _processActionTriggers(text) {
     if (!text) return text;
-    
+
     // Regular expression to match {{action:xyz}} or {{action:xyz:payload}} with optional spacing
     const actionRegex = /\{\{\s*action\s*:\s*([a-zA-Z0-9_]+)(?:\s*:\s*([^}]+?))?\s*\}\}/gi;
     let match;
-    
+
     const actionsToExecute = [];
     while ((match = actionRegex.exec(text)) !== null) {
       actionsToExecute.push({
@@ -794,7 +841,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         });
       }
     }
-    
+
     // Return text with all action tokens stripped
     return text.replace(actionRegex, '').trim();
   }
@@ -803,7 +850,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     try {
       const ActionService = require('./actionService');
       this._log('info', `[Action Execute] Running handler for: ${actionName}${actionPayload ? ` with payload: "${actionPayload}"` : ''}`);
-      
+
       let actionResult = null;
 
       switch (actionName) {
@@ -897,8 +944,8 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         'phone rakh', 'call end', 'end call', 'disconnect',
         'i\'m done', 'i am done', 'all done', 'ho gaya',
         'baat khatam', 'baat khtam', 'nikal lo', 'nice talking',
-        'cut the call', 'cut call', 'disconnect call', 'hang up', 
-        'hangup', 'stop call', 'stop the call', 'close call', 
+        'cut the call', 'cut call', 'disconnect call', 'hang up',
+        'hangup', 'stop call', 'stop the call', 'close call',
         'alvida', 'tata'
       ];
       for (const phrase of endPhrases) {
@@ -942,7 +989,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           // Send remaining bytes and clear interval
           const chunk = this.audioOutBuffer;
           this.audioOutBuffer = Buffer.alloc(0);
-          
+
           if (chunk.length > 0) {
             const durationMs = Math.round((chunk.length / 32000) * 1000);
             this._setAgentSpeaking(durationMs + 300);
@@ -950,7 +997,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
               this.onAudioOutput(chunk, 16000);
             }
           }
-          
+
           clearInterval(this.audioInterval);
           this.audioInterval = null;
         }

@@ -149,8 +149,27 @@ async function dispatchRunningCampaigns() {
             latestSession.endTime = new Date();
             await latestSession.save();
             await QueueService.deregisterActiveCall(campaign.id, latestSession.id).catch(() => { });
+
+            // Delegate to AI worker pipeline to generate 'No Answer' report and handle retry logic uniformly
+            try {
+              const { processCallAnalysis } = require('./aiWorker');
+              await processCallAnalysis({
+                callSessionId: latestSession.id,
+                userId: latestSession.userId,
+                campaignId: latestSession.campaignId,
+                vobizNumberId: latestSession.vobizNumberId,
+                customerId: latestSession.customerId,
+                transcript: '',
+                duration: 0,
+                recordingUrl: null,
+              });
+            } catch (err) {
+              console.error(`[Scheduler] processCallAnalysis failed for stuck session ${latestSession.id}:`, err.message);
+            }
+            continue; // processCallAnalysis handles the retry logic, so skip the manual block below
           }
 
+          // Fallback manual retry for completely orphaned CampaignCustomers (no session created)
           const newRetryCount = (stuckCC.retryCount || 0) + 1;
           const maxRetries = campaign.maxRetries || 3;
 

@@ -44,7 +44,7 @@ class VobizController {
       }
 
       const cleanToNum = toNum.startsWith('+') ? toNum.substring(1) : toNum;
-      
+
       // Generate search variations to support local trunk '0' dialing and country code formats
       const searchNumbers = [toNum, cleanToNum, `+${cleanToNum}`];
       if (toNum.startsWith('0')) {
@@ -54,7 +54,7 @@ class VobizController {
         const base = cleanToNum.substring(2);
         searchNumbers.push(base, `0${base}`);
       }
-      
+
       // Look up all registered VobizNumber records matching the dialed number
       const vobizNumbers = await VobizNumber.findAll({
         where: {
@@ -138,30 +138,41 @@ class VobizController {
         });
       }
 
-      // Generate a new WebSocket session token for this call
-      const wsToken = crypto.randomBytes(32).toString('hex');
-      const session = await CallSession.create({
-        userId: vobizNumber.userId,
-        agentId: vobizNumber.agentId,
-        vobizNumberId: vobizNumber.id,
-        customerId: customer.id,
-        wsSessionToken: wsToken,
-        vobizCallUuid: req.body.CallUUID || req.query.CallUUID || req.body.call_uuid || req.query.call_uuid || null,
-        status: 'initiated',
-        direction: 'inbound',
-      });
+      const vobizCallUuid = req.body.CallUUID || req.query.CallUUID || req.body.call_uuid || req.query.call_uuid || null;
+      let session = null;
 
-      await CallLog.create({
-        callSessionId: session.id,
-        logLevel: 'info',
-        message: `Inbound call from ${fromNum} to ${toNum} answered. aiProvider: ${vobizNumber.agent.aiProvider}`,
-      });
+      if (vobizCallUuid) {
+        session = await CallSession.findOne({ where: { vobizCallUuid } });
+      }
+
+      if (!session) {
+        // Generate a new WebSocket session token for this call
+        const wsToken = crypto.randomBytes(32).toString('hex');
+        session = await CallSession.create({
+          userId: vobizNumber.userId,
+          agentId: vobizNumber.agentId,
+          vobizNumberId: vobizNumber.id,
+          customerId: customer.id,
+          wsSessionToken: wsToken,
+          vobizCallUuid: vobizCallUuid,
+          status: 'initiated',
+          direction: 'inbound',
+        });
+
+        await CallLog.create({
+          callSessionId: session.id,
+          logLevel: 'info',
+          message: `Inbound call from ${fromNum} to ${toNum} answered. aiProvider: ${vobizNumber.agent.aiProvider}`,
+        });
+      } else {
+        console.log(`[VoBiz Webhook] Idempotency hit: CallSession already exists for CallUUID ${vobizCallUuid}`);
+      }
 
       // Route dynamically based on Agent AI Provider configuration
       if (vobizNumber.agent.aiProvider === 'elevenlabs') {
         const isIndia = fromNum.includes('91') || toNum.includes('91');
-        const sipEndpoint = isIndia 
-          ? 'sip.rtc.in.residency.elevenlabs.io:5060;transport=tcp' 
+        const sipEndpoint = isIndia
+          ? 'sip.rtc.in.residency.elevenlabs.io:5060;transport=tcp'
           : 'sip.rtc.elevenlabs.io:5060;transport=tcp';
 
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -177,7 +188,7 @@ class VobizController {
 
 
       // Default fallback: Custom WebSocket server stream
-      const streamUrl = `wss://${defaults.ws.host}/ws/vobiz?token=${wsToken}`;
+      const streamUrl = `wss://${defaults.ws.host}/ws/vobiz?token=${session.wsSessionToken}`;
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-l16;rate=16000">${streamUrl}</Stream>
@@ -203,7 +214,7 @@ class VobizController {
       }
 
       const { customerId, apiKey, apiSecret } = value;
-      
+
       const encryptEnabled = defaults.vobiz.encryptCredentials;
       const finalApiKey = encryptEnabled ? encrypt(apiKey) : apiKey;
       const finalApiSecret = encryptEnabled ? encrypt(apiSecret) : apiSecret;
@@ -261,20 +272,20 @@ class VobizController {
    */
   async getNumbers(req, res, next) {
     try {
-      const numbers = await VobizNumber.findAll({ 
+      const numbers = await VobizNumber.findAll({
         where: { userId: req.user.id },
         include: [{ model: Agent, as: 'agent', attributes: ['name'] }]
       });
-      
+
       const demoNumber = defaults.vobiz.demoNumber;
       const formattedNumbers = numbers.map(num => {
         const plainNum = num.toJSON();
         plainNum.is_demo_number = (plainNum.number === demoNumber);
-        
+
         if (plainNum.agent && plainNum.agent.name) {
           plainNum.agent_name = plainNum.agent.name;
         }
-        
+
         return plainNum;
       });
 
@@ -431,16 +442,16 @@ class VobizController {
 
       // Combine merchant details to save in Vobiz since they only accept 'name'
       const subAccountName = [
-        user.businessName, 
-        `${user.firstName} ${user.lastName}`.trim(), 
-        user.email, 
+        user.businessName,
+        `${user.firstName} ${user.lastName}`.trim(),
+        user.email,
         user.phoneNumber
       ].filter(Boolean).join(' | ').substring(0, 100); // Vobiz name limit might apply
 
       const subAccountData = await vobizService.createSubAccount(
-        subAccountName, 
-        user.email, 
-        'customer_use', 
+        subAccountName,
+        user.email,
+        'customer_use',
         user.businessType || 'individual'
       );
 
@@ -478,12 +489,12 @@ class VobizController {
       const { countryISO, type, pattern, page, per_page } = req.query;
       const parsedPage = parseInt(page, 10) || 1;
       const parsedPerPage = parseInt(per_page, 10) || 25;
-      
+
       const numbers = await vobizService.listAvailableNumbers(
-        countryISO, 
-        type, 
-        pattern, 
-        parsedPage, 
+        countryISO,
+        type,
+        pattern,
+        parsedPage,
         parsedPerPage
       );
       return ResponseBuilder.success(res, numbers, 'Available numbers retrieved successfully');
@@ -608,7 +619,7 @@ class VobizController {
       const authId = account.customerId;
 
       const result = await vobizService.getKycStatus(authId);
-      
+
       if (result.success) {
         // If overall status is verified, mark user as full
         if (result.kyc_status === 'verified') {
@@ -631,7 +642,7 @@ class VobizController {
     try {
       const payload = req.body;
       const signatureHeader = req.headers['x-vobiz-signature'];
-      
+
       console.log('[VoBiz KYC Webhook] Received event:', JSON.stringify(payload, null, 2));
 
       // Verify HMAC Signature if rawBody is available
@@ -653,7 +664,7 @@ class VobizController {
           }
         }
       } else if (!req.rawBody) {
-         console.warn('[VoBiz KYC Webhook] req.rawBody not available to verify signature.');
+        console.warn('[VoBiz KYC Webhook] req.rawBody not available to verify signature.');
       }
 
       // Attempt to extract the sub-account auth ID from common field names
@@ -709,7 +720,7 @@ class VobizController {
       // We actively fetch the latest status to verify it securely rather than relying solely on the payload
       console.log(`[VoBiz KYC Webhook] Fetching live KYC status from VoBiz for authId: ${authId}`);
       const statusResult = await vobizService.getKycStatus(authId);
-      
+
       console.log(`[VoBiz KYC Webhook] Live KYC status result:`, JSON.stringify(statusResult, null, 2));
 
       if (statusResult.success) {
@@ -727,7 +738,7 @@ class VobizController {
           console.log(`[VoBiz KYC Webhook] User ${user.id} KYC status is pending/incomplete. Status: ${statusResult.kyc_status}`);
         }
       } else {
-         console.warn(`[VoBiz KYC Webhook] Failed to fetch live KYC status:`, statusResult.error);
+        console.warn(`[VoBiz KYC Webhook] Failed to fetch live KYC status:`, statusResult.error);
       }
 
       return res.status(200).send('OK');

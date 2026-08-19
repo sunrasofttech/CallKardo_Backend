@@ -280,6 +280,12 @@ class VobizSocketHandler {
             message: message,
           });
         },
+        onError: async (err) => {
+          console.error(`[VoBiz Call] Pipeline error for session ${session.id}:`, err);
+          if (ws.readyState === ws.OPEN) {
+            ws.close(1011, 'Agent failed to connect');
+          }
+        },
         onSilenceTimeout: async () => {
           console.log(`[VoBiz Call] Ending call session ${session.id} — silence timeout or user hangup.`);
 
@@ -290,7 +296,7 @@ class VobizSocketHandler {
               const isCampaignCall = !!session.campaignId;
               const merchant = await User.findByPk(session.userId);
               const isKycFull = merchant && merchant.kycStatus === 'full';
-              
+
               const vobizAccount = await VobizAccount.findOne({ where: { userId: session.userId } });
               let authId = defaults.vobiz.parentAuthId;
               let authToken = defaults.vobiz.parentAuthToken;
@@ -313,7 +319,7 @@ class VobizSocketHandler {
                     validMerchantToken = true;
                   }
                 }
-                
+
                 if (isCampaignCall && isKycFull && !validMerchantToken) {
                   console.warn(`[VoBiz Call] Campaign hangup failed: Merchant KYC is full but valid VoBiz credentials are missing.`);
                   return;
@@ -486,18 +492,20 @@ class VobizSocketHandler {
     if (!session) return;
 
     try {
-      if (pipeline) {
-        await pipeline.close();
-      }
-
       const freshSession = await CallSession.findByPk(session.id);
-      if (!freshSession) return;
 
-      if (freshSession.status !== 'completed' && freshSession.status !== 'failed') {
+      // Instantly mark as completed to prevent any inbound reconnections from being accepted while pipeline closes
+      if (freshSession && freshSession.status !== 'completed' && freshSession.status !== 'failed') {
         freshSession.status = 'completed';
         freshSession.endTime = new Date();
         await freshSession.save();
       }
+
+      if (pipeline) {
+        await pipeline.close();
+      }
+
+      if (!freshSession) return;
 
       const endTime = new Date(freshSession.endTime || Date.now());
       const startTime = new Date(freshSession.startTime || freshSession.createdAt);
@@ -600,14 +608,14 @@ class VobizSocketHandler {
             callSessionId: session.id,
             logLevel: 'error',
             message: `Failed to save call recording: ${recordErr.message}`,
-          }).catch(() => {});
+          }).catch(() => { });
         }
       } else {
         await CallLog.create({
           callSessionId: session.id,
           logLevel: 'warn',
           message: 'No audio chunks captured during call — recording was not generated.',
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // Re-fetch session to get any customerId that was resolved during the call
@@ -635,13 +643,19 @@ class VobizSocketHandler {
       });
 
       // Enqueue report for worker processing (Reliable Queue)
-      await QueueService.enqueueReport(completionEvent).catch((qErr) => {
+      let enqueued = false;
+      await QueueService.enqueueReport(completionEvent).then(() => {
+        enqueued = true;
+      }).catch((qErr) => {
         console.error('[VoBiz Call] Failed to enqueue report to Redis:', qErr.message);
       });
 
-      // Immediate analysis fallback to guarantee CallReport creation
-      const { processCallAnalysis } = require('../workers/aiWorker');
-      await processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
+      if (!enqueued) {
+        // Immediate analysis fallback if Redis fails
+        console.log(`[VoBiz Call] Redis enqueue failed. Falling back to immediate AI analysis for session ${session.id}`);
+        const { processCallAnalysis } = require('../workers/aiWorker');
+        await processCallAnalysis(completionEvent).catch(aiErr => console.error('[VoBiz Call] Immediate AI analysis error:', aiErr.message));
+      }
 
       // Clear memory references to prevent socket memory leaks
       ws.customerChunks = null;
@@ -654,7 +668,7 @@ class VobizSocketHandler {
         logLevel: 'error',
         message: `_cleanupSession crashed: ${cleanError.message}`,
         details: { stack: cleanError.stack },
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }
 }
