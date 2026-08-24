@@ -128,12 +128,15 @@ router.get('/personalities/:id', adminController.getPersonalityById);
 // Message Programs & Templates
 router.get('/message-programs/requirements', adminController.getProgramRequirements);
 router.post('/message-programs/requirements', adminController.createProgramRequirement);
+router.put('/message-programs/requirements/:id', adminController.updateProgramRequirement);
+router.delete('/message-programs/requirements/:id', adminController.deleteProgramRequirement);
 
 router.get('/message-programs', adminController.getMessagePrograms);
 router.put('/message-programs/:id/status', adminController.updateMessageProgramStatus);
 
 router.get('/master-templates', adminController.getMasterTemplates);
 router.post('/master-templates', adminController.createMasterTemplate);
+router.put('/master-templates/:id/status', adminController.updateMasterTemplateStatus);
 
 router.get('/message-templates', adminController.getMessageTemplates);
 router.put('/message-templates/:id/status', adminController.updateMessageTemplateStatus);

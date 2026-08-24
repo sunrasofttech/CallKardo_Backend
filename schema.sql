@@ -554,6 +554,7 @@ CREATE TABLE `master_message_templates` (
   `name` varchar(100) NOT NULL,
   `slug` varchar(100) NOT NULL,
   `structure` text NOT NULL,
+  `merchant_params` json NOT NULL,
   `is_active` tinyint(1) DEFAULT '1',
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,

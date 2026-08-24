@@ -26,6 +26,11 @@ const MasterMessageTemplate = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    merchant_params: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+    },
     is_active: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

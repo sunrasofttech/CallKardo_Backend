@@ -2032,12 +2032,57 @@ class AdminController {
   }
 
   /**
+   * Update Program Document Requirement
+   */
+  async updateProgramRequirement(req, res, next) {
+    try {
+      const { ProgramDocumentRequirement } = require('../models');
+      const { id } = req.params;
+      const { provider, document_name, is_required } = req.body;
+
+      const requirement = await ProgramDocumentRequirement.findByPk(id);
+      if (!requirement) {
+        return res.status(404).json({ success: false, error: 'Requirement not found' });
+      }
+
+      if (provider) requirement.provider = provider;
+      if (document_name) requirement.document_name = document_name;
+      if (is_required !== undefined) requirement.is_required = is_required;
+
+      await requirement.save();
+      return ResponseBuilder.success(res, requirement, 'Requirement updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Delete Program Document Requirement
+   */
+  async deleteProgramRequirement(req, res, next) {
+    try {
+      const { ProgramDocumentRequirement } = require('../models');
+      const { id } = req.params;
+
+      const requirement = await ProgramDocumentRequirement.findByPk(id);
+      if (!requirement) {
+        return res.status(404).json({ success: false, error: 'Requirement not found' });
+      }
+
+      await requirement.destroy();
+      return ResponseBuilder.success(res, null, 'Requirement deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Create Master Message Template
    */
   async createMasterTemplate(req, res, next) {
     try {
       const { MasterMessageTemplate } = require('../models');
-      const { provider, name, slug, structure, is_active } = req.body;
+      const { provider, name, slug, structure, merchant_params, is_active } = req.body;
 
       if (!provider || !name || !slug || !structure) {
         return res.status(400).json({ success: false, error: 'provider, name, slug, and structure are required' });
@@ -2048,6 +2093,7 @@ class AdminController {
         name,
         slug,
         structure,
+        merchant_params: merchant_params || [],
         is_active: is_active !== undefined ? is_active : true,
       });
 
@@ -2065,6 +2111,33 @@ class AdminController {
       const { MasterMessageTemplate } = require('../models');
       const templates = await MasterMessageTemplate.findAll();
       return ResponseBuilder.success(res, templates, 'Master templates retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update Master Template Status (active/inactive)
+   */
+  async updateMasterTemplateStatus(req, res, next) {
+    try {
+      const { MasterMessageTemplate } = require('../models');
+      const { id } = req.params;
+      const { is_active } = req.body;
+
+      if (is_active === undefined) {
+        return res.status(400).json({ success: false, error: 'is_active is required' });
+      }
+
+      const template = await MasterMessageTemplate.findByPk(id);
+      if (!template) {
+        return res.status(404).json({ success: false, error: 'Master template not found' });
+      }
+
+      template.is_active = is_active;
+      await template.save();
+
+      return ResponseBuilder.success(res, template, 'Master template status updated successfully');
     } catch (err) {
       next(err);
     }
