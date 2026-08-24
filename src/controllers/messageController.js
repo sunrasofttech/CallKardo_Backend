@@ -17,10 +17,29 @@ exports.getRequirements = async (req, res) => {
 exports.applyForProgram = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { provider, submitted_documents } = req.body;
+    let { provider, submitted_documents } = req.body;
 
     if (!['rcs', 'whatsapp', 'both'].includes(provider)) {
       return res.status(400).json({ success: false, error: 'Invalid provider. Must be rcs, whatsapp, or both.' });
+    }
+
+    // Parse submitted_documents if sent as a string
+    if (typeof submitted_documents === 'string') {
+      try {
+        submitted_documents = JSON.parse(submitted_documents);
+      } catch (e) {
+        submitted_documents = {};
+      }
+    } else if (!submitted_documents) {
+      submitted_documents = {};
+    }
+
+    // Map uploaded files to URLs and merge them into submitted_documents
+    if (req.files && req.files.length > 0) {
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      for (const file of req.files) {
+        submitted_documents[file.fieldname] = `${baseUrl}/${file.path.replace(/\\/g, '/')}`;
+      }
     }
 
     if (submitted_documents && typeof submitted_documents === 'object') {
