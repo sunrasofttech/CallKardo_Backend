@@ -1907,7 +1907,7 @@ class AdminController {
       const programs = await MerchantMessageProgram.findAll({
         where,
         include: [{ model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'] }],
-        order: [['createdAt', 'DESC']]
+        order: [['created_at', 'DESC']]
       });
 
       return ResponseBuilder.success(res, programs, 'Message programs retrieved successfully');
@@ -1959,7 +1959,7 @@ class AdminController {
           { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
           { model: require('../models').MasterMessageTemplate, as: 'masterTemplate', attributes: ['name', 'structure'] }
         ],
-        order: [['createdAt', 'DESC']]
+        order: [['created_at', 'DESC']]
       });
 
       return ResponseBuilder.success(res, templates, 'Message templates retrieved successfully');
