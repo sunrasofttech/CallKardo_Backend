@@ -22,6 +22,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 
 // Swagger Spec
 const swaggerSpec = require('./utils/swagger');
@@ -158,6 +159,7 @@ app.use('/api/v1/settings', settingRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/v1/messages', messageRoutes);
 
 // Web Tester UI Route
 app.get('/test-call', (req, res) => {

@@ -22,6 +22,10 @@ const AuditLog = require('./auditLog');
 const Setting = require('./setting');
 const PaymentTransaction = require('./paymentTransaction');
 const KycDetail = require('./kycDetail');
+const MerchantMessageProgram = require('./merchantMessageProgram');
+const MessageTemplate = require('./messageTemplate');
+const MasterMessageTemplate = require('./masterMessageTemplate');
+const ProgramDocumentRequirement = require('./programDocumentRequirement');
 
 // Establish Relationships
 
@@ -183,6 +187,18 @@ Notification.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
 User.hasMany(PaymentTransaction, { foreignKey: 'user_id', as: 'paymentTransactions' });
 PaymentTransaction.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// User <-> MerchantMessageProgram
+User.hasMany(MerchantMessageProgram, { foreignKey: 'user_id', as: 'messagePrograms' });
+MerchantMessageProgram.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+// User <-> MessageTemplate
+User.hasMany(MessageTemplate, { foreignKey: 'user_id', as: 'messageTemplates' });
+MessageTemplate.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+// MasterMessageTemplate <-> MessageTemplate
+MasterMessageTemplate.hasMany(MessageTemplate, { foreignKey: 'master_template_id', as: 'merchantTemplates' });
+MessageTemplate.belongsTo(MasterMessageTemplate, { foreignKey: 'master_template_id', as: 'masterTemplate' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -207,4 +223,8 @@ module.exports = {
   Setting,
   PaymentTransaction,
   KycDetail,
+  MerchantMessageProgram,
+  MessageTemplate,
+  MasterMessageTemplate,
+  ProgramDocumentRequirement,
 };

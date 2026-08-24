@@ -77,6 +77,53 @@ class ActionService {
   }
 
   /**
+   * Helper: Get approved messaging info (credentials & channel mode) for a merchant
+   */
+  async _getMerchantMessagingInfo(merchantId) {
+    if (!merchantId) return null;
+    try {
+      const { MerchantMessageProgram } = require('../models');
+      const program = await MerchantMessageProgram.findOne({
+        where: { user_id: merchantId, status: 'approved' },
+        order: [['updated_at', 'DESC']]
+      });
+      if (program && program.credentials) {
+        return {
+          credentials: program.credentials,
+          channel_mode: program.channel_mode || 'rcs',
+        };
+      }
+    } catch (err) {
+      console.error(`[ActionService] Error fetching merchant program info:`, err);
+    }
+    return null;
+  }
+
+  /**
+   * Helper: Get approved external template_id for a merchant and master template slug
+   */
+  async _getApprovedTemplateId(merchantId, masterTemplateSlug) {
+    if (!merchantId) return null;
+    try {
+      const { MessageTemplate, MasterMessageTemplate } = require('../models');
+      const template = await MessageTemplate.findOne({
+        where: { user_id: merchantId, status: 'approved' },
+        include: [{
+          model: MasterMessageTemplate,
+          as: 'masterTemplate',
+          where: { slug: masterTemplateSlug }
+        }]
+      });
+      if (template && template.template_id) {
+        return template.template_id;
+      }
+    } catch (err) {
+      console.error(`[ActionService] Error fetching approved template ID for ${masterTemplateSlug}:`, err);
+    }
+    return null;
+  }
+
+  /**
    * Handle Join Link action
    */
   async sendJoinLink(customer, agent, merchant) {
@@ -121,16 +168,26 @@ class ActionService {
 
     if (mobile !== 'Unknown') {
       try {
-        const DovesoftService = require('./dovesoftService');
-        // Fire and forget RCS message
-        DovesoftService.sendRCS(mobile, 'ramaapplink', {
-          user_name: name,
-          app_link: joinLink,
-          website_url: 'https://callkardo.com',
-          support_mobile: merchant?.mobile || ''
-        }).catch(err => console.error(`[Action: send_join_link] RCS failed: ${err.message}`));
+        const msgInfo = await this._getMerchantMessagingInfo(merchant?.id);
+        if (!msgInfo) {
+          console.log(`[Action: send_join_link] Skipping messaging: Merchant not verified or missing credentials.`);
+        } else if (['rcs', 'both', 'whatsapp'].includes(msgInfo.channel_mode)) {
+          const templateId = await this._getApprovedTemplateId(merchant?.id, 'join_link');
+          if (!templateId) {
+            console.log(`[Action: send_join_link] Skipping: No approved 'join_link' template found for merchant.`);
+          } else {
+            const DovesoftService = require('./dovesoftService');
+            // Fire and forget message
+            DovesoftService.sendRCS(mobile, templateId, {
+              user_name: name,
+              app_link: joinLink,
+              website_url: 'https://callkardo.com',
+              support_mobile: merchant?.mobile || ''
+            }, msgInfo.credentials).catch(err => console.error(`[Action: send_join_link] Messaging failed: ${err.message}`));
+          }
+        }
       } catch (err) {
-        console.error(`[Action: send_join_link] Failed to initiate RCS to ${mobile}:`, err.message);
+        console.error(`[Action: send_join_link] Failed to initiate messaging to ${mobile}:`, err.message);
       }
     }
 
@@ -287,16 +344,26 @@ class ActionService {
 
     if (mobile !== 'Unknown') {
       try {
-        const DovesoftService = require('./dovesoftService');
-        // Fire and forget RCS message
-        DovesoftService.sendRCS(mobile, 'ramaapplink', {
-          user_name: name,
-          app_link: meetingLink,
-          website_url: 'https://callkardo.com',
-          support_mobile: merchant?.mobile || ''
-        }).catch(err => console.error(`[Action: schedule_meeting] RCS failed: ${err.message}`));
+        const msgInfo = await this._getMerchantMessagingInfo(merchant?.id);
+        if (!msgInfo) {
+          console.log(`[Action: schedule_meeting] Skipping messaging: Merchant not verified or missing credentials.`);
+        } else if (['rcs', 'both', 'whatsapp'].includes(msgInfo.channel_mode)) {
+          const templateId = await this._getApprovedTemplateId(merchant?.id, 'meeting_link');
+          if (!templateId) {
+            console.log(`[Action: schedule_meeting] Skipping: No approved 'meeting_link' template found for merchant.`);
+          } else {
+            const DovesoftService = require('./dovesoftService');
+            // Fire and forget message
+            DovesoftService.sendRCS(mobile, templateId, {
+              user_name: name,
+              app_link: meetingLink,
+              website_url: 'https://callkardo.com',
+              support_mobile: merchant?.mobile || ''
+            }, msgInfo.credentials).catch(err => console.error(`[Action: schedule_meeting] Messaging failed: ${err.message}`));
+          }
+        }
       } catch (err) {
-        console.error(`[Action: schedule_meeting] Failed to initiate RCS to ${mobile}:`, err.message);
+        console.error(`[Action: schedule_meeting] Failed to initiate messaging to ${mobile}:`, err.message);
       }
     }
 
@@ -349,16 +416,26 @@ class ActionService {
 
     if (mobile !== 'Unknown') {
       try {
-        const DovesoftService = require('./dovesoftService');
-        // Fire and forget RCS message using ramaapplink template
-        DovesoftService.sendRCS(mobile, 'ramaapplink', {
-          user_name: name,
-          app_link: businessUrl,
-          website_url: businessUrl,
-          support_mobile: merchant?.mobile || ''
-        }).catch(err => console.error(`[Action: send_website_link] RCS failed: ${err.message}`));
+        const msgInfo = await this._getMerchantMessagingInfo(merchant?.id);
+        if (!msgInfo) {
+          console.log(`[Action: send_website_link] Skipping messaging: Merchant not verified or missing credentials.`);
+        } else if (['rcs', 'both', 'whatsapp'].includes(msgInfo.channel_mode)) {
+          const templateId = await this._getApprovedTemplateId(merchant?.id, 'website_link');
+          if (!templateId) {
+            console.log(`[Action: send_website_link] Skipping: No approved 'website_link' template found for merchant.`);
+          } else {
+            const DovesoftService = require('./dovesoftService');
+            // Fire and forget message
+            DovesoftService.sendRCS(mobile, templateId, {
+              user_name: name,
+              app_link: businessUrl,
+              website_url: businessUrl,
+              support_mobile: merchant?.mobile || ''
+            }, msgInfo.credentials).catch(err => console.error(`[Action: send_website_link] Messaging failed: ${err.message}`));
+          }
+        }
       } catch (err) {
-        console.error(`[Action: send_website_link] Failed to initiate RCS to ${mobile}:`, err.message);
+        console.error(`[Action: send_website_link] Failed to initiate messaging to ${mobile}:`, err.message);
       }
     }
 

@@ -533,3 +533,71 @@ CREATE TABLE `voices` (
   CONSTRAINT `voices_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- Table structure for table `program_document_requirements`
+DROP TABLE IF EXISTS `program_document_requirements`;
+CREATE TABLE `program_document_requirements` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `provider` varchar(20) NOT NULL,
+  `document_name` varchar(100) NOT NULL,
+  `is_required` tinyint(1) DEFAULT '1',
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `master_message_templates`
+DROP TABLE IF EXISTS `master_message_templates`;
+CREATE TABLE `master_message_templates` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `provider` varchar(20) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `slug` varchar(100) NOT NULL,
+  `structure` text NOT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_master_template_slug` (`slug`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `merchant_message_programs`
+DROP TABLE IF EXISTS `merchant_message_programs`;
+CREATE TABLE `merchant_message_programs` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `user_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `provider` varchar(20) NOT NULL,
+  `status` varchar(20) DEFAULT 'pending',
+  `submitted_documents` json DEFAULT NULL,
+  `credentials` json DEFAULT NULL,
+  `channel_mode` varchar(20) DEFAULT 'rcs',
+  `admin_feedback` text,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_provider` (`user_id`, `provider`),
+  CONSTRAINT `merchant_message_programs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `message_templates`
+DROP TABLE IF EXISTS `message_templates`;
+CREATE TABLE `message_templates` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `user_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `master_template_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `provider` varchar(20) NOT NULL,
+  `content` json NOT NULL,
+  `template_id` varchar(100) DEFAULT NULL,
+  `status` varchar(20) DEFAULT 'pending',
+  `admin_feedback` text,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_message_templates_user` (`user_id`),
+  KEY `idx_message_templates_master` (`master_template_id`),
+  CONSTRAINT `message_templates_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `message_templates_ibfk_2` FOREIGN KEY (`master_template_id`) REFERENCES `master_message_templates` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

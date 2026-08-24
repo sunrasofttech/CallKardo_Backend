@@ -125,5 +125,18 @@ router.post('/transactions/:id/refund', adminController.refundTransaction);
 router.get('/personalities', adminController.getPersonalities);
 router.get('/personalities/:id', adminController.getPersonalityById);
 
+// Message Programs & Templates
+router.get('/message-programs/requirements', adminController.getProgramRequirements);
+router.post('/message-programs/requirements', adminController.createProgramRequirement);
+
+router.get('/message-programs', adminController.getMessagePrograms);
+router.put('/message-programs/:id/status', adminController.updateMessageProgramStatus);
+
+router.get('/master-templates', adminController.getMasterTemplates);
+router.post('/master-templates', adminController.createMasterTemplate);
+
+router.get('/message-templates', adminController.getMessageTemplates);
+router.put('/message-templates/:id/status', adminController.updateMessageTemplateStatus);
+
 module.exports = router;
 

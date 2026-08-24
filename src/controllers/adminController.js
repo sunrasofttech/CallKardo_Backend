@@ -1893,6 +1893,182 @@ class AdminController {
       next(err);
     }
   }
+
+  /**
+   * Get all merchant message programs
+   */
+  async getMessagePrograms(req, res, next) {
+    try {
+      const { MerchantMessageProgram, User } = require('../models');
+      const { status } = req.query;
+      const where = {};
+      if (status) where.status = status;
+
+      const programs = await MerchantMessageProgram.findAll({
+        where,
+        include: [{ model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'] }],
+        order: [['createdAt', 'DESC']]
+      });
+
+      return ResponseBuilder.success(res, programs, 'Message programs retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update a merchant message program (approve/reject and supply credentials)
+   */
+  async updateMessageProgramStatus(req, res, next) {
+    try {
+      const { MerchantMessageProgram } = require('../models');
+      const { id } = req.params;
+      const { status, credentials, channel_mode, admin_feedback } = req.body;
+
+      const program = await MerchantMessageProgram.findByPk(id);
+      if (!program) {
+        return res.status(404).json({ success: false, error: 'Program not found' });
+      }
+
+      program.status = status || program.status;
+      if (credentials) program.credentials = credentials;
+      if (channel_mode) program.channel_mode = channel_mode;
+      if (admin_feedback) program.admin_feedback = admin_feedback;
+
+      await program.save();
+
+      return ResponseBuilder.success(res, program, `Message program ${status} successfully`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get all message templates
+   */
+  async getMessageTemplates(req, res, next) {
+    try {
+      const { MessageTemplate, User } = require('../models');
+      const { status } = req.query;
+      const where = {};
+      if (status) where.status = status;
+
+      const templates = await MessageTemplate.findAll({
+        where,
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
+          { model: require('../models').MasterMessageTemplate, as: 'masterTemplate', attributes: ['name', 'structure'] }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+
+      return ResponseBuilder.success(res, templates, 'Message templates retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update message template status (approve/reject)
+   */
+  async updateMessageTemplateStatus(req, res, next) {
+    try {
+      const { MessageTemplate } = require('../models');
+      const { id } = req.params;
+      const { status, template_id, admin_feedback } = req.body;
+
+      const template = await MessageTemplate.findByPk(id);
+      if (!template) {
+        return res.status(404).json({ success: false, error: 'Template not found' });
+      }
+
+      template.status = status || template.status;
+      if (template_id) template.template_id = template_id;
+      if (admin_feedback) template.admin_feedback = admin_feedback;
+
+      await template.save();
+
+      return ResponseBuilder.success(res, template, `Template ${status} successfully`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Create Program Document Requirement
+   */
+  async createProgramRequirement(req, res, next) {
+    try {
+      const { ProgramDocumentRequirement } = require('../models');
+      const { provider, document_name, is_required } = req.body;
+
+      if (!provider || !document_name) {
+        return res.status(400).json({ success: false, error: 'provider and document_name are required' });
+      }
+
+      const requirement = await ProgramDocumentRequirement.create({
+        provider,
+        document_name,
+        is_required: is_required !== undefined ? is_required : true,
+      });
+
+      return ResponseBuilder.success(res, requirement, 'Requirement created successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Program Document Requirements
+   */
+  async getProgramRequirements(req, res, next) {
+    try {
+      const { ProgramDocumentRequirement } = require('../models');
+      const requirements = await ProgramDocumentRequirement.findAll();
+      return ResponseBuilder.success(res, requirements, 'Requirements retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Create Master Message Template
+   */
+  async createMasterTemplate(req, res, next) {
+    try {
+      const { MasterMessageTemplate } = require('../models');
+      const { provider, name, slug, structure, is_active } = req.body;
+
+      if (!provider || !name || !slug || !structure) {
+        return res.status(400).json({ success: false, error: 'provider, name, slug, and structure are required' });
+      }
+
+      const template = await MasterMessageTemplate.create({
+        provider,
+        name,
+        slug,
+        structure,
+        is_active: is_active !== undefined ? is_active : true,
+      });
+
+      return ResponseBuilder.success(res, template, 'Master template created successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Master Message Templates
+   */
+  async getMasterTemplates(req, res, next) {
+    try {
+      const { MasterMessageTemplate } = require('../models');
+      const templates = await MasterMessageTemplate.findAll();
+      return ResponseBuilder.success(res, templates, 'Master templates retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new AdminController();

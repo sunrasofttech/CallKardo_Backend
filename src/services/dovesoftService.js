@@ -1,15 +1,15 @@
 const axios = require('axios');
 
 class DovesoftService {
-  static async sendRCS(mobileno, templateCode, customParams) {
-    const key = process.env.DOVESOFT_RCS_KEY;
-    const botId = process.env.DOVESOFT_BOT_ID;
+  static async sendRCS(mobileno, templateCode, customParams, customCredentials = null) {
+    const key = customCredentials?.key || process.env.DOVESOFT_RCS_KEY;
+    const botId = customCredentials?.botId || process.env.DOVESOFT_BOT_ID;
 
     if (!key) {
-      throw new Error("Missing environment variable: DOVESOFT_RCS_KEY.");
+      throw new Error("Missing environment variable or custom credentials: DOVESOFT_RCS_KEY/key.");
     }
     if (!botId) {
-      throw new Error("Missing environment variable: DOVESOFT_BOT_ID.");
+      throw new Error("Missing environment variable or custom credentials: DOVESOFT_BOT_ID/botId.");
     }
     if (!templateCode) {
       throw new Error("Cannot send via RCS: 'templateCode' is required.");
