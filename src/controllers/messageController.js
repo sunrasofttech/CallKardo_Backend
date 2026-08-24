@@ -45,8 +45,8 @@ exports.applyForProgram = async (req, res) => {
     if (submitted_documents && typeof submitted_documents === 'object') {
       const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
       for (const [docName, docUrl] of Object.entries(submitted_documents)) {
-        if (typeof docUrl !== 'string') {
-          return res.status(400).json({ success: false, error: `Document ${docName} must be a valid URL.` });
+        if (typeof docUrl !== 'string' || !/^https?:\/\//i.test(docUrl)) {
+          return res.status(400).json({ success: false, error: `Document ${docName} must be a valid HTTP/HTTPS URL or you must upload the actual file.` });
         }
         const cleanString = docUrl.split('?')[0].toLowerCase();
         const hasValidExt = allowedExtensions.some(ext => cleanString.endsWith(ext));
