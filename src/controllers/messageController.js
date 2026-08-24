@@ -91,7 +91,7 @@ exports.getMasterTemplates = async (req, res) => {
 exports.createTemplate = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { provider, master_template_id, content } = req.body;
+    const { provider, master_template_id, content, template_name } = req.body;
 
     if (!['rcs', 'whatsapp'].includes(provider)) {
       return res.status(400).json({ success: false, error: 'Invalid provider. Must be rcs or whatsapp.' });
@@ -125,6 +125,7 @@ exports.createTemplate = async (req, res) => {
       user_id: userId,
       master_template_id,
       provider,
+      template_name: template_name || masterTemplate.name,
       content,
       status: 'pending'
     });
