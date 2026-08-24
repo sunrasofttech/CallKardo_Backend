@@ -608,8 +608,11 @@ class AuthController {
 
       let subscription = null;
       let isTrial = false;
+      let rcsStatus = 'unverified';
+      let whatsappStatus = 'unverified';
 
       if (role === 'merchant') {
+        const { MerchantMessageProgram } = require('../models');
         const subRecord = await Subscription.findOne({
           where: { userId: user.id },
           include: [{ model: Plan, as: 'plan' }],
@@ -640,6 +643,26 @@ class AuthController {
               : null,
           };
         }
+
+        const msgPrograms = await MerchantMessageProgram.findAll({ where: { user_id: user.id } });
+        for (const prog of msgPrograms) {
+          if (prog.provider === 'rcs' || prog.provider === 'both') {
+            if (prog.status === 'approved') {
+              if (prog.channel_mode === 'rcs' || prog.channel_mode === 'both') rcsStatus = 'approved';
+              else rcsStatus = 'disabled_by_admin'; // approved but channel off
+            } else if (rcsStatus === 'unverified') {
+              rcsStatus = prog.status;
+            }
+          }
+          if (prog.provider === 'whatsapp' || prog.provider === 'both') {
+            if (prog.status === 'approved') {
+              if (prog.channel_mode === 'whatsapp' || prog.channel_mode === 'both') whatsappStatus = 'approved';
+              else whatsappStatus = 'disabled_by_admin';
+            } else if (whatsappStatus === 'unverified') {
+              whatsappStatus = prog.status;
+            }
+          }
+        }
       }
 
       const vobizAccount = await VobizAccount.findOne({ where: { userId: user.id } });
@@ -658,6 +681,8 @@ class AuthController {
               businessUrl: user.businessUrl,
               categoryId: user.categoryId,
               subscription,
+              rcsStatus,
+              whatsappStatus,
             }
           : {
               firstName: user.firstName,
