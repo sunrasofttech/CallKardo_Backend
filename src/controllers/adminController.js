@@ -1900,17 +1900,33 @@ class AdminController {
   async getMessagePrograms(req, res, next) {
     try {
       const { MerchantMessageProgram, User } = require('../models');
-      const { status } = req.query;
+      const { status, page = 1, limit = 10 } = req.query;
       const where = {};
       if (status) where.status = status;
 
-      const programs = await MerchantMessageProgram.findAll({
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await MerchantMessageProgram.findAndCountAll({
         where,
         include: [{ model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'] }],
-        order: [['created_at', 'DESC']]
+        order: [['created_at', 'DESC']],
+        limit: limitNum,
+        offset: offset
       });
 
-      return ResponseBuilder.success(res, programs, 'Message programs retrieved successfully');
+      return res.status(200).json({
+        success: true,
+        data: rows,
+        message: 'Message programs retrieved successfully',
+        pagination: {
+          total: count,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(count / limitNum)
+        }
+      });
     } catch (err) {
       next(err);
     }
@@ -1949,20 +1965,36 @@ class AdminController {
   async getMessageTemplates(req, res, next) {
     try {
       const { MessageTemplate, User } = require('../models');
-      const { status } = req.query;
+      const { status, page = 1, limit = 10 } = req.query;
       const where = {};
       if (status) where.status = status;
 
-      const templates = await MessageTemplate.findAll({
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await MessageTemplate.findAndCountAll({
         where,
         include: [
           { model: User, as: 'user', attributes: ['id', 'email', 'businessName'] },
           { model: require('../models').MasterMessageTemplate, as: 'masterTemplate', attributes: ['name', 'structure'] }
         ],
-        order: [['created_at', 'DESC']]
+        order: [['created_at', 'DESC']],
+        limit: limitNum,
+        offset: offset
       });
 
-      return ResponseBuilder.success(res, templates, 'Message templates retrieved successfully');
+      return res.status(200).json({
+        success: true,
+        data: rows,
+        message: 'Message templates retrieved successfully',
+        pagination: {
+          total: count,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(count / limitNum)
+        }
+      });
     } catch (err) {
       next(err);
     }

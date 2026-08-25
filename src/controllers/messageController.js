@@ -185,14 +185,37 @@ exports.createTemplate = async (req, res) => {
 exports.getTemplates = async (req, res) => {
   try {
     const userId = req.user.id;
-    const templates = await MessageTemplate.findAll({
-      where: { user_id: userId },
+    const { status, page = 1, limit = 10 } = req.query;
+
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const where = { user_id: userId };
+    if (status) {
+      where.status = status;
+    }
+
+    const { count, rows } = await MessageTemplate.findAndCountAll({
+      where,
       include: [
         { model: MasterMessageTemplate, as: 'masterTemplate', attributes: ['name', 'structure'] }
-      ]
+      ],
+      limit: limitNum,
+      offset: offset,
+      order: [['created_at', 'DESC']]
     });
 
-    res.status(200).json({ success: true, data: templates });
+    res.status(200).json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum)
+      }
+    });
   } catch (error) {
     console.error('Get templates error:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch templates.' });
