@@ -83,7 +83,8 @@ exports.getPrograms = async (req, res) => {
     const userId = req.user.id;
     const programs = await MerchantMessageProgram.findAll({
       where: { user_id: userId },
-      attributes: { exclude: ['credentials'] } // Don't expose full credentials to frontend
+      attributes: { exclude: ['credentials'] }, // Don't expose full credentials to frontend
+      order: [['created_at', 'DESC']]
     });
 
     res.status(200).json({ success: true, data: programs });
@@ -99,7 +100,10 @@ exports.getMasterTemplates = async (req, res) => {
     const where = { is_active: true };
     if (provider) where.provider = provider;
 
-    const templates = await MasterMessageTemplate.findAll({ where });
+    const templates = await MasterMessageTemplate.findAll({ 
+      where,
+      order: [['created_at', 'DESC']] 
+    });
     res.status(200).json({ success: true, data: templates });
   } catch (error) {
     console.error('Get master templates error:', error);
