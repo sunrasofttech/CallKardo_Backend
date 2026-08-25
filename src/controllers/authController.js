@@ -646,17 +646,17 @@ class AuthController {
 
         const msgPrograms = await MerchantMessageProgram.findAll({ where: { user_id: user.id } });
         for (const prog of msgPrograms) {
-          if (prog.provider === 'rcs' || prog.provider === 'both') {
+          if (prog.provider === 'rcs') {
             if (prog.status === 'approved') {
-              if (prog.channel_mode === 'rcs' || prog.channel_mode === 'both') rcsStatus = 'approved';
+              if (prog.channel_mode === 'rcs') rcsStatus = 'approved';
               else rcsStatus = 'disabled_by_admin'; // approved but channel off
             } else if (rcsStatus === 'unverified') {
               rcsStatus = prog.status;
             }
           }
-          if (prog.provider === 'whatsapp' || prog.provider === 'both') {
+          if (prog.provider === 'whatsapp') {
             if (prog.status === 'approved') {
-              if (prog.channel_mode === 'whatsapp' || prog.channel_mode === 'both') whatsappStatus = 'approved';
+              if (prog.channel_mode === 'whatsapp') whatsappStatus = 'approved';
               else whatsappStatus = 'disabled_by_admin';
             } else if (whatsappStatus === 'unverified') {
               whatsappStatus = prog.status;

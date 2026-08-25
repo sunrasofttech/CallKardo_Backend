@@ -19,8 +19,8 @@ exports.applyForProgram = async (req, res) => {
     const userId = req.user.id;
     let { provider, submitted_documents } = req.body;
 
-    if (!['rcs', 'whatsapp', 'both'].includes(provider)) {
-      return res.status(400).json({ success: false, error: 'Invalid provider. Must be rcs, whatsapp, or both.' });
+    if (!['rcs', 'whatsapp'].includes(provider)) {
+      return res.status(400).json({ success: false, error: 'Invalid provider. Must be rcs or whatsapp.' });
     }
 
     // Parse submitted_documents if sent as a string
