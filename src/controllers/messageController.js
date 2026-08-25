@@ -131,7 +131,18 @@ exports.createTemplate = async (req, res) => {
 
     // Validate that the merchant provided all required params
     if (masterTemplate.merchant_params && Array.isArray(masterTemplate.merchant_params)) {
-      const missingParams = masterTemplate.merchant_params.filter(param => content[param] === undefined || content[param] === null || content[param] === '');
+      let missingParams = [];
+      
+      if (typeof content === 'string') {
+        const matches = content.match(/\{\{([^}]+)\}\}/g) || [];
+        const variablesInString = matches.map(m => m.replace(/[{}]/g, '').trim());
+        missingParams = masterTemplate.merchant_params.filter(param => !variablesInString.includes(param));
+      } else if (typeof content === 'object' && content !== null) {
+        missingParams = masterTemplate.merchant_params.filter(param => content[param] === undefined || content[param] === null || content[param] === '');
+      } else {
+        return res.status(400).json({ success: false, error: 'Content must be a string or JSON object.' });
+      }
+
       if (missingParams.length > 0) {
         return res.status(400).json({ 
           success: false, 
