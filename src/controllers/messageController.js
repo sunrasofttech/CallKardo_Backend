@@ -60,7 +60,8 @@ exports.applyForProgram = async (req, res) => {
       where: { user_id: userId, provider },
       defaults: { 
         status: 'pending',
-        submitted_documents: submitted_documents || {} 
+        submitted_documents: submitted_documents || {},
+        channel_mode: provider
       },
     });
 
