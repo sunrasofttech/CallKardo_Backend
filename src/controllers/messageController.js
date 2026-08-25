@@ -151,6 +151,21 @@ exports.createTemplate = async (req, res) => {
       }
     }
 
+    // Block all previous templates for this specific master_template_id and provider
+    await MessageTemplate.update(
+      { 
+        status: 'rejected',
+        admin_feedback: 'Automatically blocked due to a newer template submission.'
+      },
+      { 
+        where: { 
+          user_id: userId, 
+          master_template_id, 
+          provider 
+        } 
+      }
+    );
+
     const template = await MessageTemplate.create({
       user_id: userId,
       master_template_id,
