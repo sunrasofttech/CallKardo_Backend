@@ -105,7 +105,7 @@ exports.getApprovalTimeMessage = async (req, res) => {
       success: true, 
       data: {
         days,
-        message: `kyc approval of rcs and whatsapp can take upto ${days} days`
+        message: `Please note: KYC approval for RCS and WhatsApp may take up to ${days} days to process.`
       } 
     });
   } catch (error) {
