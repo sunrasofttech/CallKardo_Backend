@@ -34,6 +34,7 @@ const upload = multer({
 router.use(authenticate);
 
 // Merchant Program Routes
+router.get('/programs/approval-time', messageController.getApprovalTimeMessage);
 router.get('/programs/requirements', messageController.getRequirements);
 router.post('/programs/apply', upload.any(), messageController.applyForProgram);
 router.get('/programs', messageController.getPrograms);

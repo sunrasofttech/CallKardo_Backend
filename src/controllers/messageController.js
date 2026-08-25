@@ -95,6 +95,25 @@ exports.getPrograms = async (req, res) => {
   }
 };
 
+exports.getApprovalTimeMessage = async (req, res) => {
+  try {
+    const { Setting } = require('../models');
+    const setting = await Setting.findOne({ where: { key: 'kyc_approval_days' } });
+    const days = setting ? parseInt(setting.value, 10) : 7; // Default to 7 if not set
+    
+    res.status(200).json({ 
+      success: true, 
+      data: {
+        days,
+        message: `kyc approval of rcs and whatsapp can take upto ${days} days`
+      } 
+    });
+  } catch (error) {
+    console.error('Get approval time error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch approval time message.' });
+  }
+};
+
 exports.getMasterTemplates = async (req, res) => {
   try {
     const { provider } = req.query;

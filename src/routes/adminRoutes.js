@@ -90,6 +90,7 @@ router.delete('/admins/:id', adminController.deleteAdmin);
 
 // Settings routes
 router.get('/settings', settingController.getAllSettings);
+router.get('/settings/:key', settingController.getSettingByKey);
 router.put('/settings', settingController.upsertSetting);
 
 // Admin Notification routes
