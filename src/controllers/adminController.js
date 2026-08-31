@@ -301,6 +301,27 @@ class AdminController {
     }
   }
 
+  async bulkDeleteMerchants(req, res, next) {
+    try {
+      const { userIds } = req.body;
+      
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return ResponseBuilder.error(res, 'Please provide an array of userIds to delete', 400);
+      }
+
+      const deletedCount = await User.destroy({
+        where: {
+          id: userIds,
+          role: 'merchant'
+        }
+      });
+
+      return ResponseBuilder.success(res, { deletedCount }, `Successfully deleted ${deletedCount} merchant(s)`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async getMerchants(req, res, next) {
     try {
       const { Op } = require('sequelize');

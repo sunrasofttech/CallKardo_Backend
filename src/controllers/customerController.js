@@ -159,6 +159,30 @@ class CustomerController {
   }
 
   /**
+   * Bulk Delete Customers
+   */
+  async bulkDelete(req, res, next) {
+    try {
+      const { customerIds } = req.body;
+
+      if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        return ResponseBuilder.error(res, 'Please provide an array of customerIds to delete', 400);
+      }
+
+      const deletedCount = await Customer.destroy({
+        where: {
+          id: customerIds,
+          userId: req.user.id
+        }
+      });
+
+      return ResponseBuilder.success(res, { deletedCount }, `Successfully deleted ${deletedCount} customer(s)`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Upload CSV to bulk import customers
    */
   async uploadCSV(req, res, next) {

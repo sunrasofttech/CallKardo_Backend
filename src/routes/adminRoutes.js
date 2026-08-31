@@ -16,6 +16,8 @@ router.get('/dashboard', adminController.getDashboard);
 router.get('/admins', adminController.getAdmins);
 router.post('/admins', authController.registerAdmin);
 router.put('/admins/:id', adminController.updateAdmin);
+
+router.post('/merchants/bulk-delete', adminController.bulkDeleteMerchants);
 router.get('/merchants', adminController.getMerchants);
 router.get('/merchants/:id', adminController.getMerchant);
 router.put('/merchants/:id', adminController.updateMerchant);

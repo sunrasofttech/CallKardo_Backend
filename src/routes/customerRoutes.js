@@ -43,6 +43,7 @@ router.get('/:id', CustomerController.getById);
 router.post('/', CustomerController.create);
 router.put('/:id', CustomerController.update);
 router.delete('/:id', CustomerController.delete);
+router.post('/bulk-delete', CustomerController.bulkDelete);
 
 // Bulk Import CSV
 router.post('/upload', upload.single('file'), CustomerController.uploadCSV);
