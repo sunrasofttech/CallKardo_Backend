@@ -196,13 +196,6 @@ class CustomerController {
       const validationErrors = [];
       const processedNumbers = new Set();
 
-      // Fetch existing merchant numbers from DB to detect duplicates
-      const existingCustomers = await Customer.findAll({
-        where: { userId: req.user.id },
-        attributes: ['mobile'],
-      });
-      const dbMobileNumbers = new Set(existingCustomers.map((c) => c.mobile));
-
       fs.createReadStream(filePath)
         .pipe(csv(['name', 'mobile', 'tags', 'notes', 'email']))
         .on('data', (row) => {
@@ -224,15 +217,9 @@ class CustomerController {
             return;
           }
 
-          // Check for duplicate in the CSV file itself
+          // Check for duplicate in the CSV file itself (keeps the last one in the file if we wanted, but here we just skip duplicates in the same file to avoid immediate conflicts)
           if (processedNumbers.has(mobile)) {
-            validationErrors.push(`Row omitted: Duplicate mobile in CSV file for ${name} (${mobile})`);
-            return;
-          }
-
-          // Check for duplicate in DB
-          if (dbMobileNumbers.has(mobile)) {
-            validationErrors.push(`Row omitted: Mobile ${mobile} already exists in database for this merchant`);
+            validationErrors.push(`Row omitted: Duplicate mobile within the CSV file for ${name} (${mobile})`);
             return;
           }
 
@@ -248,9 +235,11 @@ class CustomerController {
         })
         .on('end', async () => {
           try {
-            // Bulk Create
+            // Bulk Create / Upsert
             if (customersToCreate.length > 0) {
-              await Customer.bulkCreate(customersToCreate);
+              await Customer.bulkCreate(customersToCreate, { 
+                updateOnDuplicate: ['name', 'email', 'tags', 'notes', 'updatedAt'] 
+              });
             }
 
             // Cleanup local temp file
