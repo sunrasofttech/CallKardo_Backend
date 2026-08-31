@@ -9,16 +9,15 @@ const defaults = require('../config/defaults');
 async function sendSMSVerification(mobile, otp) {
   const apiKey = process.env.TWOFACTOR_API_KEY;
 
-  if (!apiKey) {
-    console.warn('TWOFACTOR_API_KEY is not set. Simulating SMS send.');
-    console.log('\n==================================================');
-    console.log('         DEVELOPMENT SMS OUTBOX SIMULATOR         ');
-    console.log('==================================================');
-    console.log(`To:      ${mobile}`);
-    console.log(`OTP:     ${otp}`);
-    console.log('==================================================\n');
-    return true;
-  }
+  // Temporarily pausing SMS OTP for now
+  console.warn('SMS OTP paused. Simulating SMS send.');
+  console.log('\n==================================================');
+  console.log('         DEVELOPMENT SMS OUTBOX SIMULATOR         ');
+  console.log('==================================================');
+  console.log(`To:      ${mobile}`);
+  console.log(`OTP:     ${otp}`);
+  console.log('==================================================\n');
+  return true;
 
   try {
     // Extract last 10 digits to handle any +91 prefixes passed from client
@@ -27,7 +26,7 @@ async function sendSMSVerification(mobile, otp) {
     const url = `https://2factor.in/API/V1/${apiKey}/SMS/+91${cleanMobile}/${otp}/OTP`;
 
     const response = await axios.get(url);
-    
+
     if (response.data && response.data.Status === 'Success') {
       console.log(`SMS OTP sent successfully to ${mobile}`);
       return true;
