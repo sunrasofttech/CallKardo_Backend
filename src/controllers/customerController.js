@@ -237,8 +237,8 @@ class CustomerController {
           try {
             // Bulk Create / Upsert
             if (customersToCreate.length > 0) {
-              await Customer.bulkCreate(customersToCreate, { 
-                updateOnDuplicate: ['name', 'email', 'tags', 'notes', 'updatedAt'] 
+              await Customer.bulkCreate(customersToCreate, {
+                ignoreDuplicates: true
               });
             }
 
@@ -446,7 +446,7 @@ class CustomerController {
       const existingCustomerIds = existingMembers.map(m => m.customerId);
 
       const newCustomers = validCustomers.filter(c => !existingCustomerIds.includes(c.id));
-      
+
       const membersToCreate = newCustomers.map(c => ({
         customerListId: list.id,
         customerId: c.id
@@ -492,7 +492,7 @@ class CustomerController {
       const validListIds = lists.map(l => l.id);
 
       let deletedCustomersCount = 0;
-      
+
       // If requested, delete all customers that belong to these lists
       if (deleteCustomers === true) {
         // Find all customer IDs in these lists
@@ -519,7 +519,7 @@ class CustomerController {
 
       await transaction.commit();
 
-      const msg = deleteCustomers === true 
+      const msg = deleteCustomers === true
         ? `Successfully deleted ${deletedListsCount} list(s) and their ${deletedCustomersCount} associated customer(s)`
         : `Successfully deleted ${deletedListsCount} list(s)`;
 
