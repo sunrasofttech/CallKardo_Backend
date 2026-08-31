@@ -52,6 +52,8 @@ router.post('/upload', upload.single('file'), CustomerController.uploadCSV);
 router.get('/lists/all', CustomerController.getLists);
 router.get('/lists/:id', CustomerController.getListById);
 router.post('/lists', CustomerController.createList);
+router.post('/lists/bulk-delete', CustomerController.bulkDeleteLists);
 router.delete('/lists/:id', CustomerController.deleteList);
+router.post('/lists/:listId/add-customers', CustomerController.addCustomersToList);
 
 module.exports = router;

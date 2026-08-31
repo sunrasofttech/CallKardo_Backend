@@ -413,6 +413,133 @@ class CustomerController {
       next(err);
     }
   }
+
+  /**
+   * Add bulk customers to a Customer List
+   */
+  async addCustomersToList(req, res, next) {
+    const transaction = await sequelize.transaction();
+    try {
+      const { listId } = req.params;
+      const { customerIds } = req.body;
+
+      if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        await transaction.rollback();
+        return ResponseBuilder.error(res, 'Please provide an array of customerIds', 400);
+      }
+
+      const list = await CustomerList.findOne({
+        where: { id: listId, userId: req.user.id },
+        transaction
+      });
+
+      if (!list) {
+        await transaction.rollback();
+        return ResponseBuilder.error(res, 'Customer list not found', 404);
+      }
+
+      // Verify customers belong to merchant
+      const validCustomers = await Customer.findAll({
+        where: { id: customerIds, userId: req.user.id },
+        transaction
+      });
+
+      if (validCustomers.length === 0) {
+        await transaction.rollback();
+        return ResponseBuilder.error(res, 'No valid customers found for this merchant', 400);
+      }
+
+      // Avoid duplicates
+      const existingMembers = await CustomerListMember.findAll({
+        where: { customerListId: list.id, customerId: validCustomers.map(c => c.id) },
+        transaction
+      });
+      const existingCustomerIds = existingMembers.map(m => m.customerId);
+
+      const newCustomers = validCustomers.filter(c => !existingCustomerIds.includes(c.id));
+      
+      const membersToCreate = newCustomers.map(c => ({
+        customerListId: list.id,
+        customerId: c.id
+      }));
+
+      if (membersToCreate.length > 0) {
+        await CustomerListMember.bulkCreate(membersToCreate, { transaction });
+      }
+
+      await transaction.commit();
+
+      return ResponseBuilder.success(res, { addedCount: membersToCreate.length }, `Successfully added ${membersToCreate.length} customer(s) to the list`);
+    } catch (err) {
+      await transaction.rollback();
+      next(err);
+    }
+  }
+
+  /**
+   * Bulk delete Customer Lists AND their associated Customers
+   */
+  async bulkDeleteLists(req, res, next) {
+    const transaction = await sequelize.transaction();
+    try {
+      const { listIds, deleteCustomers } = req.body;
+
+      if (!Array.isArray(listIds) || listIds.length === 0) {
+        await transaction.rollback();
+        return ResponseBuilder.error(res, 'Please provide an array of listIds to delete', 400);
+      }
+
+      // Verify lists belong to merchant
+      const lists = await CustomerList.findAll({
+        where: { id: listIds, userId: req.user.id },
+        transaction
+      });
+
+      if (lists.length === 0) {
+        await transaction.rollback();
+        return ResponseBuilder.error(res, 'No valid lists found for this merchant', 404);
+      }
+
+      const validListIds = lists.map(l => l.id);
+
+      let deletedCustomersCount = 0;
+      
+      // If requested, delete all customers that belong to these lists
+      if (deleteCustomers === true) {
+        // Find all customer IDs in these lists
+        const members = await CustomerListMember.findAll({
+          where: { customerListId: validListIds },
+          transaction
+        });
+        const customerIdsToDelete = [...new Set(members.map(m => m.customerId))];
+
+        // Delete the customers (this will cascade to mappings)
+        if (customerIdsToDelete.length > 0) {
+          deletedCustomersCount = await Customer.destroy({
+            where: { id: customerIdsToDelete, userId: req.user.id },
+            transaction
+          });
+        }
+      }
+
+      // Delete the lists (if deleteCustomers is false, this just removes the lists and list-members mappings, keeping the customers intact)
+      const deletedListsCount = await CustomerList.destroy({
+        where: { id: validListIds },
+        transaction
+      });
+
+      await transaction.commit();
+
+      const msg = deleteCustomers === true 
+        ? `Successfully deleted ${deletedListsCount} list(s) and their ${deletedCustomersCount} associated customer(s)`
+        : `Successfully deleted ${deletedListsCount} list(s)`;
+
+      return ResponseBuilder.success(res, { deletedListsCount, deletedCustomersCount }, msg);
+    } catch (err) {
+      await transaction.rollback();
+      next(err);
+    }
+  }
 }
 
 module.exports = new CustomerController();
