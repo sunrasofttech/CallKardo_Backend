@@ -144,5 +144,12 @@ router.put('/master-templates/:id/status', adminController.updateMasterTemplateS
 router.get('/message-templates', adminController.getMessageTemplates);
 router.put('/message-templates/:id/status', adminController.updateMessageTemplateStatus);
 
+// Help Videos management routes
+const helpVideoController = require('../controllers/helpVideoController');
+router.get('/help-videos', helpVideoController.getAdminVideos);
+router.post('/help-videos', helpVideoController.createVideo);
+router.put('/help-videos/:id', helpVideoController.updateVideo);
+router.delete('/help-videos/:id', helpVideoController.deleteVideo);
+
 module.exports = router;
 

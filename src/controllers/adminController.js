@@ -1229,7 +1229,7 @@ class AdminController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { userId, targetType, title, message, data } = value;
+      const { userId, targetType, title, message, data, filter } = value;
       const createdNotifications = [];
 
       if (targetType === 'single' && userId) {
@@ -1249,7 +1249,88 @@ class AdminController {
           console.log(`[Push Notification] Dispatched FCM push to user ${targetUser.id} (${targetUser.fcmToken}): "${title}"`);
         }
       } else if (targetType === 'all' || targetType === 'merchants') {
-        const users = await User.findAll({ attributes: ['id', 'fcmToken'] });
+        const { Op } = require('sequelize');
+        let whereClause = {};
+        if (targetType === 'merchants') {
+          whereClause.role = 'merchant';
+        }
+
+        let includeClause = [];
+
+        if (filter) {
+          const now = new Date();
+          const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          
+          switch(filter) {
+            case 'last_week_registered':
+              whereClause.createdAt = { [Op.gte]: lastWeek };
+              break;
+            case 'subscription_expired':
+              includeClause.push({
+                model: Subscription,
+                as: 'subscription',
+                required: true,
+                where: {
+                  [Op.or]: [
+                    { status: 'expired' },
+                    { expiryDate: { [Op.lt]: now } }
+                  ]
+                }
+              });
+              break;
+            case 'phone_number_expired':
+              includeClause.push({
+                model: VobizNumber,
+                as: 'vobizNumbers',
+                required: true,
+                where: {
+                  rentalExpiryDate: { [Op.lt]: now }
+                }
+              });
+              break;
+            case 'non_active':
+              includeClause.push({
+                model: Subscription,
+                as: 'subscription',
+                required: false
+              });
+              whereClause[Op.or] = [
+                { '$subscription.id$': null },
+                { '$subscription.status$': { [Op.ne]: 'active' } }
+              ];
+              break;
+            case 'not_recharged_yet':
+              includeClause.push({
+                model: PaymentTransaction,
+                as: 'paymentTransactions',
+                required: false,
+                where: { status: 'success' }
+              });
+              whereClause['$paymentTransactions.id$'] = null;
+              break;
+            case 'premium':
+              includeClause.push({
+                model: Subscription,
+                as: 'subscription',
+                required: true,
+                include: [{
+                  model: Plan,
+                  as: 'plan',
+                  required: true,
+                  where: {
+                    price: { [Op.gt]: 0 }
+                  }
+                }]
+              });
+              break;
+          }
+        }
+
+        const users = await User.findAll({
+          where: whereClause,
+          include: includeClause,
+          attributes: ['id', 'fcmToken']
+        });
         for (const user of users) {
           const notif = await Notification.create({
             userId: user.id,

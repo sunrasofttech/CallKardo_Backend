@@ -31,6 +31,10 @@ router.get('/pages/:slug', SettingController.getPageBySlug);
 // Admin routes for page updates
 router.put('/pages/:slug', authenticate, isAdmin, SettingController.updatePageBySlug);
 
+// Help videos API
+const helpVideoController = require('../controllers/helpVideoController');
+router.get('/help-videos', authenticate, helpVideoController.getVideos);
+
 // --- App Settings CRUD APIs ---
 router.get('/', authenticate, SettingController.getAllSettings);
 router.get('/:key', authenticate, SettingController.getSettingByKey);

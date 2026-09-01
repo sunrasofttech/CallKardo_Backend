@@ -62,6 +62,14 @@ const updateAdminProfileSchema = Joi.object({
 const sendNotificationSchema = Joi.object({
   userId: Joi.string().uuid().optional().allow(null, ''),
   targetType: Joi.string().valid('single', 'all', 'merchants', 'admins').default('single'),
+  filter: Joi.string().valid(
+    'last_week_registered',
+    'subscription_expired',
+    'phone_number_expired',
+    'non_active',
+    'not_recharged_yet',
+    'premium'
+  ).optional().allow(null, ''),
   title: Joi.string().min(1).max(150).required().messages({
     'any.required': 'Notification title is required',
   }),

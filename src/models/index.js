@@ -26,6 +26,7 @@ const MerchantMessageProgram = require('./merchantMessageProgram');
 const MessageTemplate = require('./messageTemplate');
 const MasterMessageTemplate = require('./masterMessageTemplate');
 const ProgramDocumentRequirement = require('./programDocumentRequirement');
+const HelpVideo = require('./helpVideo');
 
 // Establish Relationships
 
@@ -227,4 +228,5 @@ module.exports = {
   MessageTemplate,
   MasterMessageTemplate,
   ProgramDocumentRequirement,
+  HelpVideo,
 };
