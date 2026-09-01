@@ -73,9 +73,23 @@ class CustomerController {
       // Check if mobile number exists for this merchant (soft-delete safe)
       const existing = await Customer.findOne({
         where: { userId: req.user.id, mobile },
+        paranoid: false,
       });
+
       if (existing) {
-        return ResponseBuilder.error(res, 'A customer with this mobile number already exists under your account', 400);
+        if (existing.deletedAt) {
+          // Restore and update the soft-deleted contact
+          await existing.restore();
+          await existing.update({
+            name,
+            email: email || null,
+            tags,
+            notes,
+          });
+          return ResponseBuilder.success(res, existing, 'Customer created successfully', 201);
+        } else {
+          return ResponseBuilder.error(res, 'A customer with this mobile number already exists under your account', 400);
+        }
       }
 
       const customer = await Customer.create({
@@ -196,6 +210,24 @@ class CustomerController {
       const validationErrors = [];
       const processedNumbers = new Set();
 
+      // Fetch all existing numbers (including soft-deleted ones)
+      const existingCustomers = await Customer.findAll({
+        where: { userId: req.user.id },
+        attributes: ['mobile', 'deletedAt'],
+        paranoid: false,
+      });
+
+      const activeNumbers = new Set();
+      const deletedNumbers = new Set();
+
+      existingCustomers.forEach((c) => {
+        if (c.deletedAt) {
+          deletedNumbers.add(c.mobile);
+        } else {
+          activeNumbers.add(c.mobile);
+        }
+      });
+
       fs.createReadStream(filePath)
         .pipe(csv(['name', 'mobile', 'tags', 'notes', 'email']))
         .on('data', (row) => {
@@ -217,6 +249,12 @@ class CustomerController {
             return;
           }
 
+          // Check for active duplicate in DB
+          if (activeNumbers.has(mobile)) {
+            validationErrors.push(`Row omitted: Mobile ${mobile} already exists in database for this merchant`);
+            return;
+          }
+
           // Check for duplicate in the CSV file itself (keeps the last one in the file if we wanted, but here we just skip duplicates in the same file to avoid immediate conflicts)
           if (processedNumbers.has(mobile)) {
             validationErrors.push(`Row omitted: Duplicate mobile within the CSV file for ${name} (${mobile})`);
@@ -224,21 +262,40 @@ class CustomerController {
           }
 
           processedNumbers.add(mobile);
-          customersToCreate.push({
+
+          let customerData = {
             userId: req.user.id,
             name,
             mobile,
             email: email || null,
             tags,
             notes,
-          });
+          };
+
+          // If this number was previously soft-deleted, mark it for restoration
+          if (deletedNumbers.has(mobile)) {
+            customerData.deletedAt = null;
+          }
+
+          customersToCreate.push(customerData);
         })
         .on('end', async () => {
           try {
+            // Separate into toCreate and toRestore
+            const toCreate = customersToCreate.filter(c => c.deletedAt === undefined);
+            const toRestore = customersToCreate.filter(c => c.deletedAt === null);
+
             // Bulk Create / Upsert
-            if (customersToCreate.length > 0) {
-              await Customer.bulkCreate(customersToCreate, {
+            if (toCreate.length > 0) {
+              await Customer.bulkCreate(toCreate, {
                 ignoreDuplicates: true
+              });
+            }
+
+            // Restore soft-deleted contacts via updateOnDuplicate
+            if (toRestore.length > 0) {
+              await Customer.bulkCreate(toRestore, {
+                updateOnDuplicate: ['name', 'email', 'tags', 'notes', 'deletedAt']
               });
             }
 
