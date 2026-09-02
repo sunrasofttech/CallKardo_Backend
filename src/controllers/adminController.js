@@ -1333,17 +1333,37 @@ class AdminController {
           include: includeClause,
           attributes: ['id', 'fcmToken']
         });
-        for (const user of users) {
-          const notif = await Notification.create({
-            userId: user.id,
-            title,
-            message,
-            isRead: false,
-          });
-          createdNotifications.push(notif);
-          if (user.fcmToken) {
-            await fcmService.sendPushNotification(user.fcmToken, title, message, { notificationId: notif.id, ...data });
-            console.log(`[Push Notification] Dispatched FCM push to user ${user.id} (${user.fcmToken}): "${title}"`);
+
+        if (!filter) {
+          // Send a single topic message to all merchants via Firebase
+          await fcmService.sendTopicPushNotification('all_merchants', title, message, data || {});
+          console.log(`[Push Notification] Dispatched FCM topic push to 'all_merchants': "${title}"`);
+
+          // Bulk create notifications in the database
+          if (users.length > 0) {
+            const notificationsData = users.map(user => ({
+              userId: user.id,
+              title,
+              message,
+              isRead: false,
+            }));
+            const created = await Notification.bulkCreate(notificationsData);
+            createdNotifications.push(...created);
+          }
+        } else {
+          // If a filter is applied, we must send pushes individually since they aren't the whole topic
+          for (const user of users) {
+            const notif = await Notification.create({
+              userId: user.id,
+              title,
+              message,
+              isRead: false,
+            });
+            createdNotifications.push(notif);
+            if (user.fcmToken) {
+              await fcmService.sendPushNotification(user.fcmToken, title, message, { notificationId: notif.id, ...data });
+              console.log(`[Push Notification] Dispatched FCM push to user ${user.id} (${user.fcmToken}): "${title}"`);
+            }
           }
         }
       } else {
