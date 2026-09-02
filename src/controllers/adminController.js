@@ -1,5 +1,6 @@
 const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction } = require('../models');
 const ResponseBuilder = require('../utils/response');
+const fcmService = require('../services/fcmService');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema, updateAdminProfileSchema, sendNotificationSchema, adminResetMerchantPasswordSchema } = require('../validators/admin');
 
@@ -1246,6 +1247,7 @@ class AdminController {
         createdNotifications.push(notif);
 
         if (targetUser.fcmToken) {
+          await fcmService.sendPushNotification(targetUser.fcmToken, title, message, { notificationId: notif.id, ...data });
           console.log(`[Push Notification] Dispatched FCM push to user ${targetUser.id} (${targetUser.fcmToken}): "${title}"`);
         }
       } else if (targetType === 'all' || targetType === 'merchants') {
@@ -1340,6 +1342,7 @@ class AdminController {
           });
           createdNotifications.push(notif);
           if (user.fcmToken) {
+            await fcmService.sendPushNotification(user.fcmToken, title, message, { notificationId: notif.id, ...data });
             console.log(`[Push Notification] Dispatched FCM push to user ${user.id} (${user.fcmToken}): "${title}"`);
           }
         }
