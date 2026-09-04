@@ -1710,6 +1710,79 @@ class AdminController {
   }
 
   /**
+   * Get Revenue Report
+   */
+  async getRevenueReport(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+      const { period, startDate, endDate } = req.query;
+      
+      let whereClause = { status: 'success' };
+      
+      const now = new Date();
+      if (period) {
+        if (period === 'today') {
+          const start = new Date(now.setHours(0,0,0,0));
+          const end = new Date(now.setHours(23,59,59,999));
+          whereClause.createdAt = { [Op.between]: [start, end] };
+        } else if (period === 'yesterday') {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const start = new Date(yesterday.setHours(0,0,0,0));
+          const end = new Date(yesterday.setHours(23,59,59,999));
+          whereClause.createdAt = { [Op.between]: [start, end] };
+        } else if (period === '1month') {
+          const start = new Date();
+          start.setMonth(start.getMonth() - 1);
+          whereClause.createdAt = { [Op.gte]: start };
+        } else if (period === '3month') {
+          const start = new Date();
+          start.setMonth(start.getMonth() - 3);
+          whereClause.createdAt = { [Op.gte]: start };
+        }
+      } else if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23,59,59,999);
+        whereClause.createdAt = { [Op.between]: [start, end] };
+      }
+
+      const transactions = await PaymentTransaction.findAll({
+        where: whereClause,
+        include: [{ model: User, as: 'user', attributes: ['id', 'email', 'businessName'] }],
+        order: [['createdAt', 'DESC']]
+      });
+
+      const totalRevenue = transactions.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
+      // Group by date for charts
+      const revenueByDate = {};
+      transactions.forEach(tx => {
+        const dateStr = tx.createdAt.toISOString().split('T')[0];
+        if (!revenueByDate[dateStr]) {
+          revenueByDate[dateStr] = 0;
+        }
+        revenueByDate[dateStr] += parseFloat(tx.amount || 0);
+      });
+      
+      const chartData = Object.keys(revenueByDate).sort().map(date => ({
+        date,
+        revenue: revenueByDate[date]
+      }));
+
+      return ResponseBuilder.success(res, {
+        totalRevenue,
+        period: period || (startDate && endDate ? 'custom' : 'all_time'),
+        transactionsCount: transactions.length,
+        chartData,
+        transactions
+      }, 'Revenue report retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Get all transactions with search, filter, and pagination
    */
   async getTransactions(req, res, next) {

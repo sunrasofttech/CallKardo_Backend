@@ -119,6 +119,9 @@ router.delete('/plans/:id', PlanController.delete);
 // Billing overview
 router.get('/billing/overview', adminController.getBillingOverview);
 
+// Revenue Report route
+router.get('/revenue/report', adminController.getRevenueReport);
+
 // Payment Transaction management routes
 router.get('/transactions', adminController.getTransactions);
 router.get('/transactions/:id', adminController.getTransactionById);
