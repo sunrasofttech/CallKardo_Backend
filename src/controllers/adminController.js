@@ -372,10 +372,21 @@ class AdminController {
         offset,
       });
 
+      const merchantsData = merchants.map(m => {
+        const merchantJson = m.toJSON();
+        let isTrial = false;
+        if (merchantJson.subscription && merchantJson.subscription.plan) {
+           const p = merchantJson.subscription.plan;
+           isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+        }
+        merchantJson.isTrial = isTrial;
+        return merchantJson;
+      });
+
       return ResponseBuilder.success(
         res,
         {
-          merchants,
+          merchants: merchantsData,
           pagination: {
             totalItems: count,
             currentPage: page,
@@ -402,7 +413,16 @@ class AdminController {
         ],
       });
       if (!merchant) return ResponseBuilder.error(res, 'Merchant not found', 404);
-      return ResponseBuilder.success(res, merchant, 'Merchant retrieved successfully');
+
+      const merchantJson = merchant.toJSON();
+      let isTrial = false;
+      if (merchantJson.subscription && merchantJson.subscription.plan) {
+         const p = merchantJson.subscription.plan;
+         isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+      }
+      merchantJson.isTrial = isTrial;
+
+      return ResponseBuilder.success(res, merchantJson, 'Merchant retrieved successfully');
     } catch (err) {
       next(err);
     }
@@ -984,7 +1004,10 @@ class AdminController {
       if (status) where.outcome = status;
 
       const include = [
-        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+        { 
+          model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
+          include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+        },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
         { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
         { model: CallSession, as: 'session', attributes: ['id', 'actions'], required: false },
@@ -1006,13 +1029,27 @@ class AdminController {
         order: [['createdAt', 'DESC']],
       });
 
+      rows = rows.map(r => {
+        const reportJson = r.toJSON();
+        let isTrial = false;
+        if (reportJson.user && reportJson.user.subscription && reportJson.user.subscription.plan) {
+           const p = reportJson.user.subscription.plan;
+           isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+        }
+        reportJson.isTrial = isTrial;
+        return reportJson;
+      });
+
       // Fallback: If no CallReport entries exist yet, derive report list from CallSessions
       if (count === 0) {
         const sessionWhere = {};
         if (merchantId) sessionWhere.userId = merchantId;
 
         const sessionInclude = [
-          { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+          { 
+            model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
+            include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+          },
           { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
           { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
         ];
@@ -1039,6 +1076,13 @@ class AdminController {
           const recPath = path.join(uploadsDir, recFileName);
           const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
 
+          let isTrial = false;
+          const sJson = s.toJSON ? s.toJSON() : s;
+          if (sJson.user && sJson.user.subscription && sJson.user.subscription.plan) {
+             const p = sJson.user.subscription.plan;
+             isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+          }
+
           return {
             id: s.id,
             userId: s.userId,
@@ -1053,9 +1097,10 @@ class AdminController {
             sentiment: 'Neutral',
             leadScore: s.status === 'completed' ? 70 : 0,
             recordingUrl,
-            user: s.user,
-            customer: s.customer,
-            campaign: s.campaign,
+            isTrial,
+            user: sJson.user,
+            customer: sJson.customer,
+            campaign: sJson.campaign,
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
           };
@@ -1485,7 +1530,10 @@ class AdminController {
       if (status) where.outcome = status;
 
       const include = [
-        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+        { 
+          model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
+          include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+        },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
         { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
         { model: CallSession, as: 'session', attributes: ['id', 'actions'], required: false },
@@ -1507,11 +1555,25 @@ class AdminController {
         order: [['createdAt', 'DESC']],
       });
 
+      rows = rows.map(r => {
+        const reportJson = r.toJSON();
+        let isTrial = false;
+        if (reportJson.user && reportJson.user.subscription && reportJson.user.subscription.plan) {
+           const p = reportJson.user.subscription.plan;
+           isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+        }
+        reportJson.isTrial = isTrial;
+        return reportJson;
+      });
+
       // Fallback: If no CallReport entries exist yet, derive report list from CallSessions
       if (count === 0) {
         const sessionWhere = { userId: id };
         const sessionInclude = [
-          { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+          { 
+            model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
+            include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+          },
           { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
           { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
         ];
@@ -1538,6 +1600,13 @@ class AdminController {
           const recPath = path.join(uploadsDir, recFileName);
           const recordingUrl = fs.existsSync(recPath) ? `/uploads/${recFileName}` : null;
 
+          let isTrial = false;
+          const sJson = s.toJSON ? s.toJSON() : s;
+          if (sJson.user && sJson.user.subscription && sJson.user.subscription.plan) {
+             const p = sJson.user.subscription.plan;
+             isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+          }
+
           return {
             id: s.id,
             userId: s.userId,
@@ -1552,9 +1621,10 @@ class AdminController {
             sentiment: 'Neutral',
             leadScore: s.status === 'completed' ? 70 : 0,
             recordingUrl,
-            user: s.user,
-            customer: s.customer,
-            campaign: s.campaign,
+            isTrial,
+            user: sJson.user,
+            customer: sJson.customer,
+            campaign: sJson.campaign,
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
           };
