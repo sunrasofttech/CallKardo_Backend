@@ -340,7 +340,7 @@ class AdminController {
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
 
-      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder, isTrial } = req.query;
+      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder, isTrial, planId } = req.query;
 
       const whereClause = { role: 'merchant' };
 
@@ -384,6 +384,15 @@ class AdminController {
             price: { [Op.gt]: 0 },
             name: { [Op.notIn]: ['starter', 'Starter'] }
           };
+        }
+      }
+
+      if (planId) {
+        subscriptionRequired = true;
+        if (planWhereClause) {
+          planWhereClause.id = planId;
+        } else {
+          planWhereClause = { id: planId };
         }
       }
 
