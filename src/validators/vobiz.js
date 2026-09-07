@@ -25,9 +25,22 @@ const buyNumberSchema = Joi.object({
   number: Joi.string().required(),
 });
 
+const importAccountSchema = Joi.object({
+  apiKey: Joi.string().min(10).required(),
+  apiSecret: Joi.string().min(10).required(),
+});
+
+const saveImportedNumberSchema = Joi.object({
+  numbers: Joi.array().items(
+    Joi.string().pattern(/^\+?[1-9]\d{1,14}$/)
+  ).min(1).required(),
+});
+
 module.exports = {
   connectAccountSchema,
   addNumberSchema,
   updateNumberSchema,
   buyNumberSchema,
+  importAccountSchema,
+  saveImportedNumberSchema,
 };

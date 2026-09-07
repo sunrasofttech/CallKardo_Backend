@@ -14,6 +14,9 @@ router.use(authenticate, isMerchant);
 
 // Credentials & Sub-Accounts
 router.post('/connect', VobizController.connectAccount);
+router.post('/import-account', VobizController.importAccount);
+router.get('/import-numbers', VobizController.listImportableNumbers);
+router.post('/save-imported-number', VobizController.saveImportedNumber);
 router.post('/create-subaccount', VobizController.createSubAccount);
 router.get('/account', VobizController.getAccount);
 

@@ -31,6 +31,11 @@ VobizAccount.init(
       allowNull: false,
       field: 'api_secret',
     },
+    isImported: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'is_imported',
+    },
   },
   {
     sequelize,

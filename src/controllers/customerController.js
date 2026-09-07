@@ -336,7 +336,11 @@ class CustomerController {
    */
   async getLists(req, res, next) {
     try {
-      const { search, name } = req.query;
+      const { search, name, page = 1, limit = 10 } = req.query;
+      const parsedPage = parseInt(page, 10) || 1;
+      const parsedLimit = parseInt(limit, 10) || 10;
+      const offset = (parsedPage - 1) * parsedLimit;
+
       const whereClause = { userId: req.user.id };
 
       if (search) {
@@ -345,9 +349,11 @@ class CustomerController {
         whereClause.name = { [Op.like]: `%${name}%` };
       }
 
-      const lists = await CustomerList.findAll({
+      const { count, rows: lists } = await CustomerList.findAndCountAll({
         where: whereClause,
         order: [['createdAt', 'DESC']],
+        limit: parsedLimit,
+        offset: offset,
         attributes: {
           include: [
             [
@@ -361,7 +367,12 @@ class CustomerController {
           ]
         }
       });
-      return ResponseBuilder.success(res, lists, 'Customer lists retrieved successfully');
+      return ResponseBuilder.success(res, {
+        totalItems: count,
+        totalPages: Math.ceil(count / parsedLimit),
+        currentPage: parsedPage,
+        lists
+      }, 'Customer lists retrieved successfully');
     } catch (err) {
       next(err);
     }

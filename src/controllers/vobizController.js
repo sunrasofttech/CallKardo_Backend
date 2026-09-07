@@ -1,12 +1,13 @@
 const { VobizAccount, VobizNumber, User, Agent, Customer, CallSession, CallLog, KycDetail } = require('../models');
 const { Op } = require('sequelize');
 const ResponseBuilder = require('../utils/response');
-const { connectAccountSchema, addNumberSchema, updateNumberSchema, buyNumberSchema } = require('../validators/vobiz');
+const { connectAccountSchema, addNumberSchema, updateNumberSchema, buyNumberSchema, importAccountSchema, saveImportedNumberSchema } = require('../validators/vobiz');
 const { encrypt, decrypt } = require('../utils/crypto');
 const vobizService = require('../services/vobizService');
 const defaults = require('../config/defaults');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 const crypto = require('crypto');
+const axios = require('axios');
 class VobizController {
   /**
    * Webhook invoked by VoBiz when the call is answered.
@@ -240,6 +241,168 @@ class VobizController {
       };
 
       return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account connected successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Import an existing VoBiz account using API keys
+   */
+  async importAccount(req, res, next) {
+    try {
+      const { error, value } = importAccountSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { apiKey, apiSecret } = value;
+
+      // Call VoBiz API to verify credentials
+      let response;
+      try {
+        response = await axios.get('https://api.vobiz.ai/api/v1/auth/me', {
+          headers: {
+            'X-Auth-ID': apiKey,
+            'X-Auth-Token': apiSecret,
+          },
+        });
+      } catch (apiError) {
+        console.error('[VoBiz Import] Invalid credentials or API error:', apiError?.response?.data || apiError.message);
+        const errMsg = apiError?.response?.data?.error?.message || 'Invalid VoBiz API Key or Secret';
+        return ResponseBuilder.error(res, errMsg, 401);
+      }
+
+      // Extract the customer ID from the root of the Vobiz response
+      const customerId = response.data?.id || response.data?.auth_id || apiKey; 
+
+      const encryptEnabled = defaults.vobiz.encryptCredentials;
+      const finalApiKey = encryptEnabled ? encrypt(apiKey) : apiKey;
+      const finalApiSecret = encryptEnabled ? encrypt(apiSecret) : apiSecret;
+
+      let account = await VobizAccount.findOne({ where: { userId: req.user.id } });
+
+      if (account) {
+        await account.update({ customerId, apiKey: finalApiKey, apiSecret: finalApiSecret, isImported: true });
+      } else {
+        account = await VobizAccount.create({
+          userId: req.user.id,
+          customerId,
+          apiKey: finalApiKey,
+          apiSecret: finalApiSecret,
+          isImported: true,
+        });
+      }
+
+      // Mark KYC as full/approved since it's an imported account
+      await User.update({ kycStatus: 'approved' }, { where: { id: req.user.id } });
+
+      const sanitizedResponse = {
+        id: account.id,
+        customerId: account.customerId,
+        apiKey: `${apiKey.substring(0, 4)}...`,
+        isImported: true,
+      };
+
+      return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account imported successfully and KYC marked as approved');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * List available numbers from an imported VoBiz account
+   */
+  async listImportableNumbers(req, res, next) {
+    try {
+      const account = await VobizAccount.findOne({ where: { userId: req.user.id } });
+      if (!account) {
+        return ResponseBuilder.error(res, 'VoBiz account not connected', 404);
+      }
+      if (!account.isImported) {
+        return ResponseBuilder.error(res, 'Only imported accounts can fetch numbers via this endpoint', 400);
+      }
+
+      const apiKey = defaults.vobiz.encryptCredentials ? decrypt(account.apiKey) : account.apiKey;
+      const apiSecret = defaults.vobiz.encryptCredentials ? decrypt(account.apiSecret) : account.apiSecret;
+      const authId = apiKey; // Based on Vobiz API docs, X-Auth-ID is used
+
+      let response;
+      try {
+        response = await axios.get(`https://api.vobiz.ai/api/v1/Account/${authId}/numbers?page=1&per_page=25`, {
+          headers: {
+            'X-Auth-ID': apiKey,
+            'X-Auth-Token': apiSecret,
+          },
+        });
+      } catch (apiError) {
+        console.error('[VoBiz Import Numbers] API error:', apiError?.response?.data || apiError.message);
+        return ResponseBuilder.error(res, 'Failed to retrieve numbers from VoBiz', 502);
+      }
+
+      const numbers = (response.data?.items || []).map(item => ({
+        number: item.e164,
+        status: item.status,
+        country: item.country,
+        region: item.region,
+        purchasedAt: item.purchased_at
+      }));
+
+      return ResponseBuilder.success(res, { numbers, total: response.data?.total || numbers.length }, 'Importable numbers retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Save an imported number into the local database
+   */
+  async saveImportedNumber(req, res, next) {
+    try {
+      const { error, value } = saveImportedNumberSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { numbers } = value;
+      const account = await VobizAccount.findOne({ where: { userId: req.user.id } });
+      if (!account || !account.isImported) {
+        return ResponseBuilder.error(res, 'Valid imported VoBiz account is required', 400);
+      }
+
+      const results = {
+        imported: [],
+        alreadyExists: [],
+        failed: []
+      };
+
+      for (const number of numbers) {
+        // Clean the number format
+        const cleanNumber = number.startsWith('+') ? number : `+${number}`;
+        
+        // Check if number already exists in DB
+        let existingNumber = await VobizNumber.findOne({ where: { number: cleanNumber } });
+        if (existingNumber) {
+          // If it belongs to someone else, reject
+          if (existingNumber.userId !== req.user.id) {
+              results.failed.push({ number: cleanNumber, reason: 'Registered to another user' });
+          } else {
+              results.alreadyExists.push(cleanNumber);
+          }
+          continue;
+        }
+
+        const vobizNumber = await VobizNumber.create({
+          userId: req.user.id,
+          number: cleanNumber,
+          status: 'active',
+          agentId: null, // User can assign agent later
+        });
+        
+        results.imported.push(vobizNumber);
+      }
+
+      return ResponseBuilder.success(res, results, 'Numbers import process completed');
     } catch (err) {
       next(err);
     }
