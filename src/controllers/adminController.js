@@ -2132,11 +2132,13 @@ class AdminController {
       ]
 
       if (search) {
+        const searchPattern = `%${search}%`;
+        const { sequelize } = require('../models');
         where[Op.or] = [
-          { name: { [Op.like]: `%${search}%` } },
-          { description: { [Op.like]: `%${search}%` } },
-          { '$user.businessName$': { [Op.like]: `%${search}%` } },
-          { '$user.email$': { [Op.like]: `%${search}%` } }
+          { name: { [Op.like]: searchPattern } },
+          { description: { [Op.like]: searchPattern } },
+          sequelize.where(sequelize.col('user.businessName'), { [Op.like]: searchPattern }),
+          sequelize.where(sequelize.col('user.email'), { [Op.like]: searchPattern })
         ];
       }
 
