@@ -1570,10 +1570,15 @@ class AdminController {
       const page = parseInt(req.query.page || '1', 10);
       const limit = parseInt(req.query.limit || '20', 10);
       const offset = (page - 1) * limit;
-      const { status, search } = req.query;
+      const { status, outcome, search } = req.query;
+      const targetOutcome = outcome || status;
+
+      const { Op, fn, col } = require('sequelize');
 
       const where = { userId: id };
-      if (status) where.outcome = status;
+      if (targetOutcome) {
+        where.outcome = targetOutcome;
+      }
 
       const include = [
         { 
@@ -1586,11 +1591,38 @@ class AdminController {
       ];
 
       if (search) {
-        const { Op } = require('sequelize');
         where[Op.or] = [
           { '$customer.name$': { [Op.like]: `%${search}%` } },
           { '$customer.mobile$': { [Op.like]: `%${search}%` } },
         ];
+      }
+
+      // Calculate aggregates globally for this merchant (ignoring current search/outcome filters)
+      let stats = { totalRecords: 0, answeredCount: 0, noAnswerCount: 0, failedCount: 0, otherCount: 0 };
+      
+      const reportCounts = await CallReport.findAll({
+        where: { userId: id },
+        attributes: ['outcome', [fn('COUNT', col('id')), 'count']],
+        group: ['outcome']
+      });
+
+      const hasReportData = reportCounts.length > 0;
+
+      if (hasReportData) {
+        reportCounts.forEach(c => {
+          const o = (c.getDataValue('outcome') || '').toLowerCase();
+          const cnt = parseInt(c.getDataValue('count'), 10) || 0;
+          stats.totalRecords += cnt;
+          if (o.includes('interested') || o.includes('answered') || o.includes('completed')) {
+            stats.answeredCount += cnt;
+          } else if (o.includes('no answer') || o.includes('voicemail')) {
+            stats.noAnswerCount += cnt;
+          } else if (o.includes('fail')) {
+            stats.failedCount += cnt;
+          } else {
+            stats.otherCount += cnt;
+          }
+        });
       }
 
       let { count, rows } = await CallReport.findAndCountAll({
@@ -1612,9 +1644,17 @@ class AdminController {
         return reportJson;
       });
 
-      // Fallback: If no CallReport entries exist yet, derive report list from CallSessions
-      if (count === 0) {
+      // Fallback: If no CallReport entries exist yet globally, derive report list from CallSessions
+      if (!hasReportData) {
         const sessionWhere = { userId: id };
+        if (targetOutcome) {
+           const wantCompleted = targetOutcome.toLowerCase().includes('interested') || targetOutcome.toLowerCase().includes('answered');
+           if (wantCompleted) {
+             sessionWhere.status = 'completed';
+           } else {
+             sessionWhere.status = { [Op.ne]: 'completed' };
+           }
+        }
         const sessionInclude = [
           { 
             model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
@@ -1675,9 +1715,26 @@ class AdminController {
             updatedAt: s.updatedAt,
           };
         });
+
+        // Compute session aggregates
+        const sessionCounts = await CallSession.findAll({
+          where: { userId: id },
+          attributes: ['status', [fn('COUNT', col('id')), 'count']],
+          group: ['status']
+        });
+
+        sessionCounts.forEach(c => {
+          const sStat = (c.getDataValue('status') || '').toLowerCase();
+          const cnt = parseInt(c.getDataValue('count'), 10) || 0;
+          stats.totalRecords += cnt;
+          if (sStat === 'completed') stats.answeredCount += cnt;
+          else if (sStat === 'failed') stats.failedCount += cnt;
+          else stats.noAnswerCount += cnt;
+        });
       }
 
       return ResponseBuilder.success(res, {
+        stats,
         reports: rows,
         pagination: {
           totalItems: count,
@@ -1685,7 +1742,7 @@ class AdminController {
           currentPage: page,
           limit,
         },
-      }, 'Merchant call records retrieved successfully');
+      }, 'Call records retrieved');
     } catch (err) {
       next(err);
     }
