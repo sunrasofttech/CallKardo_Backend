@@ -294,8 +294,8 @@ class VobizController {
         });
       }
 
-      // Mark KYC as full/approved since it's an imported account
-      await User.update({ kycStatus: 'approved' }, { where: { id: req.user.id } });
+      // Mark KYC as full since it's an imported account
+      await User.update({ kycStatus: 'full' }, { where: { id: req.user.id } });
 
       const sanitizedResponse = {
         id: account.id,
@@ -304,7 +304,7 @@ class VobizController {
         isImported: true,
       };
 
-      return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account imported successfully and KYC marked as approved');
+      return ResponseBuilder.success(res, sanitizedResponse, 'VoBiz account imported successfully and KYC marked as full');
     } catch (err) {
       next(err);
     }
