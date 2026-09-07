@@ -2127,18 +2127,16 @@ class AdminController {
       }
 
       const include = [
-        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: !!search },
+        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
         { model: Voice, as: 'voice', attributes: ['id', 'name', 'provider', 'gender', 'language'], required: false }
-      ]
+      ];
 
       if (search) {
         const searchPattern = `%${search}%`;
         const { sequelize } = require('../models');
         where[Op.or] = [
           { name: { [Op.like]: searchPattern } },
-          { description: { [Op.like]: searchPattern } },
-          sequelize.where(sequelize.col('user.business_name'), { [Op.like]: searchPattern }),
-          sequelize.where(sequelize.col('user.email'), { [Op.like]: searchPattern })
+          { description: { [Op.like]: searchPattern } }
         ];
       }
 
