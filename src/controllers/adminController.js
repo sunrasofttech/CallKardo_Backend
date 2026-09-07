@@ -2137,7 +2137,7 @@ class AdminController {
         where[Op.or] = [
           { name: { [Op.like]: searchPattern } },
           { description: { [Op.like]: searchPattern } },
-          sequelize.where(sequelize.col('user.businessName'), { [Op.like]: searchPattern }),
+          sequelize.where(sequelize.col('user.business_name'), { [Op.like]: searchPattern }),
           sequelize.where(sequelize.col('user.email'), { [Op.like]: searchPattern })
         ];
       }
