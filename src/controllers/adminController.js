@@ -330,7 +330,7 @@ class AdminController {
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
 
-      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder } = req.query;
+      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder, isTrial } = req.query;
 
       const whereClause = { role: 'merchant' };
 
@@ -354,6 +354,29 @@ class AdminController {
         whereClause.isVerified = isVerified === 'true' || isVerified === true || isVerified === '1';
       }
 
+      let planWhereClause = undefined;
+      let subscriptionRequired = false;
+
+      if (isTrial !== undefined && isTrial !== '') {
+        const isTrialBool = isTrial === 'true' || isTrial === true || isTrial === '1';
+        subscriptionRequired = true;
+        
+        if (isTrialBool) {
+          planWhereClause = {
+            [Op.or]: [
+              { price: 0 },
+              { name: 'starter' },
+              { name: 'Starter' }
+            ]
+          };
+        } else {
+          planWhereClause = {
+            price: { [Op.gt]: 0 },
+            name: { [Op.notIn]: ['starter', 'Starter'] }
+          };
+        }
+      }
+
       // Allowed fields for sorting to prevent SQL injection
       const allowedSortFields = ['businessName', 'email', 'mobile', 'createdAt', 'kycStatus', 'isVerified'];
       const activeSortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
@@ -364,7 +387,17 @@ class AdminController {
         attributes: { exclude: ['passwordHash', 'refreshToken', 'resetToken', 'resetTokenExpires', 'verificationToken'] },
         include: [
           { model: Category, as: 'category' },
-          { model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] },
+          { 
+            model: Subscription, 
+            as: 'subscription', 
+            required: subscriptionRequired,
+            include: [{ 
+              model: Plan, 
+              as: 'plan',
+              where: planWhereClause,
+              required: subscriptionRequired
+            }] 
+          },
           { model: VobizNumber, as: 'vobizNumbers' },
         ],
         order: [[activeSortField, activeSortOrder]],
