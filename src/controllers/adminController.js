@@ -69,7 +69,7 @@ class AdminController {
       // Calculate Revenue dynamically from active subscriptions
       let trialUsersCount = 0;
       let paidSubscriptionsCount = 0;
-      
+
       const currentRevenue = (activeSubscriptions || []).reduce(
         (sum, sub) => {
           const isTrial = sub.plan && (parseFloat(sub.plan.price) === 0 || sub.plan.name.toLowerCase() === 'starter');
@@ -315,7 +315,7 @@ class AdminController {
   async bulkDeleteMerchants(req, res, next) {
     try {
       const { userIds } = req.body;
-      
+
       if (!Array.isArray(userIds) || userIds.length === 0) {
         return ResponseBuilder.error(res, 'Please provide an array of userIds to delete', 400);
       }
@@ -370,7 +370,7 @@ class AdminController {
       if (isTrial !== undefined && isTrial !== '') {
         const isTrialBool = isTrial === 'true' || isTrial === true || isTrial === '1';
         subscriptionRequired = true;
-        
+
         if (isTrialBool) {
           planWhereClause = {
             [Op.or]: [
@@ -397,16 +397,16 @@ class AdminController {
         attributes: { exclude: ['passwordHash', 'refreshToken', 'resetToken', 'resetTokenExpires', 'verificationToken'] },
         include: [
           { model: Category, as: 'category' },
-          { 
-            model: Subscription, 
-            as: 'subscription', 
+          {
+            model: Subscription,
+            as: 'subscription',
             required: subscriptionRequired,
-            include: [{ 
-              model: Plan, 
+            include: [{
+              model: Plan,
               as: 'plan',
               where: planWhereClause,
               required: subscriptionRequired
-            }] 
+            }]
           },
           { model: VobizNumber, as: 'vobizNumbers' },
         ],
@@ -419,8 +419,8 @@ class AdminController {
         const merchantJson = m.toJSON();
         let isTrial = false;
         if (merchantJson.subscription && merchantJson.subscription.plan) {
-           const p = merchantJson.subscription.plan;
-           isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+          const p = merchantJson.subscription.plan;
+          isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
         }
         merchantJson.isTrial = isTrial;
         return merchantJson;
@@ -460,8 +460,8 @@ class AdminController {
       const merchantJson = merchant.toJSON();
       let isTrial = false;
       if (merchantJson.subscription && merchantJson.subscription.plan) {
-         const p = merchantJson.subscription.plan;
-         isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+        const p = merchantJson.subscription.plan;
+        isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
       }
       merchantJson.isTrial = isTrial;
 
@@ -647,7 +647,7 @@ class AdminController {
         callsRemaining, // Set exactly to the new call limit
         status: req.body.status || 'active',
       };
-      
+
       // Only reset callsUsed if explicitly requested
       if (req.body.resetCallsUsed === true) {
         values.callsUsed = 0;
@@ -1047,9 +1047,9 @@ class AdminController {
       if (status) where.outcome = status;
 
       const include = [
-        { 
+        {
           model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
-          include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+          include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }]
         },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
         { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
@@ -1076,8 +1076,8 @@ class AdminController {
         const reportJson = r.toJSON();
         let isTrial = false;
         if (reportJson.user && reportJson.user.subscription && reportJson.user.subscription.plan) {
-           const p = reportJson.user.subscription.plan;
-           isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+          const p = reportJson.user.subscription.plan;
+          isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
         }
         reportJson.isTrial = isTrial;
         reportJson.merchantName = reportJson.user ? (reportJson.user.businessName || reportJson.user.email) : 'Unknown';
@@ -1090,9 +1090,9 @@ class AdminController {
         if (merchantId) sessionWhere.userId = merchantId;
 
         const sessionInclude = [
-          { 
+          {
             model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
-            include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+            include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }]
           },
           { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
           { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
@@ -1123,8 +1123,8 @@ class AdminController {
           let isTrial = false;
           const sJson = s.toJSON ? s.toJSON() : s;
           if (sJson.user && sJson.user.subscription && sJson.user.subscription.plan) {
-             const p = sJson.user.subscription.plan;
-             isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+            const p = sJson.user.subscription.plan;
+            isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
           }
           const merchantName = sJson.user ? (sJson.user.businessName || sJson.user.email) : 'Unknown';
 
@@ -1353,8 +1353,8 @@ class AdminController {
         if (filter) {
           const now = new Date();
           const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          
-          switch(filter) {
+
+          switch (filter) {
             case 'last_week_registered':
               whereClause.createdAt = { [Op.gte]: lastWeek };
               break;
@@ -1581,9 +1581,9 @@ class AdminController {
       }
 
       const include = [
-        { 
+        {
           model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
-          include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+          include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }]
         },
         { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
         { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
@@ -1599,7 +1599,7 @@ class AdminController {
 
       // Calculate aggregates globally for this merchant (ignoring current search/outcome filters)
       let stats = { totalRecords: 0, answeredCount: 0, noAnswerCount: 0, failedCount: 0, otherCount: 0 };
-      
+
       const reportCounts = await CallReport.findAll({
         where: { userId: id },
         attributes: ['outcome', [fn('COUNT', col('id')), 'count']],
@@ -1637,8 +1637,8 @@ class AdminController {
         const reportJson = r.toJSON();
         let isTrial = false;
         if (reportJson.user && reportJson.user.subscription && reportJson.user.subscription.plan) {
-           const p = reportJson.user.subscription.plan;
-           isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+          const p = reportJson.user.subscription.plan;
+          isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
         }
         reportJson.isTrial = isTrial;
         return reportJson;
@@ -1648,17 +1648,17 @@ class AdminController {
       if (!hasReportData) {
         const sessionWhere = { userId: id };
         if (targetOutcome) {
-           const wantCompleted = targetOutcome.toLowerCase().includes('interested') || targetOutcome.toLowerCase().includes('answered');
-           if (wantCompleted) {
-             sessionWhere.status = 'completed';
-           } else {
-             sessionWhere.status = { [Op.ne]: 'completed' };
-           }
+          const wantCompleted = targetOutcome.toLowerCase().includes('interested') || targetOutcome.toLowerCase().includes('answered');
+          if (wantCompleted) {
+            sessionWhere.status = 'completed';
+          } else {
+            sessionWhere.status = { [Op.ne]: 'completed' };
+          }
         }
         const sessionInclude = [
-          { 
+          {
             model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false,
-            include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }] 
+            include: [{ model: Subscription, as: 'subscription', include: [{ model: Plan, as: 'plan' }] }]
           },
           { model: Customer, as: 'customer', attributes: ['id', 'name', 'mobile'], required: false },
           { model: Campaign, as: 'campaign', attributes: ['id', 'name'], required: false },
@@ -1689,8 +1689,8 @@ class AdminController {
           let isTrial = false;
           const sJson = s.toJSON ? s.toJSON() : s;
           if (sJson.user && sJson.user.subscription && sJson.user.subscription.plan) {
-             const p = sJson.user.subscription.plan;
-             isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
+            const p = sJson.user.subscription.plan;
+            isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
           }
 
           return {
@@ -1838,8 +1838,8 @@ class AdminController {
       const mrr = activeSubs.reduce((sum, sub) => sum + (sub.plan ? parseFloat(sub.plan.price || 0) : 0), 0);
 
       const paidActiveSubsCount = activeSubs.filter(sub => {
-         const p = sub.plan;
-         return p && parseFloat(p.price) > 0 && p.name.toLowerCase() !== 'starter';
+        const p = sub.plan;
+        return p && parseFloat(p.price) > 0 && p.name.toLowerCase() !== 'starter';
       }).length;
 
       // 3. Revenue breakdown by Plan
@@ -1894,20 +1894,20 @@ class AdminController {
     try {
       const { Op } = require('sequelize');
       const { period, startDate, endDate } = req.query;
-      
+
       let whereClause = { status: 'success' };
-      
+
       const now = new Date();
       if (period) {
         if (period === 'today') {
-          const start = new Date(now.setHours(0,0,0,0));
-          const end = new Date(now.setHours(23,59,59,999));
+          const start = new Date(now.setHours(0, 0, 0, 0));
+          const end = new Date(now.setHours(23, 59, 59, 999));
           whereClause.createdAt = { [Op.between]: [start, end] };
         } else if (period === 'yesterday') {
           const yesterday = new Date();
           yesterday.setDate(yesterday.getDate() - 1);
-          const start = new Date(yesterday.setHours(0,0,0,0));
-          const end = new Date(yesterday.setHours(23,59,59,999));
+          const start = new Date(yesterday.setHours(0, 0, 0, 0));
+          const end = new Date(yesterday.setHours(23, 59, 59, 999));
           whereClause.createdAt = { [Op.between]: [start, end] };
         } else if (period === '1month') {
           const start = new Date();
@@ -1921,7 +1921,7 @@ class AdminController {
       } else if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
-        end.setHours(23,59,59,999);
+        end.setHours(23, 59, 59, 999);
         whereClause.createdAt = { [Op.between]: [start, end] };
       }
 
@@ -1942,7 +1942,7 @@ class AdminController {
         }
         revenueByDate[dateStr] += parseFloat(tx.amount || 0);
       });
-      
+
       const chartData = Object.keys(revenueByDate).sort().map(date => ({
         date,
         revenue: revenueByDate[date]
@@ -2127,9 +2127,9 @@ class AdminController {
       }
 
       const include = [
-        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: false },
+        { model: User, as: 'user', attributes: ['id', 'email', 'businessName'], required: !!search },
         { model: Voice, as: 'voice', attributes: ['id', 'name', 'provider', 'gender', 'language'], required: false }
-      ];
+      ]
 
       if (search) {
         where[Op.or] = [
@@ -2235,7 +2235,7 @@ class AdminController {
       rows.forEach(session => {
         let actionsArr = session.actions || [];
         if (typeof actionsArr === 'string') {
-          try { actionsArr = JSON.parse(actionsArr); } catch(e) { actionsArr = []; }
+          try { actionsArr = JSON.parse(actionsArr); } catch (e) { actionsArr = []; }
         }
 
         actionsArr.forEach(actionObj => {
