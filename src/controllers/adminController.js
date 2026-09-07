@@ -67,8 +67,16 @@ class AdminController {
       ]);
 
       // Calculate Revenue dynamically from active subscriptions
+      let trialUsersCount = 0;
+      let paidSubscriptionsCount = 0;
+      
       const currentRevenue = (activeSubscriptions || []).reduce(
-        (sum, sub) => sum + (sub.plan ? parseFloat(sub.plan.price || 0) : 0),
+        (sum, sub) => {
+          const isTrial = sub.plan && (parseFloat(sub.plan.price) === 0 || sub.plan.name.toLowerCase() === 'starter');
+          if (isTrial) trialUsersCount++;
+          else paidSubscriptionsCount++;
+          return sum + (sub.plan ? parseFloat(sub.plan.price || 0) : 0);
+        },
         0
       );
       const prevRevenue = (prevSubscriptions || []).reduce(
@@ -244,6 +252,8 @@ class AdminController {
 
         // Backward compatibility counters
         merchants: merchantsCount,
+        trialUsersCount,
+        paidSubscriptionsCount,
         activeSubscriptions: activeSubscriptionsCount,
         agents: agentsCount,
         virtualNumbers: virtualNumbersCount,
@@ -1070,6 +1080,7 @@ class AdminController {
            isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
         }
         reportJson.isTrial = isTrial;
+        reportJson.merchantName = reportJson.user ? (reportJson.user.businessName || reportJson.user.email) : 'Unknown';
         return reportJson;
       });
 
@@ -1115,6 +1126,7 @@ class AdminController {
              const p = sJson.user.subscription.plan;
              isTrial = parseFloat(p.price) === 0 || p.name.toLowerCase() === 'starter';
           }
+          const merchantName = sJson.user ? (sJson.user.businessName || sJson.user.email) : 'Unknown';
 
           return {
             id: s.id,
@@ -1131,6 +1143,7 @@ class AdminController {
             leadScore: s.status === 'completed' ? 70 : 0,
             recordingUrl,
             isTrial,
+            merchantName,
             user: sJson.user,
             customer: sJson.customer,
             campaign: sJson.campaign,
@@ -1767,6 +1780,11 @@ class AdminController {
       // Calculate MRR
       const mrr = activeSubs.reduce((sum, sub) => sum + (sub.plan ? parseFloat(sub.plan.price || 0) : 0), 0);
 
+      const paidActiveSubsCount = activeSubs.filter(sub => {
+         const p = sub.plan;
+         return p && parseFloat(p.price) > 0 && p.name.toLowerCase() !== 'starter';
+      }).length;
+
       // 3. Revenue breakdown by Plan
       const plans = await Plan.findAll();
       const planStats = {};
@@ -1803,7 +1821,7 @@ class AdminController {
       return ResponseBuilder.success(res, {
         totalRevenue,
         mrr,
-        activeSubscriptionsCount: activeSubs.length,
+        activeSubscriptionsCount: paidActiveSubsCount,
         revenueByPlan: Object.values(planStats),
         recentTransactions
       }, 'Billing overview retrieved successfully');
