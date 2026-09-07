@@ -13,6 +13,10 @@ class CustomerController {
    */
   async getAll(req, res, next) {
     try {
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
       const { search, name, mobile } = req.query;
       const whereClause = { userId: req.user.id };
 
@@ -30,11 +34,22 @@ class CustomerController {
         }
       }
 
-      const customers = await Customer.findAll({
+      const { count, rows: customers } = await Customer.findAndCountAll({
         where: whereClause,
-        order: [['createdAt', 'DESC']]
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset
       });
-      return ResponseBuilder.success(res, customers, 'Customers retrieved successfully');
+
+      return ResponseBuilder.success(res, {
+        customers,
+        pagination: {
+          totalItems: count,
+          currentPage: page,
+          limit,
+          totalPages: Math.ceil(count / limit) || 1,
+        }
+      }, 'Customers retrieved successfully');
     } catch (err) {
       next(err);
     }
