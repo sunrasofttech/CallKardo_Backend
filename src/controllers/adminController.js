@@ -1945,7 +1945,8 @@ class AdminController {
       // Group by date for charts
       const revenueByDate = {};
       transactions.forEach(tx => {
-        const dateStr = tx.createdAt.toISOString().split('T')[0];
+        if (!tx.createdAt) return;
+        const dateStr = new Date(tx.createdAt).toISOString().split('T')[0];
         if (!revenueByDate[dateStr]) {
           revenueByDate[dateStr] = 0;
         }
