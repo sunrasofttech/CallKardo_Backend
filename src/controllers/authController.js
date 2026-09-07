@@ -667,6 +667,7 @@ class AuthController {
 
       const vobizAccount = await VobizAccount.findOne({ where: { userId: user.id } });
       const vobizOnboarded = Boolean(vobizAccount);
+      const isVobizImported = vobizOnboarded ? Boolean(vobizAccount.isImported) : false;
 
       const profile = {
         id: user.id,
@@ -675,6 +676,7 @@ class AuthController {
         kycStatus: user.kycStatus,
         role,
         vobizOnboarded,
+        isVobizImported,
         ...(role === 'merchant'
           ? {
               businessName: user.businessName,
