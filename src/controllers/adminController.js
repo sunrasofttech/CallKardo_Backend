@@ -2145,7 +2145,8 @@ class AdminController {
         include,
         limit,
         offset,
-        order: [['createdAt', 'DESC']]
+        order: [['createdAt', 'DESC']],
+        subQuery: false
       });
 
       return ResponseBuilder.success(res, {
