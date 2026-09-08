@@ -192,7 +192,14 @@ class CustomerController {
    */
   async bulkDelete(req, res, next) {
     try {
-      const { customerIds } = req.body;
+      const { customerIds, deleteAll } = req.body;
+
+      if (deleteAll === true) {
+        const deletedCount = await Customer.destroy({
+          where: { userId: req.user.id }
+        });
+        return ResponseBuilder.success(res, { deletedCount }, `Successfully deleted all ${deletedCount} customer(s)`);
+      }
 
       if (!Array.isArray(customerIds) || customerIds.length === 0) {
         return ResponseBuilder.error(res, 'Please provide an array of customerIds to delete', 400);
@@ -554,7 +561,46 @@ class CustomerController {
   async bulkDeleteLists(req, res, next) {
     const transaction = await sequelize.transaction();
     try {
-      const { listIds, deleteCustomers } = req.body;
+      const { listIds, deleteCustomers, deleteAll } = req.body;
+
+      if (deleteAll === true) {
+        let deletedCustomersCount = 0;
+
+        if (deleteCustomers === true) {
+          const lists = await CustomerList.findAll({
+            where: { userId: req.user.id },
+            transaction
+          });
+          const validListIds = lists.map(l => l.id);
+
+          if (validListIds.length > 0) {
+            const members = await CustomerListMember.findAll({
+              where: { customerListId: validListIds },
+              transaction
+            });
+            const customerIdsToDelete = [...new Set(members.map(m => m.customerId))];
+
+            if (customerIdsToDelete.length > 0) {
+              deletedCustomersCount = await Customer.destroy({
+                where: { id: customerIdsToDelete, userId: req.user.id },
+                transaction
+              });
+            }
+          }
+        }
+
+        const deletedListsCount = await CustomerList.destroy({
+          where: { userId: req.user.id },
+          transaction
+        });
+
+        await transaction.commit();
+        return ResponseBuilder.success(
+          res,
+          { deletedListsCount, deletedCustomersCount },
+          `Successfully deleted all ${deletedListsCount} list(s) and ${deletedCustomersCount} customer(s)`
+        );
+      }
 
       if (!Array.isArray(listIds) || listIds.length === 0) {
         await transaction.rollback();
