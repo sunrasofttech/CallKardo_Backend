@@ -13,15 +13,31 @@ class CampaignController {
    */
   async getAll(req, res, next) {
     try {
-      const campaigns = await Campaign.findAll({
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { count, rows: campaigns } = await Campaign.findAndCountAll({
         where: { userId: req.user.id },
         include: [
           { model: VobizNumber, as: 'vobizNumber' },
           { model: Agent, as: 'agent' },
           { model: CustomerList, as: 'customerList' },
         ],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset
       });
-      return ResponseBuilder.success(res, campaigns, 'Campaigns retrieved successfully');
+
+      return ResponseBuilder.success(res, {
+        campaigns,
+        pagination: {
+          totalItems: count,
+          totalPages: Math.ceil(count / limit),
+          currentPage: page,
+          limit
+        }
+      }, 'Campaigns retrieved successfully');
     } catch (err) {
       next(err);
     }

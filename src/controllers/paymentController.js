@@ -257,12 +257,26 @@ class PaymentController {
    */
   async getMyTransactions(req, res, next) {
     try {
-      const transactions = await PaymentTransaction.findAll({
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { count, rows: transactions } = await PaymentTransaction.findAndCountAll({
         where: { userId: req.user.id },
         order: [['createdAt', 'DESC']],
+        limit,
+        offset
       });
 
-      return ResponseBuilder.success(res, transactions, 'Payment transactions retrieved');
+      return ResponseBuilder.success(res, {
+        transactions,
+        pagination: {
+          totalItems: count,
+          totalPages: Math.ceil(count / limit),
+          currentPage: page,
+          limit
+        }
+      }, 'Payment transactions retrieved');
     } catch (err) {
       next(err);
     }

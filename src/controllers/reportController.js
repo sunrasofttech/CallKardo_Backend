@@ -88,7 +88,23 @@ class ReportController {
         reports = [...reports, ...derivedReports].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       }
 
-      return ResponseBuilder.success(res, reports, 'Call reports retrieved successfully');
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const totalItems = reports.length;
+      const totalPages = Math.ceil(totalItems / limit);
+      const paginatedReports = reports.slice(offset, offset + limit);
+
+      return ResponseBuilder.success(res, {
+        reports: paginatedReports,
+        pagination: {
+          totalItems,
+          totalPages,
+          currentPage: page,
+          limit
+        }
+      }, 'Call reports retrieved successfully');
     } catch (err) {
       next(err);
     }
