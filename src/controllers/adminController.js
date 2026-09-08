@@ -1856,6 +1856,7 @@ class AdminController {
       const planStats = {};
       plans.forEach(p => {
         planStats[p.id] = {
+          planId: p.id,
           name: p.name,
           price: p.price,
           count: 0,
