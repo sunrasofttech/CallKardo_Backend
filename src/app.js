@@ -57,7 +57,8 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json({ limit: "50mb",
+app.use(express.json({
+  limit: "50mb",
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
@@ -143,8 +144,7 @@ app.get('/api-docs', (req, res) => {
 });
 
 // 4. API v1 Routing
-//app.use('/api/v1/auth', authLimiter, authRoutes);
-app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auth', authLimiter, authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/plans', planRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
