@@ -1982,11 +1982,23 @@ class AdminController {
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
 
-      const { search, status, type } = req.query;
+      const { search, status, type, startDate, endDate } = req.query;
       const where = {};
 
       if (status) where.status = status;
       if (type) where.type = type;
+
+      if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) {
+          where.createdAt[Op.gte] = new Date(startDate);
+        }
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          where.createdAt[Op.lte] = end;
+        }
+      }
 
       const include = [
         { model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'], required: false }

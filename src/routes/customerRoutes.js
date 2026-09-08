@@ -37,23 +37,24 @@ const upload = multer({
 
 router.use(authenticate, isMerchant);
 
-// Customers CRUD
-router.get('/', CustomerController.getAll);
-router.get('/:id', CustomerController.getById);
-router.post('/', CustomerController.create);
-router.put('/:id', CustomerController.update);
-router.delete('/:id', CustomerController.delete);
-router.post('/bulk-delete', CustomerController.bulkDelete);
-
 // Bulk Import CSV
 router.post('/upload', upload.single('file'), CustomerController.uploadCSV);
 
 // Customer Lists
 router.get('/lists/all', CustomerController.getLists);
+router.get('/lists', CustomerController.getLists);
 router.get('/lists/:id', CustomerController.getListById);
 router.post('/lists', CustomerController.createList);
 router.post('/lists/bulk-delete', CustomerController.bulkDeleteLists);
 router.delete('/lists/:id', CustomerController.deleteList);
 router.post('/lists/:listId/add-customers', CustomerController.addCustomersToList);
+
+// Customers CRUD
+router.get('/', CustomerController.getAll);
+router.post('/', CustomerController.create);
+router.post('/bulk-delete', CustomerController.bulkDelete);
+router.get('/:id', CustomerController.getById);
+router.put('/:id', CustomerController.update);
+router.delete('/:id', CustomerController.delete);
 
 module.exports = router;
