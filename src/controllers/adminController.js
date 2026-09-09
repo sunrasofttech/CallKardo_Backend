@@ -6,6 +6,11 @@ const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, ad
 
 
 class AdminController {
+  constructor() {
+    this.getSubscriptionHistories = this.getSubscriptionHistories.bind(this);
+    this.getMerchantSubscriptionHistory = this.getMerchantSubscriptionHistory.bind(this);
+  }
+
   async getDashboard(req, res, next) {
     try {
       const { Op } = require('sequelize');
@@ -2743,7 +2748,7 @@ class AdminController {
   /**
    * Get subscription upgrade history for a specific merchant (Admin)
    */
-  async getMerchantSubscriptionHistory(req, res, next) {
+  getMerchantSubscriptionHistory = async (req, res, next) => {
     try {
       const { id } = req.params;
       req.query.merchantId = id;
@@ -2751,8 +2756,9 @@ class AdminController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 }
 
-module.exports = new AdminController();
+const adminController = new AdminController();
+module.exports = adminController;
 
