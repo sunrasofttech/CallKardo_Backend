@@ -36,7 +36,7 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, mobile, password, fcmToken } = value;
+      const { email, mobile, password, fcmToken, intrestinourproduct } = value;
 
       // 1. Check if user already exists
       if (email) {
@@ -65,6 +65,7 @@ class AuthController {
         passwordHash,
         verificationToken,
         fcmToken: fcmToken || null,
+        intrestinourproduct: intrestinourproduct !== undefined ? intrestinourproduct : true,
       });
 
       // 5. Setup Initial Starter Subscription Plan

@@ -101,6 +101,10 @@ User.init(
       allowNull: true,
       field: 'fcm_token',
     },
+    intrestinourproduct: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
   },
   {
     sequelize,

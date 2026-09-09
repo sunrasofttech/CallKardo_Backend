@@ -13,6 +13,7 @@ const merchantRegisterSchema = Joi.object({
     'any.required': 'Password is required',
   }),
   fcmToken: Joi.string().optional().allow(''),
+  intrestinourproduct: Joi.boolean().default(true).optional(),
 });
 
 const adminRegisterSchema = Joi.object({

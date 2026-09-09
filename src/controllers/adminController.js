@@ -485,7 +485,7 @@ class AdminController {
       const merchant = await User.findOne({ where: { id: req.params.id, role: 'merchant' } });
       if (!merchant) return ResponseBuilder.error(res, 'Merchant not found', 404);
 
-      const { businessName, businessUrl, categoryId, isVerified, kycStatus } = req.body;
+      const { businessName, businessUrl, categoryId, isVerified, kycStatus, intrestinourproduct } = req.body;
       if (businessName !== undefined && businessName !== null && (typeof businessName !== 'string' || !/^[a-zA-Z\s]+$/.test(businessName))) {
         return ResponseBuilder.error(res, 'Business name must contain only letters and spaces', 400);
       }
@@ -502,6 +502,7 @@ class AdminController {
         ...(categoryId !== undefined && { categoryId }),
         ...(isVerified !== undefined && { isVerified }),
         ...(kycStatus !== undefined && { kycStatus }),
+        ...(intrestinourproduct !== undefined && { intrestinourproduct }),
       });
       return ResponseBuilder.success(res, merchant, 'Merchant updated successfully');
     } catch (err) {
