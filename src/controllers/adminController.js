@@ -1,4 +1,4 @@
-const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction } = require('../models');
+const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, SubscriptionHistory, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const fcmService = require('../services/fcmService');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
@@ -312,6 +312,21 @@ class AdminController {
     }
   }
 
+  async deleteMerchant(req, res, next) {
+    try {
+      const { id } = req.params;
+      const merchant = await User.findOne({ where: { id, role: 'merchant' } });
+      if (!merchant) {
+        return ResponseBuilder.error(res, 'Merchant not found', 404);
+      }
+
+      await merchant.destroy();
+      return ResponseBuilder.success(res, null, 'Merchant deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async bulkDeleteMerchants(req, res, next) {
     try {
       const { userIds } = req.body;
@@ -340,7 +355,7 @@ class AdminController {
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
 
-      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder, isTrial, planId } = req.query;
+      const { search, categoryId, kycStatus, isVerified, sortBy, sortOrder, isTrial, planId, intrestinourproduct } = req.query;
 
       const whereClause = { role: 'merchant' };
 
@@ -362,6 +377,10 @@ class AdminController {
 
       if (isVerified !== undefined && isVerified !== '') {
         whereClause.isVerified = isVerified === 'true' || isVerified === true || isVerified === '1';
+      }
+
+      if (intrestinourproduct !== undefined && intrestinourproduct !== '') {
+        whereClause.intrestinourproduct = intrestinourproduct === 'true' || intrestinourproduct === true || intrestinourproduct === '1';
       }
 
       let planWhereClause = undefined;
@@ -397,32 +416,36 @@ class AdminController {
       }
 
       // Allowed fields for sorting to prevent SQL injection
-      const allowedSortFields = ['businessName', 'email', 'mobile', 'createdAt', 'kycStatus', 'isVerified'];
+      const allowedSortFields = ['businessName', 'email', 'mobile', 'createdAt', 'kycStatus', 'isVerified', 'intrestinourproduct'];
       const activeSortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
       const activeSortOrder = ['ASC', 'DESC'].includes(sortOrder?.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
 
-      const { count, rows: merchants } = await User.findAndCountAll({
-        where: whereClause,
-        attributes: { exclude: ['passwordHash', 'refreshToken', 'resetToken', 'resetTokenExpires', 'verificationToken'] },
-        include: [
-          { model: Category, as: 'category' },
-          {
-            model: Subscription,
-            as: 'subscription',
-            required: subscriptionRequired,
-            include: [{
-              model: Plan,
-              as: 'plan',
-              where: planWhereClause,
-              required: subscriptionRequired
-            }]
-          },
-          { model: VobizNumber, as: 'vobizNumbers' },
-        ],
-        order: [[activeSortField, activeSortOrder]],
-        limit,
-        offset,
-      });
+      const [{ count, rows: merchants }, totalCount, totalInterestedCount] = await Promise.all([
+        User.findAndCountAll({
+          where: whereClause,
+          attributes: { exclude: ['passwordHash', 'refreshToken', 'resetToken', 'resetTokenExpires', 'verificationToken'] },
+          include: [
+            { model: Category, as: 'category' },
+            {
+              model: Subscription,
+              as: 'subscription',
+              required: subscriptionRequired,
+              include: [{
+                model: Plan,
+                as: 'plan',
+                where: planWhereClause,
+                required: subscriptionRequired
+              }]
+            },
+            { model: VobizNumber, as: 'vobizNumbers' },
+          ],
+          order: [[activeSortField, activeSortOrder]],
+          limit,
+          offset,
+        }),
+        User.count({ where: { role: 'merchant' } }),
+        User.count({ where: { role: 'merchant', intrestinourproduct: true } }),
+      ]);
 
       const merchantsData = merchants.map(m => {
         const merchantJson = m.toJSON();
@@ -444,6 +467,11 @@ class AdminController {
             currentPage: page,
             limit,
             totalPages: Math.ceil(count / limit) || 1,
+          },
+          stats: {
+            totalCount,
+            totalInterestedCount,
+            totalIntrestinourproductCount: totalInterestedCount,
           },
         },
         'Merchants retrieved successfully'
@@ -648,6 +676,9 @@ class AdminController {
       }
 
       let subscription = await Subscription.findOne({ where: { userId: merchant.id } });
+      const previousPlanId = subscription ? subscription.planId : null;
+      const previousPlanName = subscription ? subscription.activePlan : null;
+      const prevCallsUsed = subscription ? subscription.callsUsed : 0;
 
       const values = {
         planId: plan.id,
@@ -670,6 +701,22 @@ class AdminController {
       }
 
       await removeTrialDemoNumber(merchant.id);
+
+      // Record subscription upgrade history
+      await SubscriptionHistory.create({
+        userId: merchant.id,
+        adminId: req.user?.id || null,
+        previousPlanId,
+        previousPlanName,
+        newPlanId: plan.id,
+        newPlanName: plan.name,
+        actionType: 'ADMIN_UPGRADE',
+        startDate: values.startDate,
+        expiryDate: values.expiryDate,
+        callsLimit: callsRemaining,
+        callsUsed: values.callsUsed !== undefined ? values.callsUsed : prevCallsUsed,
+        notes: req.body.notes || `Upgraded to ${plan.name} plan by admin`,
+      }).catch((err) => console.error('[SubscriptionHistory] Error logging upgrade history:', err));
 
       const updatedSubscription = await Subscription.findByPk(subscription.id, {
         include: [
@@ -725,7 +772,27 @@ class AdminController {
         updates.status = req.body.status;
       }
 
+      const oldPlanId = subscription.planId;
+      const oldPlanName = subscription.activePlan;
+
       await subscription.update(updates);
+
+      if (updates.planId && updates.planId !== oldPlanId) {
+        await SubscriptionHistory.create({
+          userId: subscription.userId,
+          adminId: req.user?.id || null,
+          previousPlanId: oldPlanId,
+          previousPlanName: oldPlanName,
+          newPlanId: updates.planId,
+          newPlanName: updates.activePlan,
+          actionType: 'ADMIN_UPDATE',
+          startDate: subscription.startDate,
+          expiryDate: updates.expiryDate || subscription.expiryDate,
+          callsLimit: updates.callsRemaining !== undefined ? updates.callsRemaining : subscription.callsRemaining,
+          callsUsed: updates.callsUsed !== undefined ? updates.callsUsed : subscription.callsUsed,
+          notes: req.body.notes || `Plan changed to ${updates.activePlan} by admin`,
+        }).catch((err) => console.error('[SubscriptionHistory] Error logging update history:', err));
+      }
 
       const result = await Subscription.findByPk(subscription.id, {
         include: [
@@ -2571,6 +2638,116 @@ class AdminController {
       await template.save();
 
       return ResponseBuilder.success(res, template, 'Master template status updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get all subscription upgrade histories (Admin)
+   */
+  async getSubscriptionHistories(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
+      const { merchantId, userId, planId, actionType, startDate, endDate, search } = req.query;
+      const targetUserId = merchantId || userId;
+
+      const whereClause = {};
+      if (targetUserId) {
+        whereClause.userId = targetUserId;
+      }
+      if (planId) {
+        whereClause.newPlanId = planId;
+      }
+      if (actionType) {
+        whereClause.actionType = actionType;
+      }
+
+      if (startDate || endDate) {
+        whereClause.createdAt = {};
+        if (startDate) {
+          whereClause.createdAt[Op.gte] = new Date(startDate);
+        }
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          whereClause.createdAt[Op.lte] = end;
+        }
+      }
+
+      const userWhereClause = {};
+      if (search) {
+        userWhereClause[Op.or] = [
+          { businessName: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { mobile: { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      const { count, rows } = await SubscriptionHistory.findAndCountAll({
+        where: whereClause,
+        include: [
+          {
+            model: User,
+            as: 'merchant',
+            where: Object.keys(userWhereClause).length > 0 ? userWhereClause : undefined,
+            attributes: ['id', 'businessName', 'email', 'mobile'],
+            required: Object.keys(userWhereClause).length > 0,
+          },
+          {
+            model: Admin,
+            as: 'admin',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'mobile'],
+            required: false,
+          },
+          {
+            model: Plan,
+            as: 'newPlan',
+            attributes: ['id', 'name', 'price', 'callLimit', 'maxConcurrentCalls'],
+            required: false,
+          },
+          {
+            model: Plan,
+            as: 'previousPlan',
+            attributes: ['id', 'name', 'price', 'callLimit', 'maxConcurrentCalls'],
+            required: false,
+          },
+        ],
+        order: [['createdAt', 'DESC']],
+        limit,
+        offset,
+      });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          histories: rows,
+          pagination: {
+            totalItems: count,
+            currentPage: page,
+            limit,
+            totalPages: Math.ceil(count / limit) || 1,
+          },
+        },
+        'Subscription upgrade history retrieved successfully'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get subscription upgrade history for a specific merchant (Admin)
+   */
+  async getMerchantSubscriptionHistory(req, res, next) {
+    try {
+      const { id } = req.params;
+      req.query.merchantId = id;
+      return this.getSubscriptionHistories(req, res, next);
     } catch (err) {
       next(err);
     }

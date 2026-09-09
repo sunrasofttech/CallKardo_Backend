@@ -1,7 +1,7 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const defaults = require('../config/defaults');
-const { PaymentTransaction, User, Plan, Subscription, VobizAccount, VobizNumber } = require('../models');
+const { PaymentTransaction, User, Plan, Subscription, SubscriptionHistory, VobizAccount, VobizNumber } = require('../models');
 const vobizService = require('./vobizService');
 const { removeTrialDemoNumber } = require('./trialDemoNumberService');
 const { decrypt } = require('../utils/crypto');
@@ -309,6 +309,10 @@ class PaymentService {
     }
 
     let subscription = await Subscription.findOne({ where: { userId: tx.userId } });
+    const previousPlanId = subscription ? subscription.planId : null;
+    const previousPlanName = subscription ? subscription.activePlan : null;
+    const prevCallsUsed = subscription ? subscription.callsUsed : 0;
+
     const now = new Date();
     const expiryDate = new Date();
     expiryDate.setMonth(now.getMonth() + 1);
@@ -338,6 +342,23 @@ class PaymentService {
     }
 
     await removeTrialDemoNumber(tx.userId).catch(() => { });
+
+    // Record upgrade history
+    await SubscriptionHistory.create({
+      userId: tx.userId,
+      adminId: null,
+      previousPlanId,
+      previousPlanName,
+      newPlanId: plan.id,
+      newPlanName: plan.name,
+      actionType: 'MERCHANT_PURCHASE',
+      startDate: now,
+      expiryDate,
+      callsLimit: callLimitVal,
+      callsUsed: prevCallsUsed,
+      notes: `Subscribed to ${plan.name} via payment (Order: ${tx.orderId})`,
+    }).catch((err) => console.error('[SubscriptionHistory] Error logging online purchase history:', err));
+
     console.log(`[Fulfill Subscription] Successfully upgraded user ${tx.userId} to ${plan.name} plan.`);
 
     // Notifications

@@ -27,6 +27,7 @@ const MessageTemplate = require('./messageTemplate');
 const MasterMessageTemplate = require('./masterMessageTemplate');
 const ProgramDocumentRequirement = require('./programDocumentRequirement');
 const HelpVideo = require('./helpVideo');
+const SubscriptionHistory = require('./subscriptionHistory');
 
 // Establish Relationships
 
@@ -200,6 +201,21 @@ MessageTemplate.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 MasterMessageTemplate.hasMany(MessageTemplate, { foreignKey: 'master_template_id', as: 'merchantTemplates' });
 MessageTemplate.belongsTo(MasterMessageTemplate, { foreignKey: 'master_template_id', as: 'masterTemplate' });
 
+// User <-> SubscriptionHistory
+User.hasMany(SubscriptionHistory, { foreignKey: 'user_id', as: 'subscriptionHistories' });
+SubscriptionHistory.belongsTo(User, { foreignKey: 'user_id', as: 'merchant' });
+
+// Admin <-> SubscriptionHistory
+Admin.hasMany(SubscriptionHistory, { foreignKey: 'admin_id', as: 'upgradedSubscriptions' });
+SubscriptionHistory.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
+
+// Plan <-> SubscriptionHistory
+SubscriptionHistory.belongsTo(Plan, { foreignKey: 'new_plan_id', as: 'newPlan' });
+SubscriptionHistory.belongsTo(Plan, { foreignKey: 'previous_plan_id', as: 'previousPlan' });
+
+// User <-> AuditLog
+AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -207,6 +223,7 @@ module.exports = {
   Category,
   Plan,
   Subscription,
+  SubscriptionHistory,
   VobizAccount,
   VobizNumber,
   Agent,

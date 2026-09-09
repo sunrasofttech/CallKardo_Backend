@@ -21,9 +21,11 @@ router.post('/merchants/bulk-delete', adminController.bulkDeleteMerchants);
 router.get('/merchants', adminController.getMerchants);
 router.get('/merchants/:id', adminController.getMerchant);
 router.put('/merchants/:id', adminController.updateMerchant);
+router.delete('/merchants/:id', adminController.deleteMerchant);
 router.get('/merchants/:id/call-records', adminController.getMerchantCallRecords);
 router.put('/merchants/:id/subscription', adminController.upgradeMerchantSubscription);
 router.post('/merchants/:id/subscription/upgrade', adminController.upgradeMerchantSubscription);
+router.get('/merchants/:id/subscription/history', adminController.getMerchantSubscriptionHistory);
 router.get('/merchants/:id/numbers', adminController.getMerchantNumbers);
 router.put('/merchants/:id/numbers/:numberId', adminController.updateMerchantNumber);
 router.delete('/merchants/:id/numbers/:numberId', adminController.deleteMerchantNumber);
@@ -36,6 +38,7 @@ router.post('/users/reset-password', adminController.resetMerchantPasswordByAdmi
 
 // Subscription management routes
 router.get('/subscriptions', adminController.getSubscriptions);
+router.get('/subscriptions/history', adminController.getSubscriptionHistories);
 router.get('/subscriptions/:id', adminController.getSubscriptionById);
 router.post('/subscriptions/upgrade', adminController.upgradeMerchantSubscription);
 router.put('/subscriptions/:id', adminController.updateSubscription);

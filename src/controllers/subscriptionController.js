@@ -1,4 +1,4 @@
-const { Subscription, Plan, User } = require('../models');
+const { Subscription, SubscriptionHistory, Plan, User } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const { upgradeSubscriptionSchema } = require('../validators/subscription');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
@@ -46,10 +46,15 @@ class SubscriptionController {
       let subscription = await Subscription.findOne({
         where: { userId: req.user.id },
       });
+      const previousPlanId = subscription ? subscription.planId : null;
+      const previousPlanName = subscription ? subscription.activePlan : null;
+      const prevCallsUsed = subscription ? subscription.callsUsed : 0;
 
       const now = new Date();
       const expiryDate = new Date();
       expiryDate.setMonth(now.getMonth() + 1); // 30-day billing cycle
+
+      const callLimitVal = targetPlan.callLimit === -1 ? 999999 : targetPlan.callLimit;
 
       if (!subscription) {
         subscription = await Subscription.create({
@@ -68,12 +73,28 @@ class SubscriptionController {
           activePlan: targetPlan.name,
           startDate: now,
           expiryDate,
-          callsRemaining: targetPlan.callLimit === -1 ? 999999 : targetPlan.callLimit,
+          callsRemaining: callLimitVal,
           status: 'active',
         });
       }
 
       await removeTrialDemoNumber(req.user.id);
+
+      // Record upgrade history
+      await SubscriptionHistory.create({
+        userId: req.user.id,
+        adminId: null,
+        previousPlanId,
+        previousPlanName,
+        newPlanId: targetPlan.id,
+        newPlanName: targetPlan.name,
+        actionType: 'MERCHANT_UPGRADE',
+        startDate: now,
+        expiryDate,
+        callsLimit: callLimitVal,
+        callsUsed: prevCallsUsed,
+        notes: `Merchant upgraded to ${targetPlan.name} plan`,
+      }).catch((err) => console.error('[SubscriptionHistory] Error logging merchant upgrade history:', err));
 
       return ResponseBuilder.success(res, subscription, `Successfully subscribed to ${targetPlan.name} plan`);
     } catch (err) {
