@@ -1,9 +1,10 @@
 const url = require('url');
-const { CallSession, Agent, Voice, CallLog, Campaign, Customer, VobizAccount, User } = require('../models');
+const { CallSession, Agent, Voice, CallLog, Campaign, Customer, VobizAccount, User, Category } = require('../models');
 const QueueService = require('../services/queueService');
 const VoicePipeline = require('../services/voicePipeline');
 const VobizService = require('../services/vobizService');
 const { decrypt } = require('../utils/crypto');
+const defaults = require('../config/defaults');
 
 const encodeTable = [
   0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
@@ -129,6 +130,7 @@ class VobizSocketHandler {
           {
             model: User,
             as: 'user',
+            include: [{ model: Category, as: 'category' }],
           },
         ],
       });
@@ -159,9 +161,12 @@ class VobizSocketHandler {
         message: 'VoBiz WebSocket connected and call established',
       });
 
-      // Auto-resolve customer context if missing on session
+      // Check if this is an admin-to-merchant call (onboarding, callback, reminder)
+      const isMerchantCall = ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'].includes(session.callType) || session.agent?.isMerchantCaller;
+
+      // Auto-resolve customer context if missing on session (only for regular customer campaign calls)
       let customer = session.customer;
-      if (!customer) {
+      if (!customer && !isMerchantCall) {
         try {
           const { Op } = require('sequelize');
           const cleanFrom = (session.fromNumber || '').replace(/^\+91/, '').replace(/\D/g, '');
@@ -209,15 +214,15 @@ class VobizSocketHandler {
       let pipelineCustomer = customer;
       let pipelineMerchant = session.user;
 
-      const isMerchantCall = ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'].includes(session.callType) || session.agent?.isMerchantCaller;
-
       if (isMerchantCall && session.user) {
+        const categoryName = session.user.category?.name || 'General Business';
         pipelineCustomer = {
           id: session.user.id,
           name: session.user.businessName || 'Partner',
           mobile: session.user.mobile,
           email: session.user.email,
-          notes: `Merchant Partner (${session.user.businessType || 'General'})`,
+          category: categoryName,
+          notes: `Merchant Category: ${categoryName}, Business Name: ${session.user.businessName || 'Not specified'}, Business Type: ${session.user.businessType || 'General'}`,
         };
         pipelineMerchant = {
           id: session.adminId || null,

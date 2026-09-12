@@ -257,12 +257,13 @@ class VoicePipeline {
     // Pre-configure customer info if available
     let customerInfoContext = '';
     if (this.customer) {
-      customerInfoContext = `\n\n[Customer Information: You are in a call with a registered customer. Here are their details:
+      customerInfoContext = `\n\n[Customer/Merchant Information: You are speaking with:
 - Name: ${this.customer.name || 'there'}
 - Mobile: ${this.customer.mobile || 'Unknown'}
+- Category/Industry: ${this.customer.category || 'Not specified yet'}
 - Tags: ${this.customer.tags || 'None'}
 - Notes: ${this.customer.notes || 'None'}
-IMPORTANT: Address the customer by their name (${this.customer.name || 'there'}) naturally during the conversation where appropriate (e.g. in the greeting or when confirming details) to make the call feel personalized and professional.]`;
+IMPORTANT: Address them respectfully by name where appropriate, and if Category/Industry is provided, immediately tailor your value pitch to their exact category!]`;
     }
 
     // Actions and Tool Triggers instruction
