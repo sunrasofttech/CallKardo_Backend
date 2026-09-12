@@ -392,7 +392,10 @@ async function handleMerchantCallback(payload) {
 
     const MerchantOnboardingService = require('../services/merchantOnboardingService');
     const now = new Date();
-    if (MerchantOnboardingService.isNightTime(now)) {
+    // Only apply nighttime deferral if this was an automatic/generic callback,
+    // NOT if the merchant explicitly requested a specific callback time (e.g. "5 minutes", "in 10 min", etc.)
+    const isExplicitRequest = callback.requestedTime && callback.requestedTime.trim() !== '';
+    if (!isExplicitRequest && MerchantOnboardingService.isNightTime(now)) {
       // Re-schedule for next morning 10:00 AM IST
       const nextMorning = MerchantOnboardingService.adjustIfNight(now);
       await QueueService.scheduleJob('MERCHANT_CALLBACK', payload, nextMorning.getTime());

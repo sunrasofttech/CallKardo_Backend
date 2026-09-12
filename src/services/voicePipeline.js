@@ -201,6 +201,8 @@ class VoicePipeline {
     this.silenceWarningTimeout = null;
 
     this.pendingUserTranscripts = [];
+    this.lastCustomerTranscript = '';
+    this._isEndingCall = false;
 
     this.sarvamSttStream = null;
     this.sarvamTtsStream = null;
@@ -831,6 +833,16 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
         continue;
       }
 
+      // Fallback: If request_callback has no payload, extract requested time from recent conversation
+      if (action.actionName === 'request_callback' && (!action.actionPayload || action.actionPayload.trim() === '')) {
+        const candidateSource = `${this.lastCustomerTranscript || ''} ${text || ''}`;
+        const extracted = this._extractTimeFromText(candidateSource);
+        if (extracted) {
+          action.actionPayload = extracted;
+          this._log('info', `[Action Fallback] Auto-extracted callback time "${extracted}" from conversation.`);
+        }
+      }
+
       const now = Date.now();
       if (!this._recentActions) this._recentActions = new Map();
       const lastRun = this._recentActions.get(action.fullToken) || 0;
@@ -874,6 +886,8 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           break;
         case 'request_callback':
           actionResult = await ActionService.requestCallback(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);
+          // Automatically hang up the call gracefully once callback is requested and acknowledged
+          this._scheduleGracefulHangup('Callback requested by customer/merchant', 3000);
           break;
         default:
           this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);
@@ -932,7 +946,7 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     // Direct {{hangup}} marker from the AI
     if (text.includes('{{hangup}}')) {
       this._log('info', `[Call End] AI signaled hangup via {{hangup}} token in ${source}`);
-      this._endCall('Customer requested to end call (AI detected)');
+      this._scheduleGracefulHangup('Customer requested to end call (AI detected)', 2000);
       return true;
     }
 
@@ -960,6 +974,42 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     }
 
     return false;
+  }
+
+  /**
+   * Gracefully schedule call termination so the agent's current goodbye audio
+   * finishes playing to the user before the call is dropped.
+   */
+  _scheduleGracefulHangup(reason, delayMs = 2500) {
+    if (this._isEndingCall) return;
+    this._isEndingCall = true;
+    this._log('info', `[Call End] Scheduling graceful hangup: "${reason}" in ${delayMs}ms`);
+
+    this.pendingUserTranscripts = [];
+    this._clearSilenceTimer();
+
+    setTimeout(() => {
+      if (!this.isConnected) return;
+      this._endCall(reason);
+    }, delayMs);
+  }
+
+  /**
+   * Helper: Extract time mention (relative or clock time) from text
+   */
+  _extractTimeFromText(text) {
+    if (!text || typeof text !== 'string') return null;
+    const lower = text.toLowerCase();
+
+    // Match relative minutes/hours (e.g. "5 minute", "5 min", "10 minutes", "1 minute", "in 5 minutes", "1 hour")
+    const match = lower.match(/(?:\b(?:in|after)\s+)?(\d+|ek|do|teen|chaar|char|paanch|panch|das|dus|pandrah|bees|tees)\s*(?:min|mins|minute|minutes|hour|hours|ghanta|ghante|baje)\b/i);
+    if (match) {
+      return match[0];
+    }
+    if (lower.includes('half an hour') || lower.includes('aadha ghanta') || lower.includes('adha ghanta')) {
+      return '30 minutes';
+    }
+    return null;
   }
 
   _pushToPacingQueue(pcmBuffer, ttsGeneration) {
@@ -1145,6 +1195,14 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
       this.accumulatedTranscript = '';
       return false;
     }
+
+    // Ignore customer speech if call is already in process of hanging up
+    if (this._isEndingCall) {
+      this._log('info', `[Call Ending] Ignoring customer utterance during hangup transition: "${finalTranscript}"`);
+      return false;
+    }
+
+    this.lastCustomerTranscript = finalTranscript;
 
     if (this.transcriptionSilenceTimer) {
       clearTimeout(this.transcriptionSilenceTimer);

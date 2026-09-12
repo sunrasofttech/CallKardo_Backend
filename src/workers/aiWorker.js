@@ -2,7 +2,7 @@ const { duplicateClient } = require('../config/redis');
 const AiAnalysisService = require('../services/aiAnalysisService');
 const SubscriptionService = require('../services/subscriptionService');
 const QueueService = require('../services/queueService');
-const { CallReport, CallSession, Customer, CampaignCustomer, Campaign, sequelize } = require('../models');
+const { CallReport, CallSession, Customer, CampaignCustomer, Campaign, User, sequelize } = require('../models');
 const NotificationService = require('../services/notificationService');
 
 async function startAiWorker() {

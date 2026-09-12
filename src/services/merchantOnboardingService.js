@@ -128,10 +128,20 @@ CONVERSATIONAL STAGES & STRATEGY:
    - Ask: "Kya kal ya parson aapke liye 15 minute ki quick meeting schedule kar dein? Konsa time aapke liye best rahega?"
    - When the merchant agrees to a day/time: Confirm their preference clearly, and append {{action:schedule_meeting:requested_time}} at the very end of your response (e.g. {{action:schedule_meeting:tomorrow at 3pm}}).
 
-5. HANDLING BUSY OR OBJECTION:
-   - If the merchant says they are busy, driving, or says "baad mein baat karte hain":
-     Politely acknowledge: "Koi baat nahi, main samajh sakti hoon. Main aapko baad mein call karti hoon. Kis time call karna theek rahega?"
-     Append {{action:request_callback:requested_time}} at the very end (e.g. {{action:request_callback:5pm}} or {{action:request_callback}} if no time is given).
+5. HANDLING CALLBACK REQUESTS & BUSY / DRIVING:
+   - If the merchant says they are busy, driving, or asks to call back (e.g. "baad mein baat karte hain", "5 minute baad call karo", "call me back later", "abhi busy hoon"):
+     A. If they specify a time (e.g. "5 minute baad", "10 min baad", "in 5 minutes", "kal 3 baje", "shaam ko 5 baje"):
+        - Politely confirm in 1 short sentence: "Ji bilkul, main aapko [exact time] call karti hoon. Dhanyawad, alvida!"
+        - ALWAYS pass their exact time in the action tag AND hang up:
+          Append: {{action:request_callback:5 minutes}} {{hangup}}
+          (or whatever time they requested, e.g. {{action:request_callback:10 minutes}} {{hangup}}, {{action:request_callback:tomorrow at 3pm}} {{hangup}}).
+     B. If they say "baad mein call karo" without mentioning a time:
+        - Ask quickly: "Koi baat nahi, main aapko baad mein call karti hoon. Kis time call karna theek rahega?"
+        - Once they reply with a time (e.g. "5 min baad" or "shaam ko"):
+          Confirm: "Theek hai, main aapko [time] call karti hoon. Dhanyawad! {{action:request_callback:[time]}} {{hangup}}"
+     C. If they just want to cut the call or say "phone rakho", "call cut karo", "baad mein":
+        - Confirm: "Ji, main call cut kar rahi hoon. Dhanyawad! {{action:request_callback}} {{hangup}}"
+     - CRITICAL RULE: Whenever a callback is confirmed or the merchant wants to hang up, you MUST ALWAYS include {{hangup}} at the end so the phone call cuts immediately!
 
 6. TONE & RESPONSE RULES:
    - Keep every response crisp and natural: 1 to 2 short sentences maximum (under 25 words per turn) to maintain a fast, human telephone dialogue.
@@ -214,31 +224,93 @@ CONVERSATIONAL STAGES & STRATEGY:
 
   /**
    * Helper: Parse requested callback or meeting time string into Javascript Date
+   * Supports relative offsets ("in 5 minutes", "5 min", "10 minutes", "1 hour", "aadha ghanta")
+   * as well as clock times ("tomorrow 3pm", "kal 5 baje", "4pm").
    * @param {string} timeStr
-   * @returns {{ dateObj: Date, displayStr: string }}
+   * @param {Date} [baseDate]
+   * @returns {{ dateObj: Date, displayStr: string, isRelative: boolean }}
    */
-  parseRequestedTime(timeStr) {
+  parseRequestedTime(timeStr, baseDate = new Date()) {
+    const defaultDate = new Date(baseDate.getTime() + 24 * 60 * 60 * 1000);
+    defaultDate.setHours(11, 0, 0, 0);
+
     if (!timeStr || typeof timeStr !== 'string') {
-      const defaultDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      defaultDate.setHours(11, 0, 0, 0);
-      return { dateObj: defaultDate, displayStr: 'Scheduled Time' };
+      return { dateObj: defaultDate, displayStr: 'Scheduled Time', isRelative: false };
     }
 
     const lower = timeStr.toLowerCase().trim();
-    let targetDate = new Date();
+    if (!lower) {
+      return { dateObj: defaultDate, displayStr: 'Scheduled Time', isRelative: false };
+    }
 
+    let targetDate = new Date(baseDate.getTime());
+
+    // Normalize Hindi words for numbers
+    const normalized = lower
+      .replace(/\bek\b/g, '1')
+      .replace(/\bdo\b/g, '2')
+      .replace(/\bteen\b/g, '3')
+      .replace(/\bchaar\b|\bchar\b/g, '4')
+      .replace(/\bpaanch\b|\bpanch\b/g, '5')
+      .replace(/\bdas\b|\bdus\b/g, '10')
+      .replace(/\bpandrah\b/g, '15')
+      .replace(/\bbees\b/g, '20')
+      .replace(/\btees\b/g, '30');
+
+    // 1. Check relative minutes / hours FIRST before checking clock times
+    if (normalized.includes('half an hour') || normalized.includes('aadha ghanta') || normalized.includes('adha ghanta')) {
+      targetDate = new Date(baseDate.getTime() + 30 * 60 * 1000);
+      return {
+        dateObj: targetDate,
+        displayStr: 'in 30 minutes',
+        isRelative: true,
+      };
+    }
+
+    // Relative minutes e.g. "5 min", "5min", "in 5 minutes", "5 minute baad", "5 mins"
+    const minMatch = normalized.match(/(\d+)\s*(?:min|mins|minute|minutes|m)\b/i);
+    if (minMatch) {
+      const minutes = parseInt(minMatch[1], 10);
+      targetDate = new Date(baseDate.getTime() + minutes * 60 * 1000);
+      return {
+        dateObj: targetDate,
+        displayStr: `in ${minutes} minute${minutes > 1 ? 's' : ''}`,
+        isRelative: true,
+      };
+    }
+
+    // Relative hours e.g. "1 hour", "2 hrs", "1 ghanta", "2 ghante", "in 1 hour"
+    const hourMatch = normalized.match(/(\d+)\s*(?:hour|hours|hr|hrs|ghanta|ghante|h)\b/i);
+    if (hourMatch) {
+      const hours = parseInt(hourMatch[1], 10);
+      targetDate = new Date(baseDate.getTime() + hours * 60 * 60 * 1000);
+      return {
+        dateObj: targetDate,
+        displayStr: `in ${hours} hour${hours > 1 ? 's' : ''}`,
+        isRelative: true,
+      };
+    }
+
+    // 2. Absolute time parsing e.g. "tomorrow at 3pm", "kal 5 baje", "4pm"
     if (lower.includes('tomorrow') || lower.includes('kal') || lower.includes('agli subah')) {
       targetDate.setDate(targetDate.getDate() + 1);
     }
 
-    const timeMatch = lower.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-    if (timeMatch) {
-      let hours = parseInt(timeMatch[1], 10);
-      const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-      const meridiem = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+    const bajeMatch = normalized.match(/(\d{1,2})\s*baje/i);
+    const clockMatch = normalized.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+
+    if (bajeMatch) {
+      let hours = parseInt(bajeMatch[1], 10);
+      if (hours <= 7) hours += 12; // 4 baje -> 16:00
+      targetDate.setHours(hours, 0, 0, 0);
+    } else if (clockMatch) {
+      let hours = parseInt(clockMatch[1], 10);
+      const minutes = clockMatch[2] ? parseInt(clockMatch[2], 10) : 0;
+      const meridiem = clockMatch[3] ? clockMatch[3].toLowerCase() : null;
 
       if (meridiem === 'pm' && hours < 12) hours += 12;
       if (meridiem === 'am' && hours === 12) hours = 0;
+      if (!meridiem && hours >= 1 && hours <= 7) hours += 12; // default afternoon/evening
 
       targetDate.setHours(hours, minutes, 0, 0);
     } else {
@@ -246,42 +318,51 @@ CONVERSATIONAL STAGES & STRATEGY:
     }
 
     // Ensure future timestamp
-    if (targetDate.getTime() <= Date.now()) {
+    if (targetDate.getTime() <= baseDate.getTime()) {
       targetDate.setDate(targetDate.getDate() + 1);
     }
 
     return {
       dateObj: targetDate,
       displayStr: timeStr,
+      isRelative: false,
     };
   }
 
   /**
    * Calculate callback time according to rules:
-   * 1. If merchant requested specific time: parse and adjust if night.
-   * 2. If NO time mentioned: call 6 hours after call end.
-   * 3. If falls in night (21:00 to 09:00 IST), adjust to 10:00 AM next morning!
+   * 1. If merchant requested relative time (e.g. 5 min, 10 min): use exact time (do not delay to next morning).
+   * 2. If merchant requested specific clock time: parse and adjust if night.
+   * 3. If NO time mentioned: call 6 hours after call end (adjusted for business hours).
    * @param {string} [requestedTimeStr]
    * @param {Date} [callEndTime]
    * @returns {{ scheduledTime: Date, isNightAdjusted: boolean }}
    */
   calculateCallbackTime(requestedTimeStr, callEndTime = new Date()) {
     let candidateTime;
+    let isRelative = false;
 
     if (requestedTimeStr && requestedTimeStr.trim() !== '') {
-      const parsed = this.parseRequestedTime(requestedTimeStr);
+      const parsed = this.parseRequestedTime(requestedTimeStr, callEndTime);
       candidateTime = parsed.dateObj;
+      isRelative = parsed.isRelative;
     } else {
       // 6 hours after call end
       candidateTime = new Date(callEndTime.getTime() + 6 * 60 * 60 * 1000);
     }
 
-    const wasNight = this.isNightTime(candidateTime);
-    const scheduledTime = this.adjustIfNight(candidateTime);
+    let scheduledTime = candidateTime;
+    let isNightAdjusted = false;
+
+    // Relative requests (e.g. 5 minutes, 10 minutes) must be strictly respected even if at night!
+    if (!isRelative) {
+      isNightAdjusted = this.isNightTime(candidateTime);
+      scheduledTime = this.adjustIfNight(candidateTime);
+    }
 
     return {
       scheduledTime,
-      isNightAdjusted: wasNight,
+      isNightAdjusted,
     };
   }
 
