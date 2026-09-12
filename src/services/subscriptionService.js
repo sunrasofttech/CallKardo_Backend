@@ -82,25 +82,34 @@ class SubscriptionService {
     // --- 48h Wait Rate Limit / Full KYC Enforcement ---
     const user = await User.findByPk(userId);
     if (user && user.kycStatus !== 'full') {
+      const isTrial = subscription.activePlan === 'Starter';
       const hoursSinceStart = (new Date() - new Date(subscription.startDate)) / (1000 * 60 * 60);
       
       const { Setting } = require('../models');
       const rateLimitSetting = await Setting.findOne({ where: { key: 'kyc_rate_limit_calls' } });
-      const MAX_PROBATION_CALLS = rateLimitSetting ? parseInt(rateLimitSetting.value, 10) : 10;
+      const MAX_PROBATION_CALLS = rateLimitSetting ? parseInt(rateLimitSetting.value, 10) : 15;
 
-      if (hoursSinceStart < 48) {
+      if (isTrial) {
+        // Trial/Starter users are allowed to use their 15 trial calls before full KYC is required
         if (subscription.callsUsed >= MAX_PROBATION_CALLS) {
-          return { isValid: false, reason: `You have reached the 48-hour probationary rate limit (${MAX_PROBATION_CALLS} calls). Please complete Full KYC to unlock full plan limits.` };
+          return { isValid: false, reason: `You have completed all ${MAX_PROBATION_CALLS} trial calls. Please complete Full KYC and upgrade your plan to continue making calls.` };
         }
       } else {
-        // After 48 hours, full block if no KYC
-        return { isValid: false, reason: 'Your 48-hour probationary period has ended. Please complete Full KYC to continue making calls.' };
+        // Paid plans without full KYC: 48-hour probationary rule
+        if (hoursSinceStart < 48) {
+          if (subscription.callsUsed >= MAX_PROBATION_CALLS) {
+            return { isValid: false, reason: `You have reached the 48-hour probationary rate limit (${MAX_PROBATION_CALLS} calls). Please complete Full KYC to unlock full plan limits.` };
+          }
+        } else {
+          // After 48 hours, full block if no KYC on paid plans
+          return { isValid: false, reason: 'Your 48-hour probationary period has ended. Please complete Full KYC to continue making calls.' };
+        }
       }
     }
     // --------------------------------------------------
 
-    // Starter plan: Max 5 calls, but wait, Starter has callLimit = 5
-    // Validate call quota. (Starter is free, no credits required but Max 5 calls total)
+    // Starter plan: Max 15 calls (Starter has callLimit = 15)
+    // Validate call quota. (Starter is free, no credits required but Max 15 calls total)
     // Basic/Pro have limits. Unlimited plans might have callLimit = -1
     const callLimit = subscription.plan ? subscription.plan.callLimit : -1;
     

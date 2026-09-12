@@ -74,7 +74,7 @@ async function runIntegrationTest() {
       starterPlan = await Plan.create({
         name: 'Starter',
         price: 0.00,
-        callLimit: 5,
+        callLimit: 15,
         maxConcurrentCalls: 1,
       });
     }

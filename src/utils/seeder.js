@@ -104,7 +104,7 @@ async function seedVoices() {
   // 3. Seed default Plans
   console.log('Seeding default plans...');
   const plansToSeed = [
-    { name: 'Starter', price: 0.00, callLimit: 5, maxConcurrentCalls: 1 },
+    { name: 'Starter', price: 0.00, callLimit: 15, maxConcurrentCalls: 1 },
     { name: 'Basic', price: 19.00, callLimit: 500, maxConcurrentCalls: 2 },
     { name: 'Pro', price: 49.00, callLimit: 2000, maxConcurrentCalls: 5 },
     { name: 'Enterprise', price: 199.00, callLimit: 10000, maxConcurrentCalls: 10 },
