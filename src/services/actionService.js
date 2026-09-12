@@ -286,7 +286,7 @@ class ActionService {
   /**
    * Handle Schedule Meeting action
    */
-  async scheduleMeeting(customer, agent, merchant, meetingTimeStr) {
+  async scheduleMeeting(customer, agent, merchant, meetingTimeStr, callSessionId = null) {
     const name = customer?.name || 'Customer';
     const mobile = customer?.mobile || 'Unknown';
     const customerEmail = await this._resolveCustomerEmail(customer, merchant);
@@ -307,6 +307,19 @@ class ActionService {
     // Generate dynamic unique Jitsi Meet room link unless overridden by env
     const roomId = 'CallKardo-Meet-' + Math.random().toString(36).substring(2, 8);
     const meetingLink = process.env.DEFAULT_MEETING_LINK || `https://meet.jit.si/${roomId}`;
+
+    // If this call is with a Merchant (e.g. Onboarding or direct Admin call)
+    // Or if agent is a merchant-calling agent, delegate directly to MerchantOnboardingService
+    const MerchantOnboardingService = require('./merchantOnboardingService');
+    const targetMerchantId = (agent?.isMerchantCaller || !customer?.id) ? (customer?.id || merchant?.id) : (customer?.id || merchant?.id);
+
+    try {
+      if (targetMerchantId) {
+        await MerchantOnboardingService.scheduleMeeting(targetMerchantId, meetingTimeStr, callSessionId, agent?.id);
+      }
+    } catch (schedErr) {
+      console.error('[ActionService] Error saving Meeting record:', schedErr.message);
+    }
 
     const summary = `Scheduled Meeting ${timeLabel} - ${agent?.name || 'AI Receptionist'}`;
     const description = `Hi ${name},\n\nYour meeting has been successfully scheduled ${timeLabel}.\n\nYou can join the meeting room here:\n\n${meetingLink}\n\nBest regards,\n${agent?.name || 'AI Receptionist'}`;
@@ -371,34 +384,36 @@ class ActionService {
   }
 
   /**
-   * Handle Request Callback action
+   * Handle Request Callback action with 6hr delay and night avoidance
    */
-  async requestCallback(customer, agent, merchant, meetingTimeStr) {
+  async requestCallback(customer, agent, merchant, meetingTimeStr, callSessionId = null) {
     const name = customer?.name || 'Customer';
     const mobile = customer?.mobile || 'Unknown';
     const merchantEmail = merchant?.email || defaults.smtp.from;
 
-    const parsedTime = this._parseRequestedMeetingTime(meetingTimeStr);
-    const formattedDate = new Intl.DateTimeFormat('en-IN', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Asia/Kolkata',
-    }).format(parsedTime.dateObj);
-    const timeLabel = `for ${formattedDate}`;
+    const MerchantOnboardingService = require('./merchantOnboardingService');
+    const targetMerchantId = (agent?.isMerchantCaller || !customer?.id) ? (customer?.id || merchant?.id) : (customer?.id || merchant?.id);
 
-    console.log(`[Action: request_callback] Callback requested by ${name} (${timeLabel}). Sending alert to merchant at ${merchantEmail}`);
+    let callbackResult = null;
+    if (targetMerchantId) {
+      try {
+        callbackResult = await MerchantOnboardingService.scheduleCallback(targetMerchantId, meetingTimeStr, callSessionId, agent?.id);
+      } catch (cbErr) {
+        console.error('[ActionService] Error scheduling callback via MerchantOnboardingService:', cbErr.message);
+      }
+    }
+
+    const scheduledTimeDisplay = callbackResult?.scheduledTime || meetingTimeStr || 'in 6 hours (business hours)';
+
+    console.log(`[Action: request_callback] Callback requested by ${name} (${scheduledTimeDisplay}). Sending alert to merchant/admin at ${merchantEmail}`);
 
     await sendEmail({
       to: merchantEmail,
-      subject: `[CallKardo Alert] Callback Requested (${timeLabel}) with ${name}`,
-      text: `Customer ${name} (${mobile}) has requested a callback ${timeLabel} during their call with Agent "${agent?.name || 'AI Agent'}".\n\nPlease ensure you follow up with them at the requested time.\n\nCustomer Details:\nName: ${name}\nMobile: ${mobile}`,
+      subject: `[CallKardo Alert] Callback Requested (${scheduledTimeDisplay}) with ${name}`,
+      text: `Customer/Merchant ${name} (${mobile}) has requested a callback for ${scheduledTimeDisplay} during their call with Agent "${agent?.name || 'AI Agent'}".\n\nNighttime restriction policy applied: Call will be placed during active business hours (9:00 AM - 9:00 PM IST).\n\nDetails:\nName: ${name}\nMobile: ${mobile}`,
     });
 
-    return { success: true, scheduledTime: timeLabel };
+    return { success: true, scheduledTime: scheduledTimeDisplay };
   }
 
   /**

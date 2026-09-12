@@ -55,6 +55,9 @@ DROP TABLE IF EXISTS `agents`;
 CREATE TABLE `agents` (
   `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `user_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `admin_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `agent_type` varchar(30) DEFAULT 'customer_support',
+  `is_merchant_caller` tinyint(1) DEFAULT '0',
   `name` varchar(100) NOT NULL,
   `description` text,
   `system_prompt` text NOT NULL,
@@ -78,9 +81,11 @@ CREATE TABLE `agents` (
   KEY `user_id` (`user_id`),
   KEY `voice_id` (`voice_id`),
   KEY `category_id` (`category_id`),
+  KEY `admin_id` (`admin_id`),
   CONSTRAINT `agents_ibfk_10` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `agents_ibfk_11` FOREIGN KEY (`voice_id`) REFERENCES `voices` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `agents_ibfk_12` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `agents_ibfk_12` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `agents_ibfk_admin` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `audit_logs`
@@ -151,6 +156,8 @@ DROP TABLE IF EXISTS `call_sessions`;
 CREATE TABLE `call_sessions` (
   `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `user_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `admin_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `call_type` varchar(30) DEFAULT 'campaign',
   `campaign_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
   `agent_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
   `vobiz_number_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
@@ -177,11 +184,13 @@ CREATE TABLE `call_sessions` (
   KEY `agent_id` (`agent_id`),
   KEY `vobiz_number_id` (`vobiz_number_id`),
   KEY `customer_id` (`customer_id`),
+  KEY `admin_id` (`admin_id`),
   CONSTRAINT `call_sessions_ibfk_16` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `call_sessions_ibfk_17` FOREIGN KEY (`campaign_id`) REFERENCES `campaigns` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `call_sessions_ibfk_18` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `call_sessions_ibfk_19` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `call_sessions_ibfk_20` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `call_sessions_ibfk_20` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `call_sessions_ibfk_admin` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `campaign_customers`
@@ -580,6 +589,65 @@ CREATE TABLE `merchant_message_programs` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_user_provider` (`user_id`, `provider`),
   CONSTRAINT `merchant_message_programs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `meetings`
+DROP TABLE IF EXISTS `meetings`;
+CREATE TABLE `meetings` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `merchant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `admin_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `agent_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `call_session_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `title` varchar(150) DEFAULT 'Merchant Onboarding Demo & Meeting',
+  `description` text,
+  `meeting_time` datetime NOT NULL,
+  `meeting_link` varchar(255) DEFAULT NULL,
+  `status` varchar(20) DEFAULT 'scheduled',
+  `reminder_call_time` datetime DEFAULT NULL,
+  `reminder_call_status` varchar(20) DEFAULT 'pending',
+  `notes` text,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_meetings_merchant` (`merchant_id`),
+  KEY `idx_meetings_admin` (`admin_id`),
+  KEY `idx_meetings_agent` (`agent_id`),
+  KEY `idx_meetings_time` (`meeting_time`),
+  KEY `idx_meetings_session` (`call_session_id`),
+  CONSTRAINT `fk_meetings_merchant` FOREIGN KEY (`merchant_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_meetings_admin` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_meetings_agent` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_meetings_session` FOREIGN KEY (`call_session_id`) REFERENCES `call_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `merchant_callbacks`
+DROP TABLE IF EXISTS `merchant_callbacks`;
+CREATE TABLE `merchant_callbacks` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `merchant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `admin_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `agent_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `call_session_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `requested_time` varchar(100) DEFAULT NULL,
+  `scheduled_time` datetime NOT NULL,
+  `status` varchar(20) DEFAULT 'pending',
+  `callback_session_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `notes` text,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_callbacks_merchant` (`merchant_id`),
+  KEY `idx_callbacks_admin` (`admin_id`),
+  KEY `idx_callbacks_agent` (`agent_id`),
+  KEY `idx_callbacks_time` (`scheduled_time`),
+  KEY `idx_callbacks_session` (`call_session_id`),
+  CONSTRAINT `fk_callbacks_merchant` FOREIGN KEY (`merchant_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_callbacks_admin` FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_callbacks_agent` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_callbacks_session` FOREIGN KEY (`call_session_id`) REFERENCES `call_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Table structure for table `message_templates`

@@ -1,6 +1,8 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { Op } = require('sequelize');
 const { User, Admin, Subscription, Plan, Category, VobizNumber, VobizAccount, Agent } = require('../models');
+const { redisClient } = require('../config/redis');
 const defaults = require('../config/defaults');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/token');
 const ResponseBuilder = require('../utils/response');
@@ -16,18 +18,58 @@ const {
   merchantRegisterSchema,
   adminRegisterSchema,
   loginSchema,
+  loginVerifyOtpSchema,
   setupBusinessSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   resetMerchantPasswordSchema,
   verifyOtpSchema,
+  resendOtpSchema,
   changePasswordSchema,
   updateFcmTokenSchema,
 } = require('../validators/auth');
 
 class AuthController {
   /**
-   * Merchant Registration
+   * Helper to issue login tokens and format response profile
+   */
+  static async _issueLoginTokens(res, account, role, fcmToken) {
+    const tokenPayload = { id: account.id, email: account.email || null, mobile: account.mobile, role };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+
+    if (fcmToken) {
+      account.fcmToken = fcmToken;
+    }
+    if (role === 'merchant') {
+      account.refreshToken = hashToken(refreshToken);
+    }
+    await account.save();
+
+    const profile = {
+      id: account.id,
+      email: account.email,
+      mobile: account.mobile,
+      role,
+      ...(role === 'merchant'
+        ? {
+            businessName: account.businessName,
+            businessUrl: account.businessUrl,
+            categoryId: account.categoryId,
+          }
+        : { firstName: account.firstName, lastName: account.lastName }),
+    };
+
+    return ResponseBuilder.success(
+      res,
+      { profile, accessToken, refreshToken },
+      'Logged in successfully'
+    );
+  }
+
+  /**
+   * Merchant Registration - Unique checks validated first, then OTP sent via SMS.
+   * User is NOT inserted into database until OTP is verified.
    */
   async registerMerchant(req, res, next) {
     try {
@@ -37,16 +79,25 @@ class AuthController {
       }
 
       const { email, mobile, password, fcmToken, intrestinourproduct } = value;
+      const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
 
-      // 1. Check if user already exists
-      if (email) {
-        const existingUser = await User.findOne({ where: { email } });
-        if (existingUser) {
+      // 1. UNIQUE VALIDATION CHECKS (Run BEFORE OTP generation/validation)
+      if (email && email.trim() !== '') {
+        const existingEmail = await User.findOne({ where: { email: email.trim() } });
+        if (existingEmail) {
           return ResponseBuilder.error(res, 'Email address already registered', 400);
         }
       }
 
-      const existingMobile = await User.findOne({ where: { mobile } });
+      const existingMobile = await User.findOne({
+        where: {
+          [Op.or]: [
+            { mobile },
+            { mobile: cleanMobile },
+            { mobile: `+91${cleanMobile}` },
+          ],
+        },
+      });
       if (existingMobile) {
         return ResponseBuilder.error(res, 'Mobile number already registered', 400);
       }
@@ -56,87 +107,31 @@ class AuthController {
       const passwordHash = await bcrypt.hash(password, salt);
 
       // 3. Generate 6-digit verification OTP
-      const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
+      const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
-      // 4. Create Merchant User
-      const merchant = await User.create({
-        email: email || null,
-        mobile,
+      // 4. Cache Pending Registration in Redis (10 minutes TTL)
+      const pendingData = {
+        email: email && email.trim() !== '' ? email.trim() : null,
+        mobile: cleanMobile,
         passwordHash,
-        verificationToken,
         fcmToken: fcmToken || null,
         intrestinourproduct: intrestinourproduct !== undefined ? intrestinourproduct : true,
-      });
-
-      // 5. Setup Initial Starter Subscription Plan
-      let starterPlan = await Plan.findOne({ where: { name: 'Starter' } });
-      if (!starterPlan) {
-        // Seed default Starter plan if it doesn't exist
-        starterPlan = await Plan.create({
-          name: 'Starter',
-          price: 0.00,
-          callLimit: 5,
-          maxConcurrentCalls: 1,
-        });
-      }
-
-      const now = new Date();
-      const expiryDate = new Date();
-      expiryDate.setMonth(now.getMonth() + 1); // 1 month expiration
-
-      await Subscription.create({
-        userId: merchant.id,
-        planId: starterPlan.id,
-        activePlan: starterPlan.name,
-        startDate: now,
-        expiryDate,
-        callsUsed: 0,
-        callsRemaining: starterPlan.callLimit,
-        status: 'active',
-      });
-
-      // 6. Setup demo number for trial testing
-      await VobizNumber.create({
-        userId: merchant.id,
-        number: defaults.vobiz.demoNumber,
-        status: 'active',
-        providerData: { isDemo: true },
-        agentId: null,
-      });
-
-      // Send verification SMS in the background
-      await sendSMSVerification(mobile, verificationToken);
-
-      // Generate login tokens
-      const tokenPayload = { id: merchant.id, email: merchant.email || null, mobile: merchant.mobile, role: 'merchant' };
-      const accessToken = generateAccessToken(tokenPayload);
-      const refreshToken = generateRefreshToken(tokenPayload);
-
-      // Save Refresh Token for validation (hashed)
-      merchant.refreshToken = hashToken(refreshToken);
-      await merchant.save();
-
-      // Notify Admins about new signup
-      await NotificationService.notifyAdmin(
-        'New Merchant Signup',
-        `A new merchant has registered with mobile: ${mobile}${email ? ` and email: ${email}` : ''}.`
-      );
-
-      const profile = {
-        id: merchant.id,
-        email: merchant.email,
-        mobile: merchant.mobile,
-        role: 'merchant',
-        businessName: merchant.businessName,
-        businessUrl: merchant.businessUrl,
-        categoryId: merchant.categoryId,
+        otp: verificationOtp,
+        createdAt: new Date().toISOString(),
       };
 
+      await redisClient.setEx(`pending_reg:${cleanMobile}`, 600, JSON.stringify(pendingData));
+      await redisClient.setEx(`pending_otp:${verificationOtp}`, 600, cleanMobile);
+
+      // 5. Send OTP via 2Factor SMS
+      await sendSMSVerification(cleanMobile, verificationOtp);
+
+      // 6. Return response - user will be registered in system after OTP verification
       return ResponseBuilder.success(
         res,
-        { profile, accessToken, refreshToken },
-        'Merchant registered successfully. Please verify your mobile number with the OTP sent.',
-        201
+        { mobile: cleanMobile, otpSent: true },
+        'OTP sent successfully. Please verify OTP to complete registration.',
+        200
       );
     } catch (err) {
       next(err);
@@ -210,7 +205,7 @@ class AuthController {
   }
 
   /**
-   * Login (Unified Admin and Merchant)
+   * Login (Unified Admin and Merchant) with OTP
    */
   async login(req, res, next) {
     try {
@@ -219,21 +214,30 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, mobile, password, role } = value;
+      const { email, mobile, password, otp, role = 'merchant', fcmToken } = value;
+      const cleanMobile = mobile ? String(mobile).replace(/\D/g, '').slice(-10) : null;
 
       let account = null;
 
       if (role === 'super_admin') {
         if (email) {
           account = await Admin.findOne({ where: { email } });
-        } else if (mobile) {
-          account = await Admin.findOne({ where: { mobile } });
+        } else if (cleanMobile) {
+          account = await Admin.findOne({
+            where: {
+              [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+            },
+          });
         }
       } else {
         if (email) {
           account = await User.findOne({ where: { email } });
-        } else if (mobile) {
-          account = await User.findOne({ where: { mobile } });
+        } else if (cleanMobile) {
+          account = await User.findOne({
+            where: {
+              [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+            },
+          });
         }
       }
 
@@ -241,10 +245,14 @@ class AuthController {
         return ResponseBuilder.error(res, 'Invalid credentials', 401);
       }
 
-      // Check Password
-      const isMatch = await bcrypt.compare(password, account.passwordHash);
-      if (!isMatch) {
-        return ResponseBuilder.error(res, 'Invalid credentials', 401);
+      // Check Password if password provided
+      if (password) {
+        const isMatch = await bcrypt.compare(password, account.passwordHash);
+        if (!isMatch) {
+          return ResponseBuilder.error(res, 'Invalid credentials', 401);
+        }
+      } else if (!otp) {
+        return ResponseBuilder.error(res, 'Password or OTP is required', 400);
       }
 
       // Check Verification
@@ -252,39 +260,83 @@ class AuthController {
         return ResponseBuilder.error(res, 'Please verify your account before logging in', 403);
       }
 
-      // Tokens
-      const tokenPayload = { id: account.id, email: account.email || null, mobile: account.mobile, role };
-      const accessToken = generateAccessToken(tokenPayload);
-      const refreshToken = generateRefreshToken(tokenPayload);
+      const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
 
-      // Save Refresh Token for validation & Save FCM Token if provided
-      if (value.fcmToken) {
-        account.fcmToken = value.fcmToken;
-      }
-      if (role === 'merchant') {
-        account.refreshToken = hashToken(refreshToken);
-      }
-      await account.save();
+      // If OTP is provided in this request, verify it directly
+      if (otp) {
+        const cachedLoginOtp = await redisClient.get(`login_otp:${targetMobile}`);
+        if (!cachedLoginOtp || cachedLoginOtp !== otp) {
+          return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
+        }
+        await redisClient.del(`login_otp:${targetMobile}`);
+        await redisClient.del(`login_otp_lookup:${otp}`);
 
-      const profile = {
-        id: account.id,
-        email: account.email,
-        mobile: account.mobile,
-        role,
-        ...(role === 'merchant'
-          ? {
-              businessName: account.businessName,
-              businessUrl: account.businessUrl,
-              categoryId: account.categoryId,
-            }
-          : { firstName: account.firstName, lastName: account.lastName }),
-      };
+        return AuthController._issueLoginTokens(res, account, role, fcmToken);
+      }
+
+      // If no OTP provided, generate and send login OTP via 2factor SMS
+      const loginOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      await redisClient.setEx(`login_otp:${targetMobile}`, 300, loginOtp); // 5 minutes TTL
+      await redisClient.setEx(`login_otp_lookup:${loginOtp}`, 300, targetMobile);
+
+      await sendSMSVerification(targetMobile, loginOtp);
 
       return ResponseBuilder.success(
         res,
-        { profile, accessToken, refreshToken },
-        'Logged in successfully'
+        {
+          otpRequired: true,
+          mobile: targetMobile,
+          role,
+        },
+        'OTP sent to your registered mobile number. Please verify OTP to complete login.'
       );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Verify Login OTP
+   */
+  async loginVerifyOtp(req, res, next) {
+    try {
+      const { error, value } = loginVerifyOtpSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { mobile, otp, role = 'merchant', fcmToken } = value;
+      const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+
+      const cachedLoginOtp = await redisClient.get(`login_otp:${cleanMobile}`);
+      if (!cachedLoginOtp || cachedLoginOtp !== otp) {
+        return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
+      }
+
+      let account = null;
+      if (role === 'super_admin') {
+        account = await Admin.findOne({
+          where: {
+            [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+          },
+        });
+      } else {
+        account = await User.findOne({
+          where: {
+            [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+          },
+        });
+      }
+
+      if (!account) {
+        return ResponseBuilder.error(res, 'Account not found', 404);
+      }
+
+      // Clear OTP
+      await redisClient.del(`login_otp:${cleanMobile}`);
+      await redisClient.del(`login_otp_lookup:${otp}`);
+
+      return AuthController._issueLoginTokens(res, account, role, fcmToken);
     } catch (err) {
       next(err);
     }
@@ -340,6 +392,7 @@ class AuthController {
 
   /**
    * Verify OTP
+   * For registration: Compulsory OTP verification creates user in DB and activates services.
    */
   async verifyOtp(req, res, next) {
     try {
@@ -348,7 +401,7 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { otp, role } = value;
+      const { otp, role = 'merchant', mobile } = value;
 
       if (role === 'super_admin') {
         const admin = await Admin.findOne({ where: { verificationToken: otp } });
@@ -359,23 +412,172 @@ class AuthController {
         admin.verificationToken = null;
         await admin.save();
         return ResponseBuilder.success(res, null, 'Admin account verified successfully');
-      } else {
-        const user = await User.findOne({ where: { verificationToken: otp } });
-        if (!user) {
-          return ResponseBuilder.error(res, 'Invalid verification OTP', 400);
+      }
+
+      // Role is merchant:
+      let cleanMobile = mobile ? String(mobile).replace(/\D/g, '').slice(-10) : null;
+      if (!cleanMobile) {
+        cleanMobile = await redisClient.get(`pending_otp:${otp}`);
+      }
+
+      let pendingData = null;
+      if (cleanMobile) {
+        const cached = await redisClient.get(`pending_reg:${cleanMobile}`);
+        if (cached) {
+          pendingData = JSON.parse(cached);
         }
+      }
+
+      // Check if this OTP matches a pending registration
+      if (pendingData && pendingData.otp === otp) {
+        // Race condition check: make sure user was not registered concurrently
+        const duplicateCheck = await User.findOne({
+          where: {
+            [Op.or]: [
+              { mobile: pendingData.mobile },
+              ...(pendingData.email ? [{ email: pendingData.email }] : []),
+            ],
+          },
+        });
+
+        if (duplicateCheck) {
+          await redisClient.del(`pending_reg:${cleanMobile}`);
+          await redisClient.del(`pending_otp:${otp}`);
+          return ResponseBuilder.error(res, 'Account already registered. Please login.', 400);
+        }
+
+        // CREATE MERCHANT USER IN OUR DATABASE
+        const merchant = await User.create({
+          email: pendingData.email,
+          mobile: pendingData.mobile,
+          passwordHash: pendingData.passwordHash,
+          verificationToken: null,
+          isVerified: true,
+          fcmToken: pendingData.fcmToken,
+          intrestinourproduct: pendingData.intrestinourproduct,
+        });
+
+        // Setup Initial Starter Subscription Plan
+        let starterPlan = await Plan.findOne({ where: { name: 'Starter' } });
+        if (!starterPlan) {
+          starterPlan = await Plan.create({
+            name: 'Starter',
+            price: 0.00,
+            callLimit: 5,
+            maxConcurrentCalls: 1,
+          });
+        }
+
+        const now = new Date();
+        const expiryDate = new Date();
+        expiryDate.setMonth(now.getMonth() + 1);
+
+        await Subscription.create({
+          userId: merchant.id,
+          planId: starterPlan.id,
+          activePlan: starterPlan.name,
+          startDate: now,
+          expiryDate,
+          callsUsed: 0,
+          callsRemaining: starterPlan.callLimit,
+          status: 'active',
+        });
+
+        // Setup demo number for trial testing
+        await VobizNumber.create({
+          userId: merchant.id,
+          number: defaults.vobiz.demoNumber,
+          status: 'active',
+          providerData: { isDemo: true },
+          agentId: null,
+        });
+
+        // Generate login tokens
+        const tokenPayload = { id: merchant.id, email: merchant.email || null, mobile: merchant.mobile, role: 'merchant' };
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken(tokenPayload);
+
+        merchant.refreshToken = hashToken(refreshToken);
+        await merchant.save();
+
+        // Clear Redis pending registration keys
+        await redisClient.del(`pending_reg:${cleanMobile}`);
+        await redisClient.del(`pending_otp:${otp}`);
+
+        // Notify Admins about new signup
+        NotificationService.notifyAdmin(
+          'New Merchant Signup',
+          `A new merchant has registered and verified with mobile: ${merchant.mobile}${merchant.email ? ` and email: ${merchant.email}` : ''}.`
+        ).catch((notifyErr) => {
+          console.error('[NotificationService] notifyAdmin error:', notifyErr.message);
+        });
+
+        // Trigger automatic AI Onboarding Call
+        const MerchantOnboardingService = require('../services/merchantOnboardingService');
+        MerchantOnboardingService.scheduleOnboardingCall(merchant.id).catch((callErr) => {
+          console.error('[authController] Failed to schedule onboarding call:', callErr.message);
+        });
+
+        const profile = {
+          id: merchant.id,
+          email: merchant.email,
+          mobile: merchant.mobile,
+          role: 'merchant',
+          businessName: merchant.businessName,
+          businessUrl: merchant.businessUrl,
+          categoryId: merchant.categoryId,
+        };
+
+        return ResponseBuilder.success(
+          res,
+          { profile, accessToken, refreshToken },
+          'Merchant registered and verified successfully.',
+          201
+        );
+      }
+
+      // Fallback: Check if user exists in DB and had verificationToken
+      const userWhere = { verificationToken: otp };
+      if (cleanMobile) {
+        userWhere.mobile = { [Op.or]: [cleanMobile, `+91${cleanMobile}`] };
+      }
+      const user = await User.findOne({ where: userWhere });
+      if (user) {
         user.isVerified = true;
         user.verificationToken = null;
+
+        const tokenPayload = { id: user.id, email: user.email || null, mobile: user.mobile, role: 'merchant' };
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken(tokenPayload);
+
+        user.refreshToken = hashToken(refreshToken);
         await user.save();
-        return ResponseBuilder.success(res, null, 'Merchant account verified successfully');
+
+        const profile = {
+          id: user.id,
+          email: user.email,
+          mobile: user.mobile,
+          role: 'merchant',
+          businessName: user.businessName,
+          businessUrl: user.businessUrl,
+          categoryId: user.categoryId,
+        };
+
+        return ResponseBuilder.success(
+          res,
+          { profile, accessToken, refreshToken },
+          'Merchant account verified successfully'
+        );
       }
+
+      return ResponseBuilder.error(res, 'Invalid or expired verification OTP', 400);
     } catch (err) {
       next(err);
     }
   }
 
   /**
-   * Forgot Password
+   * Forgot Password - Send OTP via SMS to registered mobile
    */
   async forgotPassword(req, res, next) {
     try {
@@ -384,36 +586,66 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { email, role } = value;
+      const { email, mobile, role = 'merchant' } = value;
+      const cleanMobile = mobile ? String(mobile).replace(/\D/g, '').slice(-10) : null;
 
       let account = null;
       if (role === 'super_admin') {
-        account = await Admin.findOne({ where: { email } });
+        if (email) {
+          account = await Admin.findOne({ where: { email } });
+        } else if (cleanMobile) {
+          account = await Admin.findOne({
+            where: {
+              [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+            },
+          });
+        }
       } else {
-        account = await User.findOne({ where: { email } });
+        if (email) {
+          account = await User.findOne({ where: { email } });
+        } else if (cleanMobile) {
+          account = await User.findOne({
+            where: {
+              [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+            },
+          });
+        }
       }
 
       if (!account) {
-        // Return 200 for security, to prevent username enumeration
-        return ResponseBuilder.success(res, null, 'If this email exists, a password reset link has been sent');
+        // Return generic success to avoid enumeration
+        return ResponseBuilder.success(res, null, 'If this account exists, a password reset OTP has been sent');
       }
 
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetTokenExpires = new Date(Date.now() + 3600000); // 1 hour
+      // Generate 6-digit OTP
+      const resetOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
 
-      account.resetToken = resetToken;
-      account.resetTokenExpires = resetTokenExpires;
+      if (targetMobile) {
+        await redisClient.setEx(`reset_otp:${targetMobile}`, 600, resetOtp);
+        await redisClient.setEx(`reset_otp_lookup:${resetOtp}`, 600, targetMobile);
+      }
+
+      account.resetToken = resetOtp;
+      account.resetTokenExpires = new Date(Date.now() + 600000); // 10 minutes
       await account.save();
 
-      // Send password reset email in the background
-      sendPasswordResetEmail(email, resetToken, role).catch((emailErr) => {
-        console.error(`[Background Email] Failed to send password reset email to ${email}:`, emailErr);
-      });
+      // Send SMS OTP via 2factor
+      if (targetMobile) {
+        await sendSMSVerification(targetMobile, resetOtp);
+      }
+
+      // Also send reset email if email exists
+      if (account.email) {
+        sendPasswordResetEmail(account.email, resetOtp, role).catch((emailErr) => {
+          console.error('[forgotPassword] Failed to send password reset email:', emailErr.message);
+        });
+      }
 
       return ResponseBuilder.success(
         res,
-        null,
-        'If this email exists, a password reset link has been sent'
+        { mobile: targetMobile },
+        'Password reset OTP sent to your registered mobile number'
       );
     } catch (err) {
       next(err);
@@ -421,7 +653,7 @@ class AuthController {
   }
 
   /**
-   * Reset Password
+   * Reset Password with OTP or Token
    */
   async resetPassword(req, res, next) {
     try {
@@ -430,21 +662,43 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { token, password, role } = value;
+      const { token, otp, mobile, password, role = 'merchant' } = value;
+      const resetCode = otp || token;
+      const cleanMobile = mobile ? String(mobile).replace(/\D/g, '').slice(-10) : null;
 
       let account = null;
-      if (role === 'super_admin') {
-        account = await Admin.findOne({
-          where: { resetToken: token },
-        });
-      } else {
-        account = await User.findOne({
-          where: { resetToken: token },
-        });
+
+      // 1. Check Redis by mobile
+      if (cleanMobile) {
+        const cachedOtp = await redisClient.get(`reset_otp:${cleanMobile}`);
+        if (cachedOtp && cachedOtp === resetCode) {
+          account = role === 'super_admin'
+            ? await Admin.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } })
+            : await User.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } });
+        }
+      }
+
+      // 2. Check Redis by reverse lookup
+      if (!account && resetCode) {
+        const lookupMobile = await redisClient.get(`reset_otp_lookup:${resetCode}`);
+        if (lookupMobile) {
+          account = role === 'super_admin'
+            ? await Admin.findOne({ where: { [Op.or]: [{ mobile: lookupMobile }, { mobile: `+91${lookupMobile}` }] } })
+            : await User.findOne({ where: { [Op.or]: [{ mobile: lookupMobile }, { mobile: `+91${lookupMobile}` }] } });
+        }
+      }
+
+      // 3. Fallback to DB resetToken
+      if (!account) {
+        if (role === 'super_admin') {
+          account = await Admin.findOne({ where: { resetToken: resetCode } });
+        } else {
+          account = await User.findOne({ where: { resetToken: resetCode } });
+        }
       }
 
       if (!account || !account.resetTokenExpires || account.resetTokenExpires < new Date()) {
-        return ResponseBuilder.error(res, 'Reset token is invalid or has expired', 400);
+        return ResponseBuilder.error(res, 'Reset OTP/token is invalid or has expired', 400);
       }
 
       const salt = await bcrypt.genSalt(10);
@@ -458,7 +712,80 @@ class AuthController {
       }
       await account.save();
 
+      // Clean up Redis keys
+      const accMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
+      if (accMobile) {
+        await redisClient.del(`reset_otp:${accMobile}`);
+      }
+      await redisClient.del(`reset_otp_lookup:${resetCode}`);
+
       return ResponseBuilder.success(res, null, 'Password reset successfully. You can now login.');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Resend OTP (Supports registration, login, and reset_password)
+   */
+  async resendOtp(req, res, next) {
+    try {
+      const { error, value } = resendOtpSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { mobile, type = 'registration', role = 'merchant' } = value;
+      const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+      if (type === 'registration') {
+        const cached = await redisClient.get(`pending_reg:${cleanMobile}`);
+        if (!cached) {
+          return ResponseBuilder.error(res, 'No pending registration found for this mobile. Please register first.', 404);
+        }
+        const pendingData = JSON.parse(cached);
+        pendingData.otp = newOtp;
+        await redisClient.setEx(`pending_reg:${cleanMobile}`, 600, JSON.stringify(pendingData));
+        await redisClient.setEx(`pending_otp:${newOtp}`, 600, cleanMobile);
+
+        await sendSMSVerification(cleanMobile, newOtp);
+        return ResponseBuilder.success(res, { mobile: cleanMobile }, 'Registration OTP resent successfully');
+      } else if (type === 'login') {
+        const account = role === 'super_admin'
+          ? await Admin.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } })
+          : await User.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } });
+
+        if (!account) {
+          return ResponseBuilder.error(res, 'Account not found', 404);
+        }
+
+        await redisClient.setEx(`login_otp:${cleanMobile}`, 300, newOtp);
+        await redisClient.setEx(`login_otp_lookup:${newOtp}`, 300, cleanMobile);
+
+        await sendSMSVerification(cleanMobile, newOtp);
+        return ResponseBuilder.success(res, { mobile: cleanMobile }, 'Login OTP resent successfully');
+      } else if (type === 'reset_password') {
+        const account = role === 'super_admin'
+          ? await Admin.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } })
+          : await User.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } });
+
+        if (!account) {
+          return ResponseBuilder.error(res, 'Account not found', 404);
+        }
+
+        await redisClient.setEx(`reset_otp:${cleanMobile}`, 600, newOtp);
+        await redisClient.setEx(`reset_otp_lookup:${newOtp}`, 600, cleanMobile);
+        account.resetToken = newOtp;
+        account.resetTokenExpires = new Date(Date.now() + 600000);
+        await account.save();
+
+        await sendSMSVerification(cleanMobile, newOtp);
+        return ResponseBuilder.success(res, { mobile: cleanMobile }, 'Password reset OTP resent successfully');
+      }
+
+      return ResponseBuilder.error(res, 'Invalid OTP type', 400);
     } catch (err) {
       next(err);
     }

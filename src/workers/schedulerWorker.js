@@ -39,6 +39,13 @@ async function startScheduler() {
           // Move to FIFO execution queue
           await QueueService.enqueueJob('PLACE_CALL', job.payload);
           console.log(`Moved call placement job to call_queue for Customer: ${job.payload.customerId}`);
+        } else if (job.type === 'PLACE_MERCHANT_CALL') {
+          await QueueService.enqueueJob('PLACE_MERCHANT_CALL', job.payload);
+          console.log(`Moved merchant call job to call_queue for Merchant: ${job.payload.merchantId}`);
+        } else if (job.type === 'MERCHANT_CALLBACK') {
+          await handleMerchantCallback(job.payload);
+        } else if (job.type === 'MEETING_REMINDER') {
+          await handleMeetingReminder(job.payload);
         }
       }
 
@@ -367,6 +374,61 @@ async function handleStartCampaign(payload) {
       await transaction.rollback();
     }
     console.error(`Failed to handle START_CAMPAIGN for ${campaignId}:`, err);
+  }
+}
+
+/**
+ * Handles ready merchant callback jobs: enforces night restriction and queues call
+ */
+async function handleMerchantCallback(payload) {
+  const { callbackId, merchantId, agentId } = payload;
+  try {
+    const { MerchantCallback } = require('../models');
+    const callback = await MerchantCallback.findByPk(callbackId);
+    if (!callback || callback.status === 'cancelled' || callback.status === 'completed') {
+      console.log(`[Scheduler] Merchant callback ${callbackId} already handled or cancelled.`);
+      return;
+    }
+
+    const MerchantOnboardingService = require('../services/merchantOnboardingService');
+    const now = new Date();
+    if (MerchantOnboardingService.isNightTime(now)) {
+      // Re-schedule for next morning 10:00 AM IST
+      const nextMorning = MerchantOnboardingService.adjustIfNight(now);
+      await QueueService.scheduleJob('MERCHANT_CALLBACK', payload, nextMorning.getTime());
+      callback.scheduledTime = nextMorning;
+      callback.notes = 'Re-scheduled to next morning 10:00 AM due to night calling policy';
+      await callback.save();
+      console.log(`[Scheduler] Callback ${callbackId} deferred to morning: ${nextMorning}`);
+      return;
+    }
+
+    // Enqueue place call job
+    await QueueService.enqueueJob('PLACE_MERCHANT_CALL', {
+      merchantId,
+      agentId,
+      callType: 'merchant_callback',
+      callbackId,
+    });
+
+    callback.status = 'in_progress';
+    await callback.save();
+    console.log(`[Scheduler] Enqueued callback call for merchant ${merchantId}`);
+  } catch (err) {
+    console.error(`[Scheduler] Error handling merchant callback ${callbackId}:`, err);
+  }
+}
+
+/**
+ * Handles 15-minute meeting reminder calls
+ */
+async function handleMeetingReminder(payload) {
+  const { meetingId } = payload;
+  try {
+    const MerchantOnboardingService = require('../services/merchantOnboardingService');
+    await MerchantOnboardingService.triggerMeetingReminder(meetingId);
+  } catch (err) {
+    console.error(`[Scheduler] Error handling meeting reminder for meeting ${meetingId}:`, err);
   }
 }
 

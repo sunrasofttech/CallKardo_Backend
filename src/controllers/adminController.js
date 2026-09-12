@@ -1,4 +1,4 @@
-const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, SubscriptionHistory, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction } = require('../models');
+const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, SubscriptionHistory, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction, Meeting, MerchantCallback } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const fcmService = require('../services/fcmService');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
@@ -2757,6 +2757,456 @@ class AdminController {
       next(err);
     }
   };
+
+  /**
+   * ==========================================
+   * MERCHANT-CALLING AGENTS (Admin Management)
+   * ==========================================
+   */
+
+  /**
+   * List all AI agents created for calling merchants
+   */
+  async getMerchantAgents(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+      const agents = await Agent.findAll({
+        where: {
+          [Op.or]: [
+            { isMerchantCaller: true },
+            { agentType: 'merchant_onboarding' },
+          ],
+        },
+        include: [
+          { model: Voice, as: 'voice', attributes: ['id', 'name', 'provider', 'gender', 'language'] },
+          { model: Admin, as: 'admin', attributes: ['id', 'email', 'firstName', 'lastName'] },
+        ],
+        order: [['createdAt', 'DESC']],
+      });
+
+      return ResponseBuilder.success(res, { agents }, 'Merchant-calling agents retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Create a new AI agent dedicated to calling merchants
+   */
+  async createMerchantAgent(req, res, next) {
+    try {
+      const { name, description, systemPrompt, firstMessage, language, voiceId, aiProvider, pace, temperature, activeStatus } = req.body;
+
+      if (!name || !systemPrompt) {
+        return ResponseBuilder.error(res, 'Name and system prompt are required', 400);
+      }
+
+      // Resolve voice if not provided
+      let finalVoiceId = voiceId;
+      if (!finalVoiceId) {
+        const voice = await Voice.findOne();
+        finalVoiceId = voice ? voice.id : null;
+      }
+
+      const agent = await Agent.create({
+        name,
+        description: description || null,
+        systemPrompt,
+        firstMessage: firstMessage || null,
+        language: language || 'hi',
+        voiceId: finalVoiceId,
+        aiProvider: aiProvider || defaults.defaultAiProvider || 'customv2',
+        adminId: req.user.id,
+        userId: null,
+        agentType: 'merchant_onboarding',
+        isMerchantCaller: true,
+        activeStatus: activeStatus !== undefined ? activeStatus : true,
+        approvalStatus: 'approved',
+        pace: pace || 1.0,
+        temperature: temperature || 0.6,
+      });
+
+      return ResponseBuilder.success(res, { agent }, 'Merchant-calling agent created successfully', 201);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update a merchant-calling AI agent
+   */
+  async updateMerchantAgent(req, res, next) {
+    try {
+      const { id } = req.params;
+      const agent = await Agent.findByPk(id);
+
+      if (!agent || (!agent.isMerchantCaller && agent.agentType !== 'merchant_onboarding')) {
+        return ResponseBuilder.error(res, 'Merchant-calling agent not found', 404);
+      }
+
+      const allowedFields = ['name', 'description', 'systemPrompt', 'firstMessage', 'language', 'voiceId', 'aiProvider', 'pace', 'temperature', 'activeStatus'];
+      allowedFields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          agent[field] = req.body[field];
+        }
+      });
+
+      await agent.save();
+      return ResponseBuilder.success(res, { agent }, 'Merchant-calling agent updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Delete a merchant-calling agent
+   */
+  async deleteMerchantAgent(req, res, next) {
+    try {
+      const { id } = req.params;
+      const agent = await Agent.findByPk(id);
+
+      if (!agent || (!agent.isMerchantCaller && agent.agentType !== 'merchant_onboarding')) {
+        return ResponseBuilder.error(res, 'Merchant-calling agent not found', 404);
+      }
+
+      await agent.destroy();
+      return ResponseBuilder.success(res, null, 'Merchant-calling agent deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Set a merchant-calling agent as the active primary caller
+   */
+  async setActiveMerchantAgent(req, res, next) {
+    try {
+      const { id } = req.params;
+      const targetAgent = await Agent.findByPk(id);
+
+      if (!targetAgent || (!targetAgent.isMerchantCaller && targetAgent.agentType !== 'merchant_onboarding')) {
+        return ResponseBuilder.error(res, 'Merchant-calling agent not found', 404);
+      }
+
+      // Deactivate all other merchant-calling agents
+      const { Op } = require('sequelize');
+      await Agent.update(
+        { activeStatus: false },
+        {
+          where: {
+            id: { [Op.ne]: id },
+            [Op.or]: [
+              { isMerchantCaller: true },
+              { agentType: 'merchant_onboarding' },
+            ],
+          },
+        }
+      );
+
+      // Activate target agent
+      targetAgent.activeStatus = true;
+      await targetAgent.save();
+
+      return ResponseBuilder.success(res, { agent: targetAgent }, `Agent "${targetAgent.name}" is now the active primary merchant caller`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * ==========================================
+   * MEETINGS MANAGEMENT (Day-Wise View for Admin)
+   * ==========================================
+   */
+
+  /**
+   * Get scheduled meetings organized day-wise for Admin
+   */
+  async getMeetings(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+      const { date, startDate, endDate, status, merchantId } = req.query;
+
+      const where = {};
+      if (status) {
+        where.status = status;
+      }
+      if (merchantId) {
+        where.merchantId = merchantId;
+      }
+
+      // Date filtering
+      if (date) {
+        // Specific day e.g. "2026-09-12"
+        const startOfDay = new Date(`${date}T00:00:00.000+05:30`);
+        const endOfDay = new Date(`${date}T23:59:59.999+05:30`);
+        where.meetingTime = { [Op.between]: [startOfDay, endOfDay] };
+      } else if (startDate || endDate) {
+        where.meetingTime = {};
+        if (startDate) {
+          where.meetingTime[Op.gte] = new Date(`${startDate}T00:00:00.000+05:30`);
+        }
+        if (endDate) {
+          where.meetingTime[Op.lte] = new Date(`${endDate}T23:59:59.999+05:30`);
+        }
+      }
+
+      const meetings = await Meeting.findAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: 'merchant',
+            attributes: ['id', 'email', 'mobile', 'businessName', 'businessType', 'businessUrl'],
+          },
+          {
+            model: Agent,
+            as: 'agent',
+            attributes: ['id', 'name', 'agentType'],
+          },
+          {
+            model: CallSession,
+            as: 'callSession',
+            attributes: ['id', 'startTime', 'endTime', 'status', 'direction'],
+            include: [
+              {
+                model: CallReport,
+                as: 'report',
+                attributes: ['id', 'summary', 'outcome', 'leadScore', 'recordingUrl'],
+              },
+            ],
+          },
+        ],
+        order: [['meetingTime', 'ASC']],
+      });
+
+      // Group day-wise in IST (YYYY-MM-DD)
+      const dayWiseMeetings = {};
+      let upcomingCount = 0;
+      let completedCount = 0;
+      let cancelledCount = 0;
+      const now = new Date();
+
+      meetings.forEach((m) => {
+        const mDate = new Date(m.meetingTime);
+        // Format to YYYY-MM-DD in Asia/Kolkata
+        const istOffsetMs = 5.5 * 60 * 60 * 1000;
+        const istDate = new Date(mDate.getTime() + istOffsetMs);
+        const dayKey = istDate.toISOString().split('T')[0];
+
+        if (!dayWiseMeetings[dayKey]) {
+          dayWiseMeetings[dayKey] = [];
+        }
+        dayWiseMeetings[dayKey].push(m);
+
+        if (m.status === 'completed') {
+          completedCount++;
+        } else if (m.status === 'cancelled') {
+          cancelledCount++;
+        } else if (m.status === 'scheduled' && mDate >= now) {
+          upcomingCount++;
+        }
+      });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          totalMeetings: meetings.length,
+          upcomingCount,
+          completedCount,
+          cancelledCount,
+          availableDates: Object.keys(dayWiseMeetings).sort(),
+          dayWiseMeetings,
+          meetings,
+        },
+        'Meetings retrieved and grouped day-wise successfully'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get a single meeting by ID
+   */
+  async getMeetingById(req, res, next) {
+    try {
+      const { id } = req.params;
+      const meeting = await Meeting.findByPk(id, {
+        include: [
+          {
+            model: User,
+            as: 'merchant',
+            attributes: ['id', 'email', 'mobile', 'businessName', 'businessType', 'businessUrl'],
+          },
+          {
+            model: Agent,
+            as: 'agent',
+            attributes: ['id', 'name', 'agentType'],
+          },
+          {
+            model: CallSession,
+            as: 'callSession',
+            include: [
+              {
+                model: CallReport,
+                as: 'report',
+              },
+            ],
+          },
+        ],
+      });
+
+      if (!meeting) {
+        return ResponseBuilder.error(res, 'Meeting not found', 404);
+      }
+
+      return ResponseBuilder.success(res, { meeting }, 'Meeting details retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update a meeting (status, notes, reschedule)
+   */
+  async updateMeeting(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { status, notes, meetingTime, meetingLink } = req.body;
+
+      const meeting = await Meeting.findByPk(id);
+      if (!meeting) {
+        return ResponseBuilder.error(res, 'Meeting not found', 404);
+      }
+
+      if (status) meeting.status = status;
+      if (notes !== undefined) meeting.notes = notes;
+      if (meetingLink) meeting.meetingLink = meetingLink;
+
+      if (meetingTime) {
+        meeting.meetingTime = new Date(meetingTime);
+        // Recalculate 15-min reminder
+        meeting.reminderCallTime = new Date(meeting.meetingTime.getTime() - 15 * 60 * 1000);
+        meeting.reminderCallStatus = 'pending';
+
+        // Re-queue reminder job
+        const QueueService = require('../services/queueService');
+        await QueueService.scheduleJob(
+          'MEETING_REMINDER',
+          { meetingId: meeting.id, merchantId: meeting.merchantId },
+          meeting.reminderCallTime.getTime()
+        );
+      }
+
+      await meeting.save();
+      return ResponseBuilder.success(res, { meeting }, 'Meeting updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * ==========================================
+   * CALLBACKS MANAGEMENT (Admin View & Action)
+   * ==========================================
+   */
+
+  /**
+   * List all merchant callbacks
+   */
+  async getMerchantCallbacks(req, res, next) {
+    try {
+      const { status, merchantId } = req.query;
+      const where = {};
+      if (status) where.status = status;
+      if (merchantId) where.merchantId = merchantId;
+
+      const callbacks = await MerchantCallback.findAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: 'merchant',
+            attributes: ['id', 'email', 'mobile', 'businessName', 'businessType'],
+          },
+          {
+            model: Agent,
+            as: 'agent',
+            attributes: ['id', 'name'],
+          },
+          {
+            model: CallSession,
+            as: 'originalSession',
+            attributes: ['id', 'startTime', 'endTime', 'status'],
+          },
+        ],
+        order: [['scheduledTime', 'ASC']],
+      });
+
+      return ResponseBuilder.success(res, { callbacks }, 'Callbacks retrieved successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Manually trigger a callback immediately
+   */
+  async triggerCallbackNow(req, res, next) {
+    try {
+      const { id } = req.params;
+      const callback = await MerchantCallback.findByPk(id);
+
+      if (!callback) {
+        return ResponseBuilder.error(res, 'Callback record not found', 404);
+      }
+
+      const QueueService = require('../services/queueService');
+      await QueueService.enqueueJob('PLACE_MERCHANT_CALL', {
+        merchantId: callback.merchantId,
+        agentId: callback.agentId,
+        callType: 'merchant_callback',
+        callbackId: callback.id,
+      });
+
+      callback.status = 'in_progress';
+      await callback.save();
+
+      return ResponseBuilder.success(res, { callback }, 'Callback call triggered successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Manually trigger an AI Onboarding Call to a specific merchant
+   */
+  async triggerMerchantOnboardingCall(req, res, next) {
+    try {
+      const { id } = req.params;
+      const merchant = await User.findByPk(id);
+
+      if (!merchant) {
+        return ResponseBuilder.error(res, 'Merchant not found', 404);
+      }
+
+      const MerchantOnboardingService = require('../services/merchantOnboardingService');
+      const agent = await MerchantOnboardingService.getOrCreateDefaultMerchantAgent(req.user.id);
+
+      const QueueService = require('../services/queueService');
+      await QueueService.enqueueJob('PLACE_MERCHANT_CALL', {
+        merchantId: merchant.id,
+        agentId: agent.id,
+        callType: 'merchant_onboarding',
+      });
+
+      return ResponseBuilder.success(res, null, `AI Onboarding Call triggered for merchant ${merchant.mobile}`);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 const adminController = new AdminController();

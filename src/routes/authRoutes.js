@@ -12,11 +12,17 @@ router.post('/admin/register', AuthController.registerAdmin);
 // Unified Login
 router.post('/login', AuthController.login);
 
+// Verify Login OTP
+router.post('/login/verify-otp', AuthController.loginVerifyOtp);
+
 // Refresh Access Token
 router.post('/refresh-token', AuthController.refreshToken);
 
-// Verify OTP via SMS
+// Verify OTP (Registration & General Verification)
 router.post('/verify-otp', AuthController.verifyOtp);
+
+// Resend OTP (Registration, Login, Reset Password)
+router.post('/resend-otp', AuthController.resendOtp);
 
 // Forgot Password Flow
 router.post('/forgot-password', AuthController.forgotPassword);

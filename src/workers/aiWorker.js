@@ -254,9 +254,46 @@ async function processCallAnalysis(event) {
       );
     }
 
+    // If this was an Admin Merchant Call, notify Admin of full details and handle safety nets
+    const isMerchantCall = ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'].includes(session.callType);
+    if (isMerchantCall) {
+      const merchantUser = await User.findByPk(finalUserId);
+      await NotificationService.notifyAdmin(
+        `Merchant Call Completed (${session.callType})`,
+        `Call with Merchant ${merchantUser?.businessName || merchantUser?.mobile || finalUserId} finished. Outcome: ${analysis.outcome}, Score: ${analysis.leadScore}, Duration: ${duration || 0}s. Summary: ${analysis.summary}`,
+        session.adminId,
+        'call'
+      );
 
-    // 7. Deduct call credit from merchant's subscription
-    if (created && finalUserId) {
+      // If meeting reminder, mark completed
+      if (session.callType === 'meeting_reminder') {
+        const { Meeting } = require('../models');
+        await Meeting.update({ reminderCallStatus: 'completed' }, { where: { merchantId: finalUserId, reminderCallStatus: 'initiated' } }).catch(() => {});
+      }
+
+      // Safety net: if Callback Requested but no record exists, create one
+      if (analysis.outcome === 'Callback Requested') {
+        const { MerchantCallback } = require('../models');
+        const existingCb = await MerchantCallback.findOne({ where: { callSessionId } });
+        if (!existingCb) {
+          const MerchantOnboardingService = require('../services/merchantOnboardingService');
+          await MerchantOnboardingService.scheduleCallback(finalUserId, null, callSessionId, session.agentId);
+        }
+      }
+
+      // Safety net: if Appointment Booked but no meeting exists, create one
+      if (analysis.outcome === 'Appointment Booked') {
+        const { Meeting } = require('../models');
+        const existingMeeting = await Meeting.findOne({ where: { callSessionId } });
+        if (!existingMeeting) {
+          const MerchantOnboardingService = require('../services/merchantOnboardingService');
+          await MerchantOnboardingService.scheduleMeeting(finalUserId, null, callSessionId, session.agentId);
+        }
+      }
+    }
+
+    // 7. Deduct call credit from merchant's subscription (only for regular merchant campaign calls)
+    if (created && finalUserId && (!session.callType || session.callType === 'campaign')) {
       try {
         await SubscriptionService.recordCallUsage(finalUserId);
       } catch (subErr) {

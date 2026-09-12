@@ -28,10 +28,23 @@ const adminRegisterSchema = Joi.object({
 const loginSchema = Joi.object({
   email: Joi.string().email().optional(),
   mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
-  password: Joi.string().required(),
+  password: Joi.string().optional(),
+  otp: Joi.string().length(6).optional(),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
   fcmToken: Joi.string().optional().allow(''),
 }).or('email', 'mobile');
+
+const loginVerifyOtpSchema = Joi.object({
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required().messages({
+    'any.required': 'Mobile number is required',
+  }),
+  otp: Joi.string().length(6).required().messages({
+    'string.length': 'OTP must be 6 digits',
+    'any.required': 'OTP is required',
+  }),
+  role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
+  fcmToken: Joi.string().optional().allow(''),
+});
 
 const setupBusinessSchema = Joi.object({
   businessName: Joi.string()
@@ -59,18 +72,30 @@ const setupBusinessSchema = Joi.object({
 });
 
 const forgotPasswordSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: Joi.string().email().optional(),
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
-});
+}).or('email', 'mobile');
 
 const resetPasswordSchema = Joi.object({
-  token: Joi.string().required(),
+  token: Joi.string().optional(),
+  otp: Joi.string().length(6).optional(),
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
   password: Joi.string().min(6).required(),
+  role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
+}).or('token', 'otp');
+
+const verifyOtpSchema = Joi.object({
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
+  otp: Joi.string().length(6).required(),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
 });
 
-const verifyOtpSchema = Joi.object({
-  otp: Joi.string().length(6).required(),
+const resendOtpSchema = Joi.object({
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required().messages({
+    'any.required': 'Mobile number is required',
+  }),
+  type: Joi.string().valid('registration', 'login', 'reset_password').default('registration'),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
 });
 
@@ -125,6 +150,8 @@ module.exports = {
   resetPasswordSchema,
   resetMerchantPasswordSchema,
   verifyOtpSchema,
+  loginVerifyOtpSchema,
+  resendOtpSchema,
   changePasswordSchema,
   updateFcmTokenSchema,
 };

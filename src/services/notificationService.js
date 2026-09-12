@@ -64,6 +64,19 @@ class NotificationService {
       } else {
         // Notify all super_admins
         const admins = await Admin.findAll({ where: { role: 'super_admin' } });
+        if (admins.length === 0) {
+          const notif = await Notification.create({
+            adminId: null,
+            type: 'ADMIN',
+            category,
+            title,
+            message,
+            isRead: false
+          });
+          console.log(`[Notification] Created system-wide Admin notification [${category}]: ${title}`);
+          return [notif];
+        }
+
         const notifications = await Promise.all(
           admins.map(async (admin) => {
             const notif = await Notification.create({

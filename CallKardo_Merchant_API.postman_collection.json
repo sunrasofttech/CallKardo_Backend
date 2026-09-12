@@ -128,46 +128,48 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "register"]
             },
-            "description": "Register a new merchant. Returns access & refresh tokens immediately. An OTP is sent via SMS for verification.\n\n**Auto-saves:** `accessToken`, `refreshToken`"
+            "description": "Performs unique validation checks upfront (email & mobile) and sends 6-digit OTP via SMS (2Factor). User is NOT created in DB until OTP is verified via Verify OTP."
           },
           "response": []
         },
         {
-          "name": "1.2 Verify OTP",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"otp\": \"123456\",\n  \"role\": \"merchant\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/auth/verify-otp",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "auth", "verify-otp"]
-            },
-            "description": "Verify the 6-digit OTP sent via SMS. Must be called with a valid accessToken (from registration)."
-          },
-          "response": []
-        },
-        {
-          "name": "1.3 Login",
+          "name": "1.2 Verify OTP (Complete Registration)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
                   "  const json = pm.response.json();",
-                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
-                  "  pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
-                  "  console.log('✅ Tokens saved from login');",
+                  "  if (json.data && json.data.accessToken) {",
+                  "    pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "    console.log('✅ Tokens saved from registration verification');",
+                  "  }",
                   "}"
                 ]
               }
             }
           ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"otp\": \"123456\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "verify-otp"]
+            },
+            "description": "Verify the 6-digit OTP sent via SMS to finalize merchant registration. Creates user in DB, assigns Starter plan & demo number, and returns login tokens.\n\n**Auto-saves:** `accessToken`, `refreshToken`"
+          },
+          "response": []
+        },
+        {
+          "name": "1.3 Login (Request OTP)",
           "request": {
             "auth": { "type": "noauth" },
             "method": "POST",
@@ -181,7 +183,61 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "login"]
             },
-            "description": "Login with email/mobile and password. Use `role: merchant` or `role: super_admin`.\n\n**Auto-saves:** `accessToken`, `refreshToken`"
+            "description": "Login with email/mobile and password. Sends 6-digit OTP to user's registered mobile."
+          },
+          "response": []
+        },
+        {
+          "name": "1.3b Login Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', json.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', json.data.refreshToken);",
+                  "  console.log('✅ Tokens saved from login OTP verification');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"otp\": \"123456\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login", "verify-otp"]
+            },
+            "description": "Verifies the 6-digit login OTP and issues authentication tokens.\n\n**Auto-saves:** `accessToken`, `refreshToken`"
+          },
+          "response": []
+        },
+        {
+          "name": "1.3c Resend OTP",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"type\": \"registration\",\n  \"role\": \"merchant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/resend-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "resend-otp"]
+            },
+            "description": "Resends OTP for registration, login, or reset_password."
           },
           "response": []
         },

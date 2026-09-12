@@ -274,6 +274,7 @@ If the customer explicitly asks you to perform a specific action, acknowledge th
 - Customer asks to send a "hi" or greeting on WhatsApp -> append {{action:send_whatsapp_hi}} at the end of your response.
 - Customer asks to email them info/details -> append {{action:send_email}} at the end of your response.
 - Customer asks to schedule a meeting -> append {{action:schedule_meeting:requested_date_and_time}} at the end of your response (e.g. {{action:schedule_meeting:tomorrow at 5pm}} or {{action:schedule_meeting:Friday 10am}} or {{action:schedule_meeting}}).
+- Customer is busy or asks for a callback / call back later / baad mein baat karte hain -> append {{action:request_callback:requested_date_and_time}} at the end of your response (e.g. {{action:request_callback:tomorrow at 4pm}} or {{action:request_callback}} if time is not mentioned).
 Do not say these tokens aloud. Only append them as text at the very end of your response.
 IMPORTANT: You must NEVER tell the customer an action is done (meeting scheduled, link sent, email sent, WhatsApp sent) unless you actually append its token in that SAME response. Saying it is done without appending the token means it will NOT actually happen — this is strictly forbidden. If you confirm a meeting/email/link to the customer, the token is mandatory in that exact response, every single time, with no exceptions.]`;
 
@@ -868,10 +869,10 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           actionResult = await ActionService.sendCustomerEmail(this.customer, this.agent, this.merchant, null, actionPayload);
           break;
         case 'schedule_meeting':
-          actionResult = await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload);
+          actionResult = await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);
           break;
         case 'request_callback':
-          actionResult = await ActionService.requestCallback(this.customer, this.agent, this.merchant, actionPayload);
+          actionResult = await ActionService.requestCallback(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);
           break;
         default:
           this._log('warn', `[Action Warning] Unknown action token: ${actionName}`);

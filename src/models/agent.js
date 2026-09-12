@@ -13,8 +13,23 @@ Agent.init(
     },
     userId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'user_id',
+    },
+    adminId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'admin_id',
+    },
+    agentType: {
+      type: DataTypes.STRING(30),
+      defaultValue: 'customer_support', // 'customer_support', 'merchant_onboarding'
+      field: 'agent_type',
+    },
+    isMerchantCaller: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'is_merchant_caller',
     },
     name: {
       type: DataTypes.STRING(100),

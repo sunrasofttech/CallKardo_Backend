@@ -25,14 +25,24 @@ CallSession.init(
       allowNull: false,
       field: 'agent_id',
     },
+    adminId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'admin_id',
+    },
+    callType: {
+      type: DataTypes.STRING(30),
+      defaultValue: 'campaign', // 'campaign', 'merchant_onboarding', 'merchant_callback', 'meeting_reminder'
+      field: 'call_type',
+    },
     vobizNumberId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'vobiz_number_id',
     },
     customerId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true,
       field: 'customer_id',
     },
     geminiSessionId: {

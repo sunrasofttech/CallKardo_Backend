@@ -157,5 +157,24 @@ router.post('/help-videos', helpVideoController.createVideo);
 router.put('/help-videos/:id', helpVideoController.updateVideo);
 router.delete('/help-videos/:id', helpVideoController.deleteVideo);
 
+// Merchant-Calling Agents routes (Dedicated to calling merchants only)
+router.get('/merchant-agents', adminController.getMerchantAgents);
+router.post('/merchant-agents', adminController.createMerchantAgent);
+router.put('/merchant-agents/:id', adminController.updateMerchantAgent);
+router.delete('/merchant-agents/:id', adminController.deleteMerchantAgent);
+router.post('/merchant-agents/:id/set-active', adminController.setActiveMerchantAgent);
+
+// Merchant Meetings management (Day-Wise display for Admin)
+router.get('/meetings', adminController.getMeetings);
+router.get('/meetings/:id', adminController.getMeetingById);
+router.put('/meetings/:id', adminController.updateMeeting);
+
+// Merchant Callbacks management routes
+router.get('/callbacks', adminController.getMerchantCallbacks);
+router.post('/callbacks/:id/trigger', adminController.triggerCallbackNow);
+
+// Manual trigger AI Onboarding Call to a Merchant
+router.post('/merchants/:id/trigger-call', adminController.triggerMerchantOnboardingCall);
+
 module.exports = router;
 

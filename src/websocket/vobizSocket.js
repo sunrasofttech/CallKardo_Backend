@@ -206,11 +206,44 @@ class VobizSocketHandler {
       const agentChunks = ws.agentChunks;
       const callStartTime = ws.callStartTime;
 
+      let pipelineCustomer = customer;
+      let pipelineMerchant = session.user;
+
+      const isMerchantCall = ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'].includes(session.callType) || session.agent?.isMerchantCaller;
+
+      if (isMerchantCall && session.user) {
+        pipelineCustomer = {
+          id: session.user.id,
+          name: session.user.businessName || 'Partner',
+          mobile: session.user.mobile,
+          email: session.user.email,
+          notes: `Merchant Partner (${session.user.businessType || 'General'})`,
+        };
+        pipelineMerchant = {
+          id: session.adminId || null,
+          businessName: 'CallKardo',
+          email: defaults.smtp.from,
+          mobile: 'CallKardo Leadership Team',
+        };
+
+        if (session.callType === 'meeting_reminder' && session.agent) {
+          session.agent.firstMessage = `Namaste! Main CallKardo team se reminder call kar rahi hoon. Aapki meeting CallKardo team ke saath 15 minute mein scheduled hai. Kripya apna email ya WhatsApp check karein join link ke liye. Thank you!`;
+        }
+
+        const NotificationService = require('../services/notificationService');
+        NotificationService.notifyAdmin(
+          'Merchant Call Connected',
+          `AI is now actively speaking with Merchant ${session.user.businessName || session.user.mobile} (${session.user.mobile}) [${session.callType}].`,
+          session.adminId,
+          'call'
+        ).catch(() => {});
+      }
+
       // 2. Instantiate generic Voice Pipeline
       const pipeline = new VoicePipeline({
         agent: session.agent,
-        customer: customer,
-        merchant: session.user,
+        customer: pipelineCustomer,
+        merchant: pipelineMerchant,
         direction: session.direction,
         callSessionId: session.id,
         onAudioOutput: (pcmBuffer, targetRate) => {

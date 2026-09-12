@@ -28,6 +28,8 @@ const MasterMessageTemplate = require('./masterMessageTemplate');
 const ProgramDocumentRequirement = require('./programDocumentRequirement');
 const HelpVideo = require('./helpVideo');
 const SubscriptionHistory = require('./subscriptionHistory');
+const Meeting = require('./meeting');
+const MerchantCallback = require('./merchantCallback');
 
 // Establish Relationships
 
@@ -216,6 +218,40 @@ SubscriptionHistory.belongsTo(Plan, { foreignKey: 'previous_plan_id', as: 'previ
 // User <-> AuditLog
 AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Meeting Associations
+User.hasMany(Meeting, { foreignKey: 'merchant_id', as: 'meetings' });
+Meeting.belongsTo(User, { foreignKey: 'merchant_id', as: 'merchant' });
+
+Admin.hasMany(Meeting, { foreignKey: 'admin_id', as: 'meetings' });
+Meeting.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
+
+Agent.hasMany(Meeting, { foreignKey: 'agent_id', as: 'meetings' });
+Meeting.belongsTo(Agent, { foreignKey: 'agent_id', as: 'agent' });
+
+CallSession.hasOne(Meeting, { foreignKey: 'call_session_id', as: 'meeting' });
+Meeting.belongsTo(CallSession, { foreignKey: 'call_session_id', as: 'callSession' });
+
+// MerchantCallback Associations
+User.hasMany(MerchantCallback, { foreignKey: 'merchant_id', as: 'callbacks' });
+MerchantCallback.belongsTo(User, { foreignKey: 'merchant_id', as: 'merchant' });
+
+Admin.hasMany(MerchantCallback, { foreignKey: 'admin_id', as: 'callbacks' });
+MerchantCallback.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
+
+Agent.hasMany(MerchantCallback, { foreignKey: 'agent_id', as: 'callbacks' });
+MerchantCallback.belongsTo(Agent, { foreignKey: 'agent_id', as: 'agent' });
+
+CallSession.hasOne(MerchantCallback, { foreignKey: 'call_session_id', as: 'callback' });
+MerchantCallback.belongsTo(CallSession, { foreignKey: 'call_session_id', as: 'originalSession' });
+
+// Admin <-> Agent (Merchant-Calling Agents)
+Admin.hasMany(Agent, { foreignKey: 'admin_id', as: 'merchantAgents' });
+Agent.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
+
+// Admin <-> CallSession (Admin-initiated Calls)
+Admin.hasMany(CallSession, { foreignKey: 'admin_id', as: 'merchantCallSessions' });
+CallSession.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -246,4 +282,6 @@ module.exports = {
   MasterMessageTemplate,
   ProgramDocumentRequirement,
   HelpVideo,
+  Meeting,
+  MerchantCallback,
 };

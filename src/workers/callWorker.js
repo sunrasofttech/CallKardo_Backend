@@ -32,6 +32,8 @@ async function startCallWorker() {
 
       if (parsed.type === 'PLACE_CALL') {
         await processPlaceCall(parsed.payload);
+      } else if (parsed.type === 'PLACE_MERCHANT_CALL') {
+        await processPlaceMerchantCall(parsed.payload);
       }
 
     } catch (error) {
@@ -314,10 +316,114 @@ async function processPlaceCall(payload) {
   }
 }
 
+/**
+ * Places an outbound call to a merchant (Onboarding, Callback, or 15-min Meeting Reminder)
+ */
+async function processPlaceMerchantCall(payload) {
+  const { merchantId, agentId, callType = 'merchant_onboarding', callbackId, meetingId } = payload;
+  try {
+    const merchant = await User.findByPk(merchantId);
+    if (!merchant || !merchant.mobile) {
+      console.warn(`[callWorker:Merchant] Merchant ${merchantId} not found or has no mobile. Aborting.`);
+      return;
+    }
+
+    // Resolve Agent
+    let agent = agentId ? await Agent.findByPk(agentId) : null;
+    if (!agent) {
+      const MerchantOnboardingService = require('../services/merchantOnboardingService');
+      agent = await MerchantOnboardingService.getOrCreateDefaultMerchantAgent();
+    }
+
+    const defaults = require('../config/defaults');
+    const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
+    const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
+    const fromNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918065355001';
+
+    const wsToken = crypto.randomBytes(32).toString('hex');
+
+    const session = await CallSession.create({
+      userId: merchant.id,
+      agentId: agent.id,
+      callType,
+      adminId: agent.adminId || null,
+      wsSessionToken: wsToken,
+      status: 'initiated',
+      direction: 'outbound',
+    });
+
+    if (callbackId) {
+      const { MerchantCallback } = require('../models');
+      await MerchantCallback.update({ callbackSessionId: session.id, status: 'in_progress' }, { where: { id: callbackId } }).catch(() => {});
+    }
+
+    await CallLog.create({
+      callSessionId: session.id,
+      logLevel: 'info',
+      message: `Merchant call job dispatched [${callType}]. Outbound dial initiated to ${merchant.mobile} from ${fromNumber}`,
+    });
+
+    console.log(`[Merchant Call Start] Dialing merchant ${merchant.mobile} (${merchant.businessName || 'Merchant'}) for ${callType} via Agent "${agent.name}"...`);
+
+    const dialResponse = await VobizService.initiateCall({
+      apiKey: parentAuthId,
+      apiSecret: parentAuthToken,
+      fromNumber,
+      toNumber: merchant.mobile,
+      wsToken,
+    });
+
+    const NotificationService = require('../services/notificationService');
+
+    if (!dialResponse.success) {
+      console.error(`[Merchant Call Failed] VoBiz dial failed for merchant ${merchant.mobile}:`, dialResponse.error);
+      session.status = 'failed';
+      session.endTime = new Date();
+      await session.save();
+
+      await CallLog.create({
+        callSessionId: session.id,
+        logLevel: 'error',
+        message: `VoBiz outbound dial trigger failed: ${dialResponse.error}`,
+      });
+
+      if (callbackId) {
+        const { MerchantCallback } = require('../models');
+        await MerchantCallback.update({ status: 'failed' }, { where: { id: callbackId } }).catch(() => {});
+      }
+
+      await NotificationService.notifyAdmin(
+        'Merchant Call Failed to Connect',
+        `Outbound call to merchant ${merchant.businessName || merchant.mobile} (${merchant.mobile}) failed: ${dialResponse.error}`,
+        agent.adminId,
+        'call'
+      );
+    } else {
+      console.log(`[Merchant Call Dispatched] Outbound call placed to merchant. Call ID: ${dialResponse.callId}`);
+      if (dialResponse.callId) {
+        session.vobizCallUuid = dialResponse.callId;
+        await session.save();
+      }
+
+      await NotificationService.notifyAdmin(
+        'Merchant Call Initiated',
+        `AI is now dialing merchant ${merchant.businessName || merchant.mobile} (${merchant.mobile}) for ${callType}.`,
+        agent.adminId,
+        'call'
+      );
+    }
+  } catch (err) {
+    console.error(`Error processing merchant call job for Merchant ${merchantId}:`, err);
+  }
+}
+
 if (require.main === module) {
   startCallWorker();
 }
 
 module.exports = {
   startCallWorker,
+  processPlaceCall,
+  processPlaceMerchantCall,
 };
+
