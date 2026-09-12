@@ -79,7 +79,7 @@ class SubscriptionService {
       return { isValid: false, reason: 'Subscription plan has expired.' };
     }
 
-    // --- 48h Wait Rate Limit / Full KYC Enforcement ---
+    // --- 96h Wait Rate Limit / Full KYC Enforcement ---
     const user = await User.findByPk(userId);
     if (user && user.kycStatus !== 'full') {
       const isTrial = subscription.activePlan === 'Starter';
@@ -89,20 +89,23 @@ class SubscriptionService {
       const rateLimitSetting = await Setting.findOne({ where: { key: 'kyc_rate_limit_calls' } });
       const MAX_PROBATION_CALLS = rateLimitSetting ? parseInt(rateLimitSetting.value, 10) : 15;
 
+      const probationHoursSetting = await Setting.findOne({ where: { key: 'kyc_probation_hours' } });
+      const PROBATION_HOURS = probationHoursSetting ? parseInt(probationHoursSetting.value, 10) : 96;
+
       if (isTrial) {
         // Trial/Starter users are allowed to use their 15 trial calls before full KYC is required
         if (subscription.callsUsed >= MAX_PROBATION_CALLS) {
           return { isValid: false, reason: `You have completed all ${MAX_PROBATION_CALLS} trial calls. Please complete Full KYC and upgrade your plan to continue making calls.` };
         }
       } else {
-        // Paid plans without full KYC: 48-hour probationary rule
-        if (hoursSinceStart < 48) {
+        // Paid plans without full KYC: 96-hour probationary rule
+        if (hoursSinceStart < PROBATION_HOURS) {
           if (subscription.callsUsed >= MAX_PROBATION_CALLS) {
-            return { isValid: false, reason: `You have reached the 48-hour probationary rate limit (${MAX_PROBATION_CALLS} calls). Please complete Full KYC to unlock full plan limits.` };
+            return { isValid: false, reason: `You have reached the ${PROBATION_HOURS}-hour probationary rate limit (${MAX_PROBATION_CALLS} calls). Please complete Full KYC to unlock full plan limits.` };
           }
         } else {
-          // After 48 hours, full block if no KYC on paid plans
-          return { isValid: false, reason: 'Your 48-hour probationary period has ended. Please complete Full KYC to continue making calls.' };
+          // After 96 hours, full block if no KYC on paid plans
+          return { isValid: false, reason: `Your ${PROBATION_HOURS}-hour probationary period has ended. Please complete Full KYC to continue making calls.` };
         }
       }
     }

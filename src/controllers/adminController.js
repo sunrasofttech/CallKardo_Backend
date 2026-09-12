@@ -977,36 +977,62 @@ class AdminController {
   }
 
   /**
-   * Get KYC 48h Rate Limit Calls
+   * Get KYC 96h Rate Limit Calls & Probation Hours
    */
   async getKycRateLimit(req, res, next) {
     try {
       const setting = await Setting.findOne({ where: { key: 'kyc_rate_limit_calls' } });
-      const limit = setting && setting.value ? parseInt(setting.value, 10) : 10;
-      return ResponseBuilder.success(res, { kycRateLimitCalls: limit }, 'KYC Rate Limit retrieved');
+      const limit = setting && setting.value ? parseInt(setting.value, 10) : 15;
+      const hoursSetting = await Setting.findOne({ where: { key: 'kyc_probation_hours' } });
+      const probationHours = hoursSetting && hoursSetting.value ? parseInt(hoursSetting.value, 10) : 96;
+
+      return ResponseBuilder.success(res, { kycRateLimitCalls: limit, probationHours }, 'KYC Rate Limit retrieved');
     } catch (err) {
       next(err);
     }
   }
 
   /**
-   * Update KYC 48h Rate Limit Calls
+   * Update KYC 96h Rate Limit Calls & Probation Hours
    */
   async updateKycRateLimit(req, res, next) {
     try {
-      const { limit } = req.body;
-      if (limit === undefined || isNaN(limit)) {
-        return ResponseBuilder.error(res, 'Please provide a valid numeric limit', 400);
+      const { limit, probationHours } = req.body;
+      if (limit !== undefined) {
+        if (isNaN(limit)) {
+          return ResponseBuilder.error(res, 'Please provide a valid numeric limit', 400);
+        }
+        let setting = await Setting.findOne({ where: { key: 'kyc_rate_limit_calls' } });
+        if (setting) {
+          await setting.update({ value: limit });
+        } else {
+          await Setting.create({ key: 'kyc_rate_limit_calls', value: limit });
+        }
       }
 
-      let setting = await Setting.findOne({ where: { key: 'kyc_rate_limit_calls' } });
-      if (setting) {
-        await setting.update({ value: limit });
-      } else {
-        setting = await Setting.create({ key: 'kyc_rate_limit_calls', value: limit });
+      if (probationHours !== undefined) {
+        if (isNaN(probationHours)) {
+          return ResponseBuilder.error(res, 'Please provide valid numeric probation hours', 400);
+        }
+        let hoursSetting = await Setting.findOne({ where: { key: 'kyc_probation_hours' } });
+        if (hoursSetting) {
+          await hoursSetting.update({ value: probationHours });
+        } else {
+          await Setting.create({ key: 'kyc_probation_hours', value: probationHours });
+        }
       }
 
-      return ResponseBuilder.success(res, { kycRateLimitCalls: parseInt(setting.value, 10) }, 'KYC Rate Limit updated successfully');
+      const updatedSetting = await Setting.findOne({ where: { key: 'kyc_rate_limit_calls' } });
+      const updatedHours = await Setting.findOne({ where: { key: 'kyc_probation_hours' } });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          kycRateLimitCalls: updatedSetting ? parseInt(updatedSetting.value, 10) : 15,
+          probationHours: updatedHours ? parseInt(updatedHours.value, 10) : 96,
+        },
+        'KYC Rate Limit updated successfully'
+      );
     } catch (err) {
       next(err);
     }
@@ -3203,6 +3229,352 @@ class AdminController {
       });
 
       return ResponseBuilder.success(res, null, `AI Onboarding Call triggered for merchant ${merchant.mobile}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * ==========================================
+   * Merchant Call Reports (Admin Agent -> Merchant)
+   * ==========================================
+   */
+
+  /**
+   * Get call reports for calls placed by Admin Agents to Merchants
+   */
+  async getMerchantCallReports(req, res, next) {
+    try {
+      const { Op } = require('sequelize');
+      const path = require('path');
+      const fs = require('fs');
+      const uploadsDir = path.join(__dirname, '../../uploads');
+
+      const {
+        page = 1,
+        limit = 20,
+        status,
+        callType,
+        merchantId,
+        agentId,
+        search,
+        outcome,
+        date,
+        startDate,
+        endDate,
+      } = req.query;
+
+      const pageNum = parseInt(page, 10) || 1;
+      const limitNum = parseInt(limit, 10) || 20;
+      const offset = (pageNum - 1) * limitNum;
+
+      // Base condition: Admin-to-merchant calls
+      const where = {
+        [Op.or]: [
+          { callType: { [Op.in]: ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'] } },
+          { '$agent.is_merchant_caller$': true },
+          { '$agent.agent_type$': 'merchant_onboarding' },
+        ],
+      };
+
+      if (callType) {
+        where.callType = callType;
+      }
+
+      if (status) {
+        where.status = status;
+      }
+
+      if (merchantId) {
+        where.userId = merchantId;
+      }
+
+      if (agentId) {
+        where.agentId = agentId;
+      }
+
+      if (date) {
+        const startOfDay = new Date(`${date}T00:00:00.000+05:30`);
+        const endOfDay = new Date(`${date}T23:59:59.999+05:30`);
+        where.createdAt = { [Op.between]: [startOfDay, endOfDay] };
+      } else if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt[Op.gte] = new Date(`${startDate}T00:00:00.000+05:30`);
+        if (endDate) where.createdAt[Op.lte] = new Date(`${endDate}T23:59:59.999+05:30`);
+      }
+
+      if (search) {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { '$user.business_name$': { [Op.like]: `%${search}%` } },
+            { '$user.email$': { [Op.like]: `%${search}%` } },
+            { '$user.mobile$': { [Op.like]: `%${search}%` } },
+          ],
+        });
+      }
+
+      if (outcome) {
+        where['$report.outcome$'] = outcome;
+      }
+
+      const include = [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'email', 'mobile', 'businessName', 'businessType', 'businessUrl', 'categoryId', 'kycStatus'],
+          include: [
+            {
+              model: Category,
+              as: 'category',
+              attributes: ['id', 'name'],
+            },
+          ],
+          required: false,
+        },
+        {
+          model: Agent,
+          as: 'agent',
+          attributes: ['id', 'name', 'agentType', 'isMerchantCaller', 'language'],
+          required: true,
+        },
+        {
+          model: CallReport,
+          as: 'report',
+          required: false,
+        },
+        {
+          model: Meeting,
+          as: 'meeting',
+          attributes: ['id', 'title', 'meetingTime', 'status', 'meetingLink', 'notes'],
+          required: false,
+        },
+        {
+          model: MerchantCallback,
+          as: 'callback',
+          attributes: ['id', 'requestedTime', 'scheduledTime', 'status', 'notes'],
+          required: false,
+        },
+      ];
+
+      const { count, rows } = await CallSession.findAndCountAll({
+        where,
+        limit: limitNum,
+        offset,
+        include,
+        order: [['createdAt', 'DESC']],
+        subQuery: false,
+        distinct: true,
+      });
+
+      const reports = rows.map((session) => {
+        const s = session.toJSON ? session.toJSON() : session;
+
+        let duration = 0;
+        if (s.report && s.report.duration) {
+          duration = s.report.duration;
+        } else if (s.startTime && s.endTime) {
+          duration = Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000);
+        }
+
+        let recordingUrl = s.report ? s.report.recordingUrl : null;
+        if (!recordingUrl) {
+          const recFileName = `recording-${s.id}.wav`;
+          const recPath = path.join(uploadsDir, recFileName);
+          if (fs.existsSync(recPath)) {
+            recordingUrl = `/uploads/${recFileName}`;
+          }
+        }
+
+        const reportOutcome = s.report?.outcome || (s.status === 'completed' ? 'Completed' : (s.status === 'failed' ? 'Failed' : s.status));
+        const summary = s.report?.summary || `Call ${s.direction} (${s.status})`;
+        const transcript = s.report?.transcript || null;
+        const sentiment = s.report?.sentiment || 'Neutral';
+        const leadScore = s.report?.leadScore ?? (s.status === 'completed' ? 70 : 0);
+
+        return {
+          id: s.id,
+          callSessionId: s.id,
+          callType: s.callType,
+          direction: s.direction,
+          status: s.status,
+          vobizCallUuid: s.vobizCallUuid,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          duration,
+          outcome: reportOutcome,
+          summary,
+          transcript,
+          sentiment,
+          leadScore,
+          recordingUrl,
+          actions: s.actions || [],
+          merchant: s.user
+            ? {
+                id: s.user.id,
+                email: s.user.email,
+                mobile: s.user.mobile,
+                businessName: s.user.businessName,
+                businessType: s.user.businessType,
+                businessUrl: s.user.businessUrl,
+                categoryId: s.user.categoryId,
+                categoryName: s.user.category ? s.user.category.name : null,
+                kycStatus: s.user.kycStatus,
+              }
+            : null,
+          agent: s.agent
+            ? {
+                id: s.agent.id,
+                name: s.agent.name,
+                agentType: s.agent.agentType,
+                isMerchantCaller: s.agent.isMerchantCaller,
+                language: s.agent.language,
+              }
+            : null,
+          meeting: s.meeting || null,
+          callback: s.callback || null,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        };
+      });
+
+      return ResponseBuilder.success(
+        res,
+        {
+          reports,
+          pagination: {
+            totalItems: count,
+            totalPages: Math.ceil(count / limitNum),
+            currentPage: pageNum,
+            limit: limitNum,
+          },
+        },
+        'Merchant call reports retrieved successfully'
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get single merchant call report / session details
+   */
+  async getMerchantCallReportDetails(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+      const path = require('path');
+      const fs = require('fs');
+      const uploadsDir = path.join(__dirname, '../../uploads');
+
+      const session = await CallSession.findOne({
+        where: { id: sessionId },
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'email', 'mobile', 'businessName', 'businessType', 'businessUrl', 'categoryId', 'kycStatus'],
+            include: [{ model: Category, as: 'category', attributes: ['id', 'name'] }],
+          },
+          {
+            model: Agent,
+            as: 'agent',
+            attributes: ['id', 'name', 'agentType', 'isMerchantCaller', 'language'],
+          },
+          {
+            model: CallReport,
+            as: 'report',
+          },
+          {
+            model: Meeting,
+            as: 'meeting',
+          },
+          {
+            model: MerchantCallback,
+            as: 'callback',
+          },
+          {
+            model: CallLog,
+            as: 'logs',
+          },
+        ],
+        order: [[{ model: CallLog, as: 'logs' }, 'createdAt', 'ASC']],
+      });
+
+      if (!session) {
+        return ResponseBuilder.error(res, 'Merchant call session not found', 404);
+      }
+
+      const s = session.toJSON ? session.toJSON() : session;
+
+      let duration = 0;
+      if (s.report && s.report.duration) {
+        duration = s.report.duration;
+      } else if (s.startTime && s.endTime) {
+        duration = Math.round((new Date(s.endTime) - new Date(s.startTime)) / 1000);
+      }
+
+      let recordingUrl = s.report ? s.report.recordingUrl : null;
+      if (!recordingUrl) {
+        const recFileName = `recording-${s.id}.wav`;
+        const recPath = path.join(uploadsDir, recFileName);
+        if (fs.existsSync(recPath)) {
+          recordingUrl = `/uploads/${recFileName}`;
+        }
+      }
+
+      const reportOutcome = s.report?.outcome || (s.status === 'completed' ? 'Completed' : (s.status === 'failed' ? 'Failed' : s.status));
+      const summary = s.report?.summary || `Call ${s.direction} (${s.status})`;
+      const transcript = s.report?.transcript || null;
+      const sentiment = s.report?.sentiment || 'Neutral';
+      const leadScore = s.report?.leadScore ?? (s.status === 'completed' ? 70 : 0);
+
+      const formatted = {
+        id: s.id,
+        callSessionId: s.id,
+        callType: s.callType,
+        direction: s.direction,
+        status: s.status,
+        vobizCallUuid: s.vobizCallUuid,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        duration,
+        outcome: reportOutcome,
+        summary,
+        transcript,
+        sentiment,
+        leadScore,
+        recordingUrl,
+        actions: s.actions || [],
+        merchant: s.user
+          ? {
+              id: s.user.id,
+              email: s.user.email,
+              mobile: s.user.mobile,
+              businessName: s.user.businessName,
+              businessType: s.user.businessType,
+              businessUrl: s.user.businessUrl,
+              categoryId: s.user.categoryId,
+              categoryName: s.user.category ? s.user.category.name : null,
+              kycStatus: s.user.kycStatus,
+            }
+          : null,
+        agent: s.agent
+          ? {
+              id: s.agent.id,
+              name: s.agent.name,
+              agentType: s.agent.agentType,
+              isMerchantCaller: s.agent.isMerchantCaller,
+              language: s.agent.language,
+            }
+          : null,
+        meeting: s.meeting || null,
+        callback: s.callback || null,
+        logs: s.logs || [],
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      };
+
+      return ResponseBuilder.success(res, { report: formatted }, 'Merchant call report details retrieved successfully');
     } catch (err) {
       next(err);
     }

@@ -176,5 +176,11 @@ router.post('/callbacks/:id/trigger', adminController.triggerCallbackNow);
 // Manual trigger AI Onboarding Call to a Merchant
 router.post('/merchants/:id/trigger-call', adminController.triggerMerchantOnboardingCall);
 
+// Dedicated Admin Merchant Call Reports (Admin Agent -> Merchant calls)
+router.get('/merchant-calls/reports', adminController.getMerchantCallReports);
+router.get('/merchant-calls', adminController.getMerchantCallReports);
+router.get('/merchant-calls/reports/:sessionId', adminController.getMerchantCallReportDetails);
+router.get('/merchant-calls/:sessionId', adminController.getMerchantCallReportDetails);
+
 module.exports = router;
 
