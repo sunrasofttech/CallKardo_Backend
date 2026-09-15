@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
-const { User, Admin, Subscription, Plan, Category, VobizNumber, VobizAccount, Agent } = require('../models');
+const { sequelize, User, Admin, Subscription, Plan, Category, VobizNumber, VobizAccount, Agent } = require('../models');
 const { redisClient } = require('../config/redis');
 const defaults = require('../config/defaults');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/token');
@@ -80,11 +80,23 @@ class AuthController {
 
       const { email, mobile, password, fcmToken, intrestinourproduct } = value;
       const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+      const cleanEmail = email && email.trim() !== '' ? email.trim().toLowerCase() : null;
 
       // 1. UNIQUE VALIDATION CHECKS (Run BEFORE OTP generation/validation)
-      if (email && email.trim() !== '') {
-        const existingEmail = await User.findOne({ where: { email: email.trim() } });
-        if (existingEmail) {
+      // Check both active and soft-deleted records (paranoid: false) because MySQL unique keys apply to all rows
+      let existingEmail = null;
+      if (cleanEmail) {
+        existingEmail = await User.findOne({
+          where: { email: cleanEmail },
+          paranoid: false,
+        });
+        if (existingEmail && !existingEmail.deletedAt) {
+          return ResponseBuilder.error(res, 'Email address already registered', 400);
+        }
+
+        // Check if there is another pending registration holding this email in Redis
+        const pendingEmailMobile = await redisClient.get(`pending_email:${cleanEmail}`);
+        if (pendingEmailMobile && pendingEmailMobile !== cleanMobile) {
           return ResponseBuilder.error(res, 'Email address already registered', 400);
         }
       }
@@ -95,10 +107,13 @@ class AuthController {
             { mobile },
             { mobile: cleanMobile },
             { mobile: `+91${cleanMobile}` },
+            { mobile: `0${cleanMobile}` },
           ],
         },
+        paranoid: false,
       });
-      if (existingMobile) {
+
+      if (existingMobile && !existingMobile.deletedAt) {
         return ResponseBuilder.error(res, 'Mobile number already registered', 400);
       }
 
@@ -111,17 +126,24 @@ class AuthController {
 
       // 4. Cache Pending Registration in Redis (10 minutes TTL)
       const pendingData = {
-        email: email && email.trim() !== '' ? email.trim() : null,
+        email: cleanEmail,
         mobile: cleanMobile,
         passwordHash,
         fcmToken: fcmToken || null,
         intrestinourproduct: intrestinourproduct !== undefined ? intrestinourproduct : true,
         otp: verificationOtp,
+        hasSoftDeletedUser: Boolean(
+          (existingMobile && existingMobile.deletedAt) ||
+          (existingEmail && existingEmail.deletedAt)
+        ),
         createdAt: new Date().toISOString(),
       };
 
       await redisClient.setEx(`pending_reg:${cleanMobile}`, 600, JSON.stringify(pendingData));
       await redisClient.setEx(`pending_otp:${verificationOtp}`, 600, cleanMobile);
+      if (cleanEmail) {
+        await redisClient.setEx(`pending_email:${cleanEmail}`, 600, cleanMobile);
+      }
 
       // 5. Send OTP via 2Factor SMS
       await sendSMSVerification(cleanMobile, verificationOtp);
@@ -149,15 +171,21 @@ class AuthController {
       }
 
       const { email, mobile, password, firstName, lastName, fcmToken } = value;
+      const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
 
       if (email) {
-        const existingAdmin = await Admin.findOne({ where: { email } });
+        const existingAdmin = await Admin.findOne({ where: { email: email.trim().toLowerCase() }, paranoid: false });
         if (existingAdmin) {
           return ResponseBuilder.error(res, 'Admin email already registered', 400);
         }
       }
 
-      const existingAdminMobile = await Admin.findOne({ where: { mobile } });
+      const existingAdminMobile = await Admin.findOne({
+        where: {
+          [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+        },
+        paranoid: false,
+      });
       if (existingAdminMobile) {
         return ResponseBuilder.error(res, 'Admin mobile already registered', 400);
       }
@@ -435,105 +463,139 @@ class AuthController {
           where: {
             [Op.or]: [
               { mobile: pendingData.mobile },
+              { mobile: `+91${pendingData.mobile}` },
               ...(pendingData.email ? [{ email: pendingData.email }] : []),
             ],
           },
+          paranoid: false,
         });
 
-        if (duplicateCheck) {
+        if (duplicateCheck && !duplicateCheck.deletedAt) {
           await redisClient.del(`pending_reg:${cleanMobile}`);
           await redisClient.del(`pending_otp:${otp}`);
+          if (pendingData.email) await redisClient.del(`pending_email:${pendingData.email}`);
           return ResponseBuilder.error(res, 'Account already registered. Please login.', 400);
         }
 
-        // CREATE MERCHANT USER IN OUR DATABASE
-        const merchant = await User.create({
-          email: pendingData.email,
-          mobile: pendingData.mobile,
-          passwordHash: pendingData.passwordHash,
-          verificationToken: null,
-          isVerified: true,
-          fcmToken: pendingData.fcmToken,
-          intrestinourproduct: pendingData.intrestinourproduct,
+        // If a soft-deleted user existed with this mobile or email, permanently purge to free MySQL unique key
+        await User.destroy({
+          where: {
+            [Op.or]: [
+              { mobile: pendingData.mobile },
+              { mobile: `+91${pendingData.mobile}` },
+              ...(pendingData.email ? [{ email: pendingData.email }] : []),
+            ],
+            deletedAt: { [Op.ne]: null },
+          },
+          force: true,
         });
 
-        // Setup Initial Starter Subscription Plan
-        let starterPlan = await Plan.findOne({ where: { name: 'Starter' } });
-        if (!starterPlan) {
-          starterPlan = await Plan.create({
-            name: 'Starter',
-            price: 0.00,
-            callLimit: 15,
-            maxConcurrentCalls: 1,
+        let merchant;
+        const t = await sequelize.transaction();
+        try {
+          // CREATE MERCHANT USER IN OUR DATABASE
+          merchant = await User.create({
+            email: pendingData.email,
+            mobile: pendingData.mobile,
+            passwordHash: pendingData.passwordHash,
+            verificationToken: null,
+            isVerified: true,
+            fcmToken: pendingData.fcmToken,
+            intrestinourproduct: pendingData.intrestinourproduct,
+          }, { transaction: t });
+
+          // Setup Initial Starter Subscription Plan
+          let starterPlan = await Plan.findOne({ where: { name: 'Starter' }, transaction: t });
+          if (!starterPlan) {
+            starterPlan = await Plan.create({
+              name: 'Starter',
+              price: 0.00,
+              callLimit: 15,
+              maxConcurrentCalls: 1,
+            }, { transaction: t });
+          }
+
+          const now = new Date();
+          const expiryDate = new Date();
+          expiryDate.setMonth(now.getMonth() + 1);
+
+          await Subscription.create({
+            userId: merchant.id,
+            planId: starterPlan.id,
+            activePlan: starterPlan.name,
+            startDate: now,
+            expiryDate,
+            callsUsed: 0,
+            callsRemaining: starterPlan.callLimit,
+            status: 'active',
+          }, { transaction: t });
+
+          // Setup demo number for trial testing
+          await VobizNumber.create({
+            userId: merchant.id,
+            number: defaults.vobiz.demoNumber,
+            status: 'active',
+            providerData: { isDemo: true },
+            agentId: null,
+          }, { transaction: t });
+
+          // Generate login tokens
+          const tokenPayload = { id: merchant.id, email: merchant.email || null, mobile: merchant.mobile, role: 'merchant' };
+          const accessToken = generateAccessToken(tokenPayload);
+          const refreshToken = generateRefreshToken(tokenPayload);
+
+          merchant.refreshToken = hashToken(refreshToken);
+          await merchant.save({ transaction: t });
+
+          await t.commit();
+
+          // Clear Redis pending registration keys
+          await redisClient.del(`pending_reg:${cleanMobile}`);
+          await redisClient.del(`pending_otp:${otp}`);
+          if (pendingData.email) {
+            await redisClient.del(`pending_email:${pendingData.email}`);
+          }
+
+          // Notify Admins about new signup
+          NotificationService.notifyAdmin(
+            'New Merchant Signup',
+            `A new merchant has registered and verified with mobile: ${merchant.mobile}${merchant.email ? ` and email: ${merchant.email}` : ''}.`
+          ).catch((notifyErr) => {
+            console.error('[NotificationService] notifyAdmin error:', notifyErr.message);
           });
+
+          // Trigger automatic AI Onboarding Call
+          const MerchantOnboardingService = require('../services/merchantOnboardingService');
+          MerchantOnboardingService.scheduleOnboardingCall(merchant.id).catch((callErr) => {
+            console.error('[authController] Failed to schedule onboarding call:', callErr.message);
+          });
+
+          const profile = {
+            id: merchant.id,
+            email: merchant.email,
+            mobile: merchant.mobile,
+            role: 'merchant',
+            businessName: merchant.businessName,
+            businessUrl: merchant.businessUrl,
+            categoryId: merchant.categoryId,
+          };
+
+          return ResponseBuilder.success(
+            res,
+            { profile, accessToken, refreshToken },
+            'Merchant registered and verified successfully.',
+            201
+          );
+        } catch (createErr) {
+          await t.rollback();
+          if (createErr.name === 'SequelizeUniqueConstraintError') {
+            await redisClient.del(`pending_reg:${cleanMobile}`);
+            await redisClient.del(`pending_otp:${otp}`);
+            if (pendingData.email) await redisClient.del(`pending_email:${pendingData.email}`);
+            return ResponseBuilder.error(res, 'An account with this mobile number or email already exists. Please login.', 400);
+          }
+          throw createErr;
         }
-
-        const now = new Date();
-        const expiryDate = new Date();
-        expiryDate.setMonth(now.getMonth() + 1);
-
-        await Subscription.create({
-          userId: merchant.id,
-          planId: starterPlan.id,
-          activePlan: starterPlan.name,
-          startDate: now,
-          expiryDate,
-          callsUsed: 0,
-          callsRemaining: starterPlan.callLimit,
-          status: 'active',
-        });
-
-        // Setup demo number for trial testing
-        await VobizNumber.create({
-          userId: merchant.id,
-          number: defaults.vobiz.demoNumber,
-          status: 'active',
-          providerData: { isDemo: true },
-          agentId: null,
-        });
-
-        // Generate login tokens
-        const tokenPayload = { id: merchant.id, email: merchant.email || null, mobile: merchant.mobile, role: 'merchant' };
-        const accessToken = generateAccessToken(tokenPayload);
-        const refreshToken = generateRefreshToken(tokenPayload);
-
-        merchant.refreshToken = hashToken(refreshToken);
-        await merchant.save();
-
-        // Clear Redis pending registration keys
-        await redisClient.del(`pending_reg:${cleanMobile}`);
-        await redisClient.del(`pending_otp:${otp}`);
-
-        // Notify Admins about new signup
-        NotificationService.notifyAdmin(
-          'New Merchant Signup',
-          `A new merchant has registered and verified with mobile: ${merchant.mobile}${merchant.email ? ` and email: ${merchant.email}` : ''}.`
-        ).catch((notifyErr) => {
-          console.error('[NotificationService] notifyAdmin error:', notifyErr.message);
-        });
-
-        // Trigger automatic AI Onboarding Call
-        const MerchantOnboardingService = require('../services/merchantOnboardingService');
-        MerchantOnboardingService.scheduleOnboardingCall(merchant.id).catch((callErr) => {
-          console.error('[authController] Failed to schedule onboarding call:', callErr.message);
-        });
-
-        const profile = {
-          id: merchant.id,
-          email: merchant.email,
-          mobile: merchant.mobile,
-          role: 'merchant',
-          businessName: merchant.businessName,
-          businessUrl: merchant.businessUrl,
-          categoryId: merchant.categoryId,
-        };
-
-        return ResponseBuilder.success(
-          res,
-          { profile, accessToken, refreshToken },
-          'Merchant registered and verified successfully.',
-          201
-        );
       }
 
       // Fallback: Check if user exists in DB and had verificationToken
@@ -1093,9 +1155,16 @@ class AuthController {
         return ResponseBuilder.error(res, 'User session invalid', 401);
       }
 
-      // Note: Sequelize associations with onDelete: 'CASCADE' will handle deleting related child rows
-      // such as CallLogs, Agents, etc. Make sure cascading is set up correctly in the models.
-      await user.destroy();
+      const cleanMobile = user.mobile ? String(user.mobile).replace(/\D/g, '').slice(-10) : null;
+      if (cleanMobile) {
+        await redisClient.del(`pending_reg:${cleanMobile}`);
+        await redisClient.del(`login_otp:${cleanMobile}`);
+      }
+      if (user.email) {
+        await redisClient.del(`pending_email:${user.email.toLowerCase()}`);
+      }
+
+      await user.destroy({ force: true });
 
       return ResponseBuilder.success(res, null, 'Account permanently deleted');
     } catch (err) {

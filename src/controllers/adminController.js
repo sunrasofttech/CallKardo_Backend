@@ -3,6 +3,7 @@ const ResponseBuilder = require('../utils/response');
 const fcmService = require('../services/fcmService');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
 const { createVoiceSchema, updateVoiceSchema, adminUpgradeSubscriptionSchema, adminUpdateSubscriptionSchema, updateAdminProfileSchema, sendNotificationSchema, adminResetMerchantPasswordSchema } = require('../validators/admin');
+const { redisClient } = require('../config/redis');
 
 
 class AdminController {
@@ -320,12 +321,21 @@ class AdminController {
   async deleteMerchant(req, res, next) {
     try {
       const { id } = req.params;
-      const merchant = await User.findOne({ where: { id, role: 'merchant' } });
+      const merchant = await User.findOne({ where: { id, role: 'merchant' }, paranoid: false });
       if (!merchant) {
         return ResponseBuilder.error(res, 'Merchant not found', 404);
       }
 
-      await merchant.destroy();
+      const cleanMobile = merchant.mobile ? String(merchant.mobile).replace(/\D/g, '').slice(-10) : null;
+      if (cleanMobile) {
+        await redisClient.del(`pending_reg:${cleanMobile}`);
+        await redisClient.del(`login_otp:${cleanMobile}`);
+      }
+      if (merchant.email) {
+        await redisClient.del(`pending_email:${merchant.email.toLowerCase()}`);
+      }
+
+      await merchant.destroy({ force: true });
       return ResponseBuilder.success(res, null, 'Merchant deleted successfully');
     } catch (err) {
       next(err);
@@ -340,11 +350,29 @@ class AdminController {
         return ResponseBuilder.error(res, 'Please provide an array of userIds to delete', 400);
       }
 
+      const merchants = await User.findAll({
+        where: { id: userIds, role: 'merchant' },
+        attributes: ['id', 'mobile', 'email'],
+        paranoid: false,
+      });
+
+      for (const m of merchants) {
+        const cleanMobile = m.mobile ? String(m.mobile).replace(/\D/g, '').slice(-10) : null;
+        if (cleanMobile) {
+          await redisClient.del(`pending_reg:${cleanMobile}`);
+          await redisClient.del(`login_otp:${cleanMobile}`);
+        }
+        if (m.email) {
+          await redisClient.del(`pending_email:${m.email.toLowerCase()}`);
+        }
+      }
+
       const deletedCount = await User.destroy({
         where: {
           id: userIds,
           role: 'merchant'
-        }
+        },
+        force: true,
       });
 
       return ResponseBuilder.success(res, { deletedCount }, `Successfully deleted ${deletedCount} merchant(s)`);
