@@ -3348,12 +3348,31 @@ class AdminController {
    */
   async getMerchantCallbacks(req, res, next) {
     try {
-      const { status, merchantId } = req.query;
+      const { status, merchantId, search, sortBy, sortOrder, order } = req.query;
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
+      const offset = (page - 1) * limit;
+
       const where = {};
       if (status) where.status = status;
       if (merchantId) where.merchantId = merchantId;
 
-      const callbacks = await MerchantCallback.findAll({
+      if (search) {
+        const { Op } = require('sequelize');
+        const searchPattern = `%${search}%`;
+        where[Op.or] = [
+          { '$merchant.mobile$': { [Op.like]: searchPattern } },
+          { '$merchant.business_name$': { [Op.like]: searchPattern } },
+          { '$merchant.email$': { [Op.like]: searchPattern } },
+          { notes: { [Op.like]: searchPattern } },
+        ];
+      }
+
+      const allowedSortFields = ['createdAt', 'scheduledTime', 'status', 'updatedAt'];
+      const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+      const direction = (sortOrder || order || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+      const { count, rows: callbacks } = await MerchantCallback.findAndCountAll({
         where,
         include: [
           {
@@ -3372,10 +3391,26 @@ class AdminController {
             attributes: ['id', 'startTime', 'endTime', 'status'],
           },
         ],
-        order: [['scheduledTime', 'ASC']],
+        limit,
+        offset,
+        distinct: true,
+        order: [
+          [sortField, direction],
+          ...(sortField !== 'createdAt' ? [['createdAt', direction]] : []),
+        ],
       });
 
-      return ResponseBuilder.success(res, { callbacks }, 'Callbacks retrieved successfully');
+      return ResponseBuilder.success(
+        res,
+        {
+          totalItems: count,
+          totalPages: Math.ceil(count / limit),
+          currentPage: page,
+          limit,
+          callbacks,
+        },
+        'Callbacks retrieved successfully'
+      );
     } catch (err) {
       next(err);
     }
