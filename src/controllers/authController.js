@@ -288,6 +288,20 @@ class AuthController {
         return ResponseBuilder.error(res, 'Please verify your account before logging in', 403);
       }
 
+      // For super_admin: do not require OTP on login. Issue tokens directly upon valid password.
+      if (role === 'super_admin') {
+        if (otp && !password) {
+          const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
+          const cachedLoginOtp = await redisClient.get(`login_otp:${targetMobile}`);
+          if (!cachedLoginOtp || cachedLoginOtp !== otp) {
+            return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
+          }
+          await redisClient.del(`login_otp:${targetMobile}`);
+          await redisClient.del(`login_otp_lookup:${otp}`);
+        }
+        return AuthController._issueLoginTokens(res, account, role, fcmToken);
+      }
+
       const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
 
       // If OTP is provided in this request, verify it directly
