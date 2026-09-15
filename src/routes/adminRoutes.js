@@ -45,11 +45,14 @@ router.put('/subscriptions/:id', adminController.updateSubscription);
 router.post('/subscriptions/:id/cancel', adminController.cancelSubscription);
 
 
-// Agent approval routes
+// Agent approval and management routes
 router.get('/agents', adminController.getAgents);
 router.get('/agents/pending', adminController.getPendingAgents);
 router.post('/agents/:id/approve', adminController.approveAgent);
 router.post('/agents/:id/reject', adminController.rejectAgent);
+router.put('/agents/:id', adminController.updatePersonality);
+router.patch('/agents/:id', adminController.updatePersonality);
+router.delete('/agents/:id', adminController.deletePersonality);
 
 // Sensitive Words routes
 router.get('/sensitive-words', adminController.getSensitiveWords);
@@ -133,6 +136,9 @@ router.post('/transactions/:id/refund', adminController.refundTransaction);
 // AI Personalities (Agent) routes
 router.get('/personalities', adminController.getPersonalities);
 router.get('/personalities/:id', adminController.getPersonalityById);
+router.put('/personalities/:id', adminController.updatePersonality);
+router.patch('/personalities/:id', adminController.updatePersonality);
+router.delete('/personalities/:id', adminController.deletePersonality);
 
 // Message Programs & Templates
 router.get('/message-programs/requirements', adminController.getProgramRequirements);

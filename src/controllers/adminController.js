@@ -2334,6 +2334,182 @@ class AdminController {
   }
 
   /**
+   * Update a merchant's AI agent personality (Admin)
+   */
+  async updatePersonality(req, res, next) {
+    try {
+      const { id } = req.params;
+      const agent = await Agent.findByPk(id);
+
+      if (!agent) {
+        return ResponseBuilder.error(res, 'Personality not found', 404);
+      }
+
+      const oldAgentData = agent.toJSON();
+
+      // Validate voiceId if provided
+      if (req.body.voiceId !== undefined) {
+        if (!req.body.voiceId) {
+          return ResponseBuilder.error(res, 'voiceId cannot be empty', 400);
+        }
+        const voice = await Voice.findByPk(req.body.voiceId);
+        if (!voice) {
+          return ResponseBuilder.error(res, 'Target Voice not found', 400);
+        }
+        agent.voiceId = req.body.voiceId;
+      }
+
+      // Validate categoryId if provided
+      if (req.body.categoryId !== undefined) {
+        if (req.body.categoryId) {
+          const cat = await Category.findByPk(req.body.categoryId);
+          if (!cat) {
+            return ResponseBuilder.error(res, 'Target Category not found', 400);
+          }
+          agent.categoryId = req.body.categoryId;
+        } else {
+          agent.categoryId = null;
+        }
+      }
+
+      const isVoiceOrSettingsChanged =
+        (req.body.voiceId && req.body.voiceId !== oldAgentData.voiceId) ||
+        (req.body.language && req.body.language !== oldAgentData.language) ||
+        (req.body.pace !== undefined && parseFloat(req.body.pace) !== parseFloat(oldAgentData.pace)) ||
+        (req.body.temperature !== undefined && parseFloat(req.body.temperature) !== parseFloat(oldAgentData.temperature));
+
+      const updatableFields = [
+        'name',
+        'description',
+        'systemPrompt',
+        'firstMessage',
+        'knowledgeBase',
+        'language',
+        'aiProvider',
+        'pace',
+        'temperature',
+        'allowInterruption',
+        'activeStatus',
+        'approvalStatus',
+        'isCustom',
+        'agentType',
+        'isMerchantCaller',
+      ];
+
+      updatableFields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          agent[field] = req.body[field];
+        }
+      });
+
+      // Handle preview audio update if relevant
+      const fs = require('fs');
+      const path = require('path');
+      if (agent.aiProvider === 'geminilive' || !agent.firstMessage) {
+        if (agent.firstMessageAudioPath) {
+          const oldPath = path.resolve(process.cwd(), agent.firstMessageAudioPath);
+          if (fs.existsSync(oldPath)) {
+            try { fs.unlinkSync(oldPath); } catch (e) {}
+          }
+          agent.firstMessageAudioPath = null;
+        }
+      } else if (isVoiceOrSettingsChanged || req.body.firstMessage !== undefined) {
+        try {
+          const SarvamService = require('../services/sarvamService');
+          let voice = await Voice.findByPk(agent.voiceId);
+          const voiceName = voice ? voice.voiceId : 'shubh';
+          const language = agent.language || 'hi';
+          const audioBuffer = await SarvamService.synthesizeText(agent.firstMessage, voiceName, language, {
+            pace: agent.pace,
+            temperature: agent.temperature,
+          });
+          if (audioBuffer) {
+            const uploadsDir = path.join(process.cwd(), 'uploads', 'previews', 'first-message');
+            if (!fs.existsSync(uploadsDir)) {
+              fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            const filename = `${agent.id}.wav`;
+            const filePath = path.join(uploadsDir, filename);
+            fs.writeFileSync(filePath, audioBuffer);
+            agent.firstMessageAudioPath = path.join('uploads', 'previews', 'first-message', filename);
+          }
+        } catch (err) {
+          console.warn('[Admin] Failed to update first message preview audio:', err.message);
+        }
+      }
+
+      await agent.save();
+
+      // Track admin audit log
+      await AuditLog.create({
+        userId: req.user.id,
+        action: 'UPDATE_PERSONALITY',
+        tableName: 'agents',
+        recordId: agent.id,
+        oldValues: oldAgentData,
+        newValues: agent.toJSON(),
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      }).catch(() => {});
+
+      const updatedPersonality = await Agent.findByPk(agent.id, {
+        include: [
+          { model: User, as: 'user', attributes: ['id', 'email', 'businessName', 'mobile'] },
+          { model: Voice, as: 'voice', attributes: ['id', 'name', 'provider', 'gender', 'language'] },
+          { model: Category, as: 'category', attributes: ['id', 'name'] },
+        ],
+      });
+
+      return ResponseBuilder.success(res, updatedPersonality, 'Merchant agent personality updated successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Delete a merchant's AI agent personality (Admin)
+   */
+  async deletePersonality(req, res, next) {
+    try {
+      const { id } = req.params;
+      const agent = await Agent.findByPk(id);
+
+      if (!agent) {
+        return ResponseBuilder.error(res, 'Personality not found', 404);
+      }
+
+      const fs = require('fs');
+      const path = require('path');
+
+      // Track admin audit log before deletion
+      await AuditLog.create({
+        userId: req.user.id,
+        action: 'DELETE_PERSONALITY',
+        tableName: 'agents',
+        recordId: agent.id,
+        oldValues: agent.toJSON(),
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      }).catch(() => {});
+
+      // Clean up first message audio file if exists
+      if (agent.firstMessageAudioPath) {
+        const audioPath = path.resolve(process.cwd(), agent.firstMessageAudioPath);
+        if (fs.existsSync(audioPath)) {
+          try { fs.unlinkSync(audioPath); } catch (e) {}
+        }
+      }
+
+      // Detach agent from any VobizNumber
+      await VobizNumber.update({ agentId: null }, { where: { agentId: agent.id } }).catch(() => {});
+
+      await agent.destroy();
+
+      return ResponseBuilder.success(res, null, 'Merchant agent personality deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Get Customer Actions Report (Admin)
    */
   async getCustomerActionsReport(req, res, next) {
@@ -3240,6 +3416,7 @@ class AdminController {
   async triggerMerchantOnboardingCall(req, res, next) {
     try {
       const { id } = req.params;
+      const { agentId } = req.body || {};
       const merchant = await User.findByPk(id);
 
       if (!merchant) {
@@ -3247,7 +3424,13 @@ class AdminController {
       }
 
       const MerchantOnboardingService = require('../services/merchantOnboardingService');
-      const agent = await MerchantOnboardingService.getOrCreateDefaultMerchantAgent(req.user.id);
+      let agent = null;
+      if (agentId) {
+        agent = await Agent.findByPk(agentId);
+      }
+      if (!agent) {
+        agent = await MerchantOnboardingService.getOrCreateDefaultMerchantAgent(req.user.id);
+      }
 
       const QueueService = require('../services/queueService');
       await QueueService.enqueueJob('PLACE_MERCHANT_CALL', {
@@ -3256,7 +3439,7 @@ class AdminController {
         callType: 'merchant_onboarding',
       });
 
-      return ResponseBuilder.success(res, null, `AI Onboarding Call triggered for merchant ${merchant.mobile}`);
+      return ResponseBuilder.success(res, null, `AI Onboarding Call triggered for merchant ${merchant.mobile} using agent "${agent.name}"`);
     } catch (err) {
       next(err);
     }
