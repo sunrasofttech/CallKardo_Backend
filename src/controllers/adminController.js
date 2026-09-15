@@ -1176,11 +1176,26 @@ class AdminController {
       const page = parseInt(req.query.page || '1', 10);
       const limit = parseInt(req.query.limit || '20', 10);
       const offset = (page - 1) * limit;
-      const { merchantId, status, search } = req.query;
+      const { merchantId, status, search, startDate, endDate } = req.query;
+      const { Op } = require('sequelize');
 
       const where = {};
       if (merchantId) where.userId = merchantId;
       if (status) where.outcome = status;
+
+      if (startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt = { [Op.between]: [start, end] };
+      } else if (startDate) {
+        const start = new Date(startDate);
+        where.createdAt = { [Op.gte]: start };
+      } else if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt = { [Op.lte]: end };
+      }
 
       const include = [
         {
@@ -1193,7 +1208,6 @@ class AdminController {
       ];
 
       if (search) {
-        const { Op } = require('sequelize');
         where[Op.or] = [
           { '$customer.name$': { [Op.like]: `%${search}%` } },
           { '$customer.mobile$': { [Op.like]: `%${search}%` } },
@@ -1224,6 +1238,7 @@ class AdminController {
       if (count === 0) {
         const sessionWhere = {};
         if (merchantId) sessionWhere.userId = merchantId;
+        if (where.createdAt) sessionWhere.createdAt = where.createdAt;
 
         const sessionInclude = [
           {
@@ -1289,7 +1304,27 @@ class AdminController {
         });
       }
 
+      // Calculate Summary Report
+      const summaryWhere = {};
+      if (merchantId) summaryWhere.userId = merchantId;
+      if (where.createdAt) summaryWhere.createdAt = where.createdAt;
+
+      const [totalCalls, connectedCalls, failedCalls, noAnswerCalls] = await Promise.all([
+        CallSession.count({ where: summaryWhere }),
+        CallSession.count({ where: { ...summaryWhere, status: { [Op.in]: ['in-progress', 'completed'] } } }),
+        CallSession.count({ where: { ...summaryWhere, status: { [Op.in]: ['failed', 'canceled'] } } }),
+        CallSession.count({ where: { ...summaryWhere, status: { [Op.in]: ['busy', 'no-answer'] } } })
+      ]);
+
+      const summary = {
+        totalInitiated: totalCalls,
+        totalConnected: connectedCalls,
+        totalFailed: failedCalls,
+        totalNoAnswer: noAnswerCalls
+      };
+
       return ResponseBuilder.success(res, {
+        summary,
         reports: rows,
         pagination: {
           totalItems: count,
@@ -1467,6 +1502,7 @@ class AdminController {
         }
         const notif = await Notification.create({
           userId: targetUser.id,
+          adminId: req.user.id,
           title,
           message,
           isRead: false,
@@ -1570,6 +1606,7 @@ class AdminController {
           if (users.length > 0) {
             const notificationsData = users.map(user => ({
               userId: user.id,
+              adminId: req.user.id,
               title,
               message,
               isRead: false,
@@ -1582,6 +1619,7 @@ class AdminController {
           for (const user of users) {
             const notif = await Notification.create({
               userId: user.id,
+              adminId: req.user.id,
               title,
               message,
               isRead: false,
@@ -1615,8 +1653,18 @@ class AdminController {
       const page = parseInt(req.query.page, 10) || 1;
       const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
+      const { source } = req.query; // 'manual' | 'auto'
+      const { Op } = require('sequelize');
+
+      const where = {};
+      if (source === 'manual') {
+        where.adminId = { [Op.ne]: null };
+      } else if (source === 'auto') {
+        where.adminId = null;
+      }
 
       const { count, rows } = await Notification.findAndCountAll({
+        where,
         limit,
         offset,
         include: [{ model: User, as: 'user', attributes: ['id', 'email', 'mobile', 'businessName', 'fcmToken'] }],
@@ -1636,6 +1684,41 @@ class AdminController {
         },
         'Notifications retrieved successfully'
       );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Clear Notifications (Admin)
+   */
+  async clearNotifications(req, res, next) {
+    try {
+      const { id, tillDate } = req.query;
+      const { Op } = require('sequelize');
+
+      if (id) {
+        let idsArray = Array.isArray(id) ? id : id.split(',').map(i => i.trim()).filter(Boolean);
+        if (idsArray.length === 0) return ResponseBuilder.error(res, 'Invalid ID(s) provided', 400);
+        
+        const deletedCount = await Notification.destroy({
+          where: { id: { [Op.in]: idsArray } }
+        });
+        if (deletedCount === 0) return ResponseBuilder.error(res, 'Notifications not found', 404);
+        
+        return ResponseBuilder.success(res, { deletedCount }, `Cleared ${deletedCount} notification(s) successfully`);
+      } else if (tillDate) {
+        const date = new Date(tillDate);
+        date.setHours(23, 59, 59, 999);
+        const deletedCount = await Notification.destroy({
+          where: {
+            createdAt: { [Op.lte]: date }
+          }
+        });
+        return ResponseBuilder.success(res, { deletedCount }, `Cleared ${deletedCount} notifications successfully`);
+      } else {
+        return ResponseBuilder.error(res, 'Please provide either id or tillDate query parameter to clear notifications', 400);
+      }
     } catch (err) {
       next(err);
     }

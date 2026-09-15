@@ -104,6 +104,7 @@ router.put('/settings', settingController.upsertSetting);
 // Admin Notification routes
 router.post('/notifications/send', adminController.sendNotification);
 router.get('/notifications', adminController.getAllNotifications);
+router.delete('/notifications', adminController.clearNotifications);
 
 // Admin Password management routes
 router.post('/password/change', authController.changePassword);
