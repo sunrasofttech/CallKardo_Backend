@@ -91,6 +91,44 @@ class NotificationController {
       next(err);
     }
   }
+
+  /**
+   * Clear Notifications
+   */
+  async clearNotifications(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const { id, tillDate } = req.query;
+      const { Op } = require('sequelize');
+
+      if (id) {
+        let idsArray = Array.isArray(id) ? id : id.split(',').map(i => i.trim()).filter(Boolean);
+        if (idsArray.length === 0) return ResponseBuilder.error(res, 'Invalid ID(s) provided', 400);
+
+        const deletedCount = await Notification.destroy({
+          where: { id: { [Op.in]: idsArray }, userId }
+        });
+        if (deletedCount === 0) return ResponseBuilder.error(res, 'Notifications not found or unauthorized', 404);
+
+        return ResponseBuilder.success(res, { deletedCount }, `Cleared ${deletedCount} notification(s) successfully`);
+      } else if (tillDate) {
+        const date = new Date(tillDate);
+        date.setHours(23, 59, 59, 999);
+        const deletedCount = await Notification.destroy({
+          where: {
+            userId,
+            createdAt: { [Op.lte]: date }
+          }
+        });
+        return ResponseBuilder.success(res, { deletedCount }, `Cleared ${deletedCount} notifications successfully`);
+      } else {
+        return ResponseBuilder.error(res, 'Please provide either id or tillDate query parameter to clear notifications', 400);
+      }
+    } catch (err) {
+      next(err);
+    }
+  }
+
   /**
    * Get Admin Notifications
    */
