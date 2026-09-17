@@ -34,6 +34,9 @@ class AdminController {
         prevSubscriptions,
         recentMerchantsDB,
         recentSubscriptionsDB,
+        totalMeetingsScheduled,
+        completedMeetingsCount,
+        cancelledMeetingsCount,
       ] = await Promise.all([
         User.count({ where: { role: 'merchant' } }),
         User.count({ where: { role: 'merchant', createdAt: { [Op.lt]: startOfCurrentMonth } } }),
@@ -70,6 +73,9 @@ class AdminController {
             { model: Plan, as: 'plan' },
           ],
         }).catch(() => []),
+        Meeting.count(),
+        Meeting.count({ where: { status: 'completed' } }),
+        Meeting.count({ where: { status: 'cancelled' } }),
       ]);
 
       // Calculate Revenue dynamically from active subscriptions
@@ -222,6 +228,9 @@ class AdminController {
         { title: 'Settings', icon: 'settings', path: '/admin/settings' },
       ];
 
+      // Calculate incomplete meetings (all non-completed meetings: scheduled/pending, cancelled, rescheduled)
+      const incompleteMeetingsCount = Math.max(0, totalMeetingsScheduled - completedMeetingsCount);
+
       const dashboardData = {
         overview,
         statCards,
@@ -251,6 +260,12 @@ class AdminController {
             change: businessesChange,
           },
         },
+        meetingsSummary: {
+          totalMeetings: totalMeetingsScheduled,
+          completedMeetings: completedMeetingsCount,
+          incompleteMeetings: incompleteMeetingsCount,
+          cancelledMeetings: cancelledMeetingsCount,
+        },
         platformHealth,
         quickNavigation,
         recentBusinesses,
@@ -265,6 +280,14 @@ class AdminController {
         virtualNumbers: virtualNumbersCount,
         runningCampaigns: runningCampaignsCount,
         completedCalls: completedCallsCount,
+        totalMeetings: totalMeetingsScheduled,
+        totalMeetingsScheduled,
+        completedMeetings: completedMeetingsCount,
+        completedMeetingsCount,
+        incompleteMeetings: incompleteMeetingsCount,
+        incompleteMeetingsCount,
+        cancelledMeetings: cancelledMeetingsCount,
+        cancelledMeetingsCount,
       };
 
       return ResponseBuilder.success(res, dashboardData, 'Admin dashboard retrieved successfully');
