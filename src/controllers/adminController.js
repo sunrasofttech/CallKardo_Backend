@@ -3314,7 +3314,7 @@ class AdminController {
             ],
           },
         ],
-        order: [['meetingTime', 'ASC']],
+        order: [['meetingTime', 'DESC']],
       });
 
       // Group day-wise in IST (YYYY-MM-DD)
