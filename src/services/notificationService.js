@@ -54,11 +54,8 @@ class NotificationService {
         });
         console.log(`[Notification] Sent to Admin ${adminId} [${category}]: ${title}`);
 
-        // Attempt to send push notification
-        const adminUser = await Admin.findByPk(adminId);
-        if (adminUser && adminUser.fcmToken) {
-          await fcmService.sendPushNotification(adminUser.fcmToken, title, message, { category, notificationId: notification.id });
-        }
+        // Attempt to send push notification to 'admin' topic
+        await fcmService.sendTopicPushNotification('admin', title, message, { category, notificationId: notification.id });
 
         return [notification];
       } else {
@@ -74,12 +71,15 @@ class NotificationService {
             isRead: false
           });
           console.log(`[Notification] Created system-wide Admin notification [${category}]: ${title}`);
+          
+          // Send push notification to 'admin' topic
+          await fcmService.sendTopicPushNotification('admin', title, message, { category, notificationId: notif.id });
           return [notif];
         }
 
         const notifications = await Promise.all(
           admins.map(async (admin) => {
-            const notif = await Notification.create({
+            return Notification.create({
               adminId: admin.id,
               type: 'ADMIN',
               category,
@@ -87,13 +87,12 @@ class NotificationService {
               message,
               isRead: false
             });
-
-            if (admin.fcmToken) {
-              await fcmService.sendPushNotification(admin.fcmToken, title, message, { category, notificationId: notif.id });
-            }
-            return notif;
           })
         );
+        
+        // Send a single topic push notification instead of per-admin
+        await fcmService.sendTopicPushNotification('admin', title, message, { category });
+
         console.log(`[Notification] Broadcast to ${admins.length} Admins [${category}]: ${title}`);
         return notifications;
       }
