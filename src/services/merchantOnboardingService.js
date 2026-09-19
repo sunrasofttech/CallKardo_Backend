@@ -193,8 +193,8 @@ CONVERSATIONAL STAGES & STRATEGY:
         scheduledTime = this.adjustIfNight(now);
         isNightShift = true;
       } else {
-        // Daytime: schedule with 15 seconds delay so merchant sees signup completion
-        scheduledTime = new Date(now.getTime() + 15 * 1000);
+        // Daytime: schedule with 1 minute delay so merchant sees signup completion
+        scheduledTime = new Date(now.getTime() + 60 * 1000);
       }
 
       const payload = {

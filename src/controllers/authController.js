@@ -578,12 +578,6 @@ class AuthController {
             console.error('[NotificationService] notifyAdmin error:', notifyErr.message);
           });
 
-          // Trigger automatic AI Onboarding Call
-          const MerchantOnboardingService = require('../services/merchantOnboardingService');
-          MerchantOnboardingService.scheduleOnboardingCall(merchant.id).catch((callErr) => {
-            console.error('[authController] Failed to schedule onboarding call:', callErr.message);
-          });
-
           const profile = {
             id: merchant.id,
             email: merchant.email,
@@ -952,6 +946,12 @@ class AuthController {
             await demoNumRecord.save();
           }
         }
+
+        // Trigger automatic AI Onboarding Call after the first setup
+        const MerchantOnboardingService = require('../services/merchantOnboardingService');
+        MerchantOnboardingService.scheduleOnboardingCall(user.id).catch((callErr) => {
+          console.error('[authController] Failed to schedule onboarding call:', callErr.message);
+        });
       }
 
       const profile = {
