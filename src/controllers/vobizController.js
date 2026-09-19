@@ -56,6 +56,16 @@ class VobizController {
         searchNumbers.push(base, `0${base}`);
       }
 
+      const cleanFromNum = fromNum.startsWith('+') ? fromNum.substring(1) : fromNum;
+      const searchFromNumbers = [fromNum, cleanFromNum, `+${cleanFromNum}`];
+      if (fromNum.startsWith('0')) {
+        const base = fromNum.substring(1);
+        searchFromNumbers.push(base, `+91${base}`, `91${base}`);
+      } else if (cleanFromNum.startsWith('91')) {
+        const base = cleanFromNum.substring(2);
+        searchFromNumbers.push(base, `0${base}`);
+      }
+
       // Look up all registered VobizNumber records matching the dialed number
       const vobizNumbers = await VobizNumber.findAll({
         where: {
@@ -71,19 +81,33 @@ class VobizController {
         vobizNumber = vobizNumbers[0];
       } else if (vobizNumbers.length > 1) {
         // Shared number scenario (e.g. demo number used by multiple merchants)
-        // Find which merchant this customer interacted with last.
-        const lastSession = await CallSession.findOne({
-          include: [{
-            model: Customer,
-            as: 'customer',
-            where: { mobile: fromNum }
-          }],
-          order: [['createdAt', 'DESC']]
+        const userIds = vobizNumbers.map(n => n.userId);
+
+        // 1. Check if the caller is a merchant testing their own AI agent
+        const callerAsMerchant = await User.findOne({
+          where: { mobile: { [Op.in]: searchFromNumbers }, id: { [Op.in]: userIds } }
         });
 
-        if (lastSession) {
-          // Find the vobizNumber matching the merchant of the last session
-          vobizNumber = vobizNumbers.find(n => n.userId === lastSession.userId);
+        if (callerAsMerchant) {
+          vobizNumber = vobizNumbers.find(n => n.userId === callerAsMerchant.id);
+          console.log(`[VoBiz Webhook] Caller is a merchant testing their own demo number. Assigned agent: ${vobizNumber.agent.id}`);
+        }
+
+        // 2. If not a merchant testing their own agent, find which merchant this customer interacted with last.
+        if (!vobizNumber) {
+          const lastSession = await CallSession.findOne({
+            include: [{
+              model: Customer,
+              as: 'customer',
+              where: { mobile: fromNum }
+            }],
+            order: [['createdAt', 'DESC']]
+          });
+
+          if (lastSession) {
+            // Find the vobizNumber matching the merchant of the last session
+            vobizNumber = vobizNumbers.find(n => n.userId === lastSession.userId);
+          }
         }
 
         // If no call session found, check if they exist as a Customer for any of these merchants
@@ -101,6 +125,24 @@ class VobizController {
         // Fallback to the most recently created vobizNumber if completely unknown
         if (!vobizNumber) {
           vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
+        }
+      }
+
+      // Enforce demo number rule: Demo number must ONLY play the admin created AI personality
+      const cleanDemo = defaults.vobiz.demoNumber.replace(/\D/g, '');
+      const cleanDialed = toNum.replace(/\D/g, '');
+      const isDemoCall = cleanDialed.endsWith(cleanDemo) || cleanDemo.endsWith(cleanDialed);
+
+      if (isDemoCall && vobizNumber && vobizNumber.agent) {
+        if (vobizNumber.agent.isCustom) {
+           const adminAgent = await Agent.findOne({
+             where: { isCustom: false, categoryId: vobizNumber.agent.categoryId }
+           });
+           if (adminAgent) {
+             vobizNumber.agent = adminAgent;
+             vobizNumber.agentId = adminAgent.id;
+             console.log(`[VoBiz Webhook] Enforced admin-created agent ${adminAgent.id} for demo number call`);
+           }
         }
       }
 
@@ -122,6 +164,44 @@ class VobizController {
         agentName: vobizNumber.agent.name,
         aiProvider: vobizNumber.agent.aiProvider
       });
+
+      // ---- MERCHANT CALLBACK INTERCEPTION ----
+      const callingMerchant = await User.findOne({
+        where: { mobile: { [Op.in]: searchFromNumbers } }
+      });
+      
+      let isMerchantCallback = false;
+      let onboardingAgent = null;
+
+      if (callingMerchant) {
+        const lastOnboardingSession = await CallSession.findOne({
+          where: {
+            userId: callingMerchant.id,
+            direction: 'outbound',
+            callType: 'merchant_onboarding'
+          },
+          include: [{ model: Agent, as: 'agent' }],
+          order: [['createdAt', 'DESC']]
+        });
+        
+        // Only intercept if the onboarding call was missed/failed and happened recently (last 24 hours)
+        if (lastOnboardingSession && lastOnboardingSession.agent) {
+           const duration = lastOnboardingSession.endTime && lastOnboardingSession.startTime 
+               ? (new Date(lastOnboardingSession.endTime) - new Date(lastOnboardingSession.startTime)) / 1000 
+               : 0;
+
+           const isMissed = ['failed', 'no-answer', 'busy'].includes(lastOnboardingSession.status) || 
+                            (lastOnboardingSession.status === 'completed' && duration < 10);
+           const isRecent = (new Date() - new Date(lastOnboardingSession.createdAt)) < 24 * 60 * 60 * 1000;
+
+           if (isMissed && isRecent) {
+             isMerchantCallback = true;
+             onboardingAgent = lastOnboardingSession.agent;
+             console.log(`[VoBiz Webhook] Intercepted merchant callback for missed onboarding. Routing to agent ${onboardingAgent.id}`);
+           }
+        }
+      }
+      // ----------------------------------------
 
       // Find or register customer record for caller
       let customer = await Customer.findOne({
@@ -149,11 +229,27 @@ class VobizController {
       if (!session) {
         // Generate a new WebSocket session token for this call
         const wsToken = crypto.randomBytes(32).toString('hex');
+        
+        let sessionUserId = vobizNumber.userId;
+        let sessionAgentId = vobizNumber.agentId;
+        let sessionCustomerId = customer.id;
+        let sessionCallType = undefined; // Use default
+        let resolvedAgent = vobizNumber.agent;
+        
+        if (isMerchantCallback && onboardingAgent) {
+           sessionUserId = callingMerchant.id;
+           sessionAgentId = onboardingAgent.id;
+           sessionCustomerId = null; // Merchant acts as user, not customer
+           sessionCallType = 'merchant_callback';
+           resolvedAgent = onboardingAgent;
+        }
+
         session = await CallSession.create({
-          userId: vobizNumber.userId,
-          agentId: vobizNumber.agentId,
+          userId: sessionUserId,
+          agentId: sessionAgentId,
           vobizNumberId: vobizNumber.id,
-          customerId: customer.id,
+          customerId: sessionCustomerId,
+          callType: sessionCallType,
           wsSessionToken: wsToken,
           vobizCallUuid: vobizCallUuid,
           status: 'initiated',
@@ -163,14 +259,17 @@ class VobizController {
         await CallLog.create({
           callSessionId: session.id,
           logLevel: 'info',
-          message: `Inbound call from ${fromNum} to ${toNum} answered. aiProvider: ${vobizNumber.agent.aiProvider}`,
+          message: `Inbound call from ${fromNum} to ${toNum} answered. aiProvider: ${resolvedAgent.aiProvider}`,
         });
       } else {
         console.log(`[VoBiz Webhook] Idempotency hit: CallSession already exists for CallUUID ${vobizCallUuid}`);
       }
 
       // Route dynamically based on Agent AI Provider configuration
-      if (vobizNumber.agent.aiProvider === 'elevenlabs') {
+      let activeAgent = vobizNumber.agent;
+      if (isMerchantCallback && onboardingAgent) activeAgent = onboardingAgent;
+
+      if (activeAgent.aiProvider === 'elevenlabs') {
         const isIndia = fromNum.includes('91') || toNum.includes('91');
         const sipEndpoint = isIndia
           ? 'sip.rtc.in.residency.elevenlabs.io:5060;transport=tcp'

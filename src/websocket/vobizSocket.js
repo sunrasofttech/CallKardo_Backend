@@ -233,6 +233,24 @@ class VobizSocketHandler {
 
         if (session.callType === 'meeting_reminder' && session.agent) {
           session.agent.firstMessage = `Namaste! Main CallKardo team se reminder call kar rahi hoon. Aapki meeting CallKardo team ke saath 15 minute mein scheduled hai. Kripya apna email ya WhatsApp check karein join link ke liye. Thank you!`;
+        } else if (session.callType === 'merchant_callback' && session.agent) {
+           const lastSession = await CallSession.findOne({
+             where: {
+                userId: session.userId,
+                direction: 'outbound',
+                callType: 'merchant_onboarding'
+             },
+             order: [['createdAt', 'DESC']]
+           });
+           
+           let resumeContext = '';
+           if (lastSession && lastSession.transcript) {
+              resumeContext = `\n\n[Previous Conversation Context: The merchant missed your previous call or it was cut short. Here is what was discussed last time:\n${lastSession.transcript}\n\nStart by warmly welcoming them back and briefly summarizing or continuing from where you left off. Do not repeat the entire initial greeting unless this is the first interaction.]`;
+              session.agent.firstMessage = null; // Let LLM generate the greeting dynamically based on context
+           } else {
+              session.agent.firstMessage = 'Namaste! CallKardo mein wapas swagat hai. Pichli call disconnect ho gayi thi, kya hum continue karein?';
+           }
+           session.agent.systemPrompt = (session.agent.systemPrompt || '') + resumeContext;
         }
 
         const NotificationService = require('../services/notificationService');
