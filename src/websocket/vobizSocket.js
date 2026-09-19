@@ -238,14 +238,15 @@ class VobizSocketHandler {
              where: {
                 userId: session.userId,
                 direction: 'outbound',
-                callType: 'merchant_onboarding'
+                callType: { [Op.notIn]: ['campaign', 'merchant_callback'] }
              },
              order: [['createdAt', 'DESC']]
            });
            
            let resumeContext = '';
            if (lastSession && lastSession.transcript) {
-              resumeContext = `\n\n[Previous Conversation Context: The merchant missed your previous call or it was cut short. Here is what was discussed last time:\n${lastSession.transcript}\n\nStart by warmly welcoming them back and briefly summarizing or continuing from where you left off. Do not repeat the entire initial greeting unless this is the first interaction.]`;
+              const callTypeDesc = lastSession.callType.replace(/_/g, ' ');
+              resumeContext = `\n\n[Previous Conversation Context: The merchant missed your previous ${callTypeDesc} call or it was cut short. Here is what was discussed last time:\n${lastSession.transcript}\n\nStart by warmly welcoming them back and briefly summarizing or continuing from where you left off. Do not repeat the entire initial greeting unless this is the first interaction.]`;
               session.agent.firstMessage = null; // Let LLM generate the greeting dynamically based on context
            } else {
               session.agent.firstMessage = 'Namaste! CallKardo mein wapas swagat hai. Pichli call disconnect ho gayi thi, kya hum continue karein?';

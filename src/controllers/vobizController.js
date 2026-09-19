@@ -76,30 +76,88 @@ class VobizController {
       });
 
       let vobizNumber = null;
+      let isMerchantCallback = false;
+      let onboardingAgent = null;
 
-      if (vobizNumbers.length === 1) {
-        vobizNumber = vobizNumbers[0];
-      } else if (vobizNumbers.length > 1) {
-        // Shared number scenario (e.g. demo number used by multiple merchants)
+      // 1. Check if the caller is a registered Merchant
+      const callerAsMerchant = await User.findOne({
+        where: { mobile: { [Op.in]: searchFromNumbers } }
+      });
+
+      if (callerAsMerchant) {
+        console.log(`[VoBiz Webhook] Caller is a registered Merchant (ID: ${callerAsMerchant.id}). Prioritizing merchant routing.`);
         
-        // 1. Check if the caller is a registered Merchant
-        const callerAsMerchant = await User.findOne({
-          where: { mobile: { [Op.in]: searchFromNumbers } }
+        // Check for missed outbound callback (onboarding, reminder, sales pitch, etc.)
+        const lastOutboundSession = await CallSession.findOne({
+          where: {
+            userId: callerAsMerchant.id,
+            direction: 'outbound',
+            callType: { [Op.notIn]: ['campaign', 'merchant_callback'] } // Matches onboarding, reminder, pitch, etc.
+          },
+          include: [{ model: Agent, as: 'agent' }],
+          order: [['createdAt', 'DESC']]
         });
+        
+        if (lastOutboundSession && lastOutboundSession.agent) {
+           const duration = lastOutboundSession.endTime && lastOutboundSession.startTime 
+               ? (new Date(lastOutboundSession.endTime) - new Date(lastOutboundSession.startTime)) / 1000 
+               : 0;
 
-        if (callerAsMerchant) {
-          // If they are a merchant, find their specific VobizNumber configuration for this demo number
-          vobizNumber = vobizNumbers.find(n => n.userId === callerAsMerchant.id);
-          
-          if (vobizNumber) {
-            console.log(`[VoBiz Webhook] Caller is a merchant. Assigned their demo agent: ${vobizNumber.agent.id}`);
-          } else {
-            // They are a merchant but haven't finished setupBusiness, fallback to most recent demo config
-            vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
-            console.log(`[VoBiz Webhook] Caller is a merchant but no demo config found. Using fallback demo agent.`);
-          }
+           const isMissed = ['failed', 'no-answer', 'busy'].includes(lastOutboundSession.status) || 
+                            (lastOutboundSession.status === 'completed' && duration < 10);
+           const isRecent = (new Date() - new Date(lastOutboundSession.createdAt)) < 24 * 60 * 60 * 1000;
+
+           if (isMissed && isRecent) {
+             isMerchantCallback = true;
+             onboardingAgent = lastOutboundSession.agent;
+             console.log(`[VoBiz Webhook] Intercepted merchant callback for missed ${lastOutboundSession.callType}. Routing to agent ${onboardingAgent.id}`);
+           }
+        }
+
+        // If not a callback, assign their admin AI personality
+        if (!isMerchantCallback) {
+           // We need to route them to the admin AI agent (isCustom: false) for their category.
+           let adminAgent = null;
+           if (callerAsMerchant.categoryId) {
+             adminAgent = await Agent.findOne({
+               where: { isCustom: false, categoryId: callerAsMerchant.categoryId }
+             });
+           }
+           
+           if (!adminAgent) {
+             // Fallback to any general admin agent
+             adminAgent = await Agent.findOne({ where: { isCustom: false } });
+           }
+
+           if (adminAgent) {
+             // Create a dummy/virtual vobizNumber record for the session so it works with the rest of the flow
+             vobizNumber = {
+               id: null,
+               userId: callerAsMerchant.id,
+               agentId: adminAgent.id,
+               agent: adminAgent,
+               number: toNum
+             };
+             console.log(`[VoBiz Webhook] Assigned Admin AI Agent ${adminAgent.id} to Merchant caller.`);
+           } else {
+             console.warn(`[VoBiz Webhook] No Admin AI Agent found for Merchant!`);
+           }
         } else {
-          // 2. If NOT a merchant, check if this customer interacted with a specific merchant last.
+          // It's a callback, we also create a virtual vobizNumber for the onboarding agent
+          vobizNumber = {
+             id: null,
+             userId: callerAsMerchant.id,
+             agentId: onboardingAgent.id,
+             agent: onboardingAgent,
+             number: toNum
+          };
+        }
+      } else {
+        // 2. Not a merchant, normal Customer routing
+        if (vobizNumbers.length === 1) {
+          vobizNumber = vobizNumbers[0];
+        } else if (vobizNumbers.length > 1) {
+          // Shared number scenario, find which merchant this customer interacted with last.
           const lastSession = await CallSession.findOne({
             include: [{
               model: Customer,
@@ -123,88 +181,12 @@ class VobizController {
               vobizNumber = vobizNumbers.find(n => n.userId === lastCustomer.userId);
             }
           }
-        }
 
-        // Fallback to the most recently created vobizNumber if completely unknown
-        if (!vobizNumber) {
-          vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
-        }
-      }
-
-      // Enforce demo number rule: Demo number must ONLY play the admin created AI personality
-      const cleanDemo = defaults.vobiz.demoNumber.replace(/\D/g, '');
-      const cleanDialed = toNum.replace(/\D/g, '');
-      const isDemoCall = cleanDialed.endsWith(cleanDemo) || cleanDemo.endsWith(cleanDialed);
-
-      if (isDemoCall && vobizNumber && vobizNumber.agent) {
-        if (vobizNumber.agent.isCustom) {
-           const adminAgent = await Agent.findOne({
-             where: { isCustom: false, categoryId: vobizNumber.agent.categoryId }
-           });
-           if (adminAgent) {
-             vobizNumber.agent = adminAgent;
-             vobizNumber.agentId = adminAgent.id;
-             console.log(`[VoBiz Webhook] Enforced admin-created agent ${adminAgent.id} for demo number call`);
-           }
+          if (!vobizNumber) {
+            vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
+          }
         }
       }
-
-      if (!vobizNumber || !vobizNumber.agentId || !vobizNumber.agent) {
-        console.warn(`No active agent configured for VoBiz inbound number: ${toNum}`);
-        const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Speak voice="WOMAN" language="en-US">This number is not configured to receive calls at this time.</Speak>
-    <Hangup/>
-</Response>`;
-        console.log('[VoBiz Webhook] Returning No-Agent XML:', xml);
-        res.set('Content-Type', 'text/xml');
-        return res.send(xml);
-      }
-
-      console.log(`[VoBiz Webhook] Resolved VobizNumber matching "${toNum}":`, {
-        vobizNumberId: vobizNumber.id,
-        agentId: vobizNumber.agentId,
-        agentName: vobizNumber.agent.name,
-        aiProvider: vobizNumber.agent.aiProvider
-      });
-
-      // ---- MERCHANT CALLBACK INTERCEPTION ----
-      const callingMerchant = await User.findOne({
-        where: { mobile: { [Op.in]: searchFromNumbers } }
-      });
-      
-      let isMerchantCallback = false;
-      let onboardingAgent = null;
-
-      if (callingMerchant) {
-        const lastOnboardingSession = await CallSession.findOne({
-          where: {
-            userId: callingMerchant.id,
-            direction: 'outbound',
-            callType: 'merchant_onboarding'
-          },
-          include: [{ model: Agent, as: 'agent' }],
-          order: [['createdAt', 'DESC']]
-        });
-        
-        // Only intercept if the onboarding call was missed/failed and happened recently (last 24 hours)
-        if (lastOnboardingSession && lastOnboardingSession.agent) {
-           const duration = lastOnboardingSession.endTime && lastOnboardingSession.startTime 
-               ? (new Date(lastOnboardingSession.endTime) - new Date(lastOnboardingSession.startTime)) / 1000 
-               : 0;
-
-           const isMissed = ['failed', 'no-answer', 'busy'].includes(lastOnboardingSession.status) || 
-                            (lastOnboardingSession.status === 'completed' && duration < 10);
-           const isRecent = (new Date() - new Date(lastOnboardingSession.createdAt)) < 24 * 60 * 60 * 1000;
-
-           if (isMissed && isRecent) {
-             isMerchantCallback = true;
-             onboardingAgent = lastOnboardingSession.agent;
-             console.log(`[VoBiz Webhook] Intercepted merchant callback for missed onboarding. Routing to agent ${onboardingAgent.id}`);
-           }
-        }
-      }
-      // ----------------------------------------
 
       // Find or register customer record for caller
       let customer = await Customer.findOne({
