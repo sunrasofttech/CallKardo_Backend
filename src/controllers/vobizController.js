@@ -103,7 +103,7 @@ class VobizController {
                ? (new Date(lastOutboundSession.endTime) - new Date(lastOutboundSession.startTime)) / 1000 
                : 0;
 
-           const isMissed = ['failed', 'no-answer', 'busy'].includes(lastOutboundSession.status) || 
+           const isMissed = ['failed', 'no-answer', 'busy', 'initiated'].includes(lastOutboundSession.status) || 
                             (lastOutboundSession.status === 'completed' && duration < 10);
            const isRecent = (new Date() - new Date(lastOutboundSession.createdAt)) < 24 * 60 * 60 * 1000;
 
@@ -114,36 +114,8 @@ class VobizController {
            }
         }
 
-        // If not a callback, assign their admin AI personality
-        if (!isMerchantCallback) {
-           // We need to route them to the admin AI agent (isCustom: false) for their category.
-           let adminAgent = null;
-           if (callerAsMerchant.categoryId) {
-             adminAgent = await Agent.findOne({
-               where: { isCustom: false, categoryId: callerAsMerchant.categoryId }
-             });
-           }
-           
-           if (!adminAgent) {
-             // Fallback to any general admin agent
-             adminAgent = await Agent.findOne({ where: { isCustom: false } });
-           }
-
-           if (adminAgent) {
-             // Create a dummy/virtual vobizNumber record for the session so it works with the rest of the flow
-             vobizNumber = {
-               id: null,
-               userId: callerAsMerchant.id,
-               agentId: adminAgent.id,
-               agent: adminAgent,
-               number: toNum
-             };
-             console.log(`[VoBiz Webhook] Assigned Admin AI Agent ${adminAgent.id} to Merchant caller.`);
-           } else {
-             console.warn(`[VoBiz Webhook] No Admin AI Agent found for Merchant!`);
-           }
-        } else {
-          // It's a callback, we also create a virtual vobizNumber for the onboarding agent
+        if (isMerchantCallback) {
+          // It's a callback, we create a virtual vobizNumber for the onboarding agent
           vobizNumber = {
              id: null,
              userId: callerAsMerchant.id,
@@ -151,6 +123,17 @@ class VobizController {
              agent: onboardingAgent,
              number: toNum
           };
+        } else {
+          // Not a callback, they are testing their own numbers
+          vobizNumber = vobizNumbers.find(n => n.userId === callerAsMerchant.id);
+          
+          if (vobizNumber) {
+            console.log(`[VoBiz Webhook] Assigned Merchant's own agent: ${vobizNumber.agent.id}`);
+          } else if (vobizNumbers.length > 1) {
+            // Fallback for demo number if they haven't finished setup
+            vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
+            console.log(`[VoBiz Webhook] Assigned fallback demo agent for Merchant`);
+          }
         }
       } else {
         // 2. Not a merchant, normal Customer routing
@@ -186,6 +169,18 @@ class VobizController {
             vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
           }
         }
+      }
+
+      if (!vobizNumber || !vobizNumber.agentId || !vobizNumber.agent) {
+        console.warn(`No active agent configured for VoBiz inbound number: ${toNum}`);
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Speak voice="WOMAN" language="en-US">This number is not configured to receive calls at this time.</Speak>
+    <Hangup/>
+</Response>`;
+        console.log('[VoBiz Webhook] Returning No-Agent XML:', xml);
+        res.set('Content-Type', 'text/xml');
+        return res.send(xml);
       }
 
       // Find or register customer record for caller
