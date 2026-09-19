@@ -5,6 +5,7 @@ const VoicePipeline = require('../services/voicePipeline');
 const VobizService = require('../services/vobizService');
 const { decrypt } = require('../utils/crypto');
 const defaults = require('../config/defaults');
+const { Op } = require('sequelize');
 
 const encodeTable = [
   0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
