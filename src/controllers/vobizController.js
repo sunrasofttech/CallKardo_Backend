@@ -81,20 +81,25 @@ class VobizController {
         vobizNumber = vobizNumbers[0];
       } else if (vobizNumbers.length > 1) {
         // Shared number scenario (e.g. demo number used by multiple merchants)
-        const userIds = vobizNumbers.map(n => n.userId);
-
-        // 1. Check if the caller is a merchant testing their own AI agent
+        
+        // 1. Check if the caller is a registered Merchant
         const callerAsMerchant = await User.findOne({
-          where: { mobile: { [Op.in]: searchFromNumbers }, id: { [Op.in]: userIds } }
+          where: { mobile: { [Op.in]: searchFromNumbers } }
         });
 
         if (callerAsMerchant) {
+          // If they are a merchant, find their specific VobizNumber configuration for this demo number
           vobizNumber = vobizNumbers.find(n => n.userId === callerAsMerchant.id);
-          console.log(`[VoBiz Webhook] Caller is a merchant testing their own demo number. Assigned agent: ${vobizNumber.agent.id}`);
-        }
-
-        // 2. If not a merchant testing their own agent, find which merchant this customer interacted with last.
-        if (!vobizNumber) {
+          
+          if (vobizNumber) {
+            console.log(`[VoBiz Webhook] Caller is a merchant. Assigned their demo agent: ${vobizNumber.agent.id}`);
+          } else {
+            // They are a merchant but haven't finished setupBusiness, fallback to most recent demo config
+            vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
+            console.log(`[VoBiz Webhook] Caller is a merchant but no demo config found. Using fallback demo agent.`);
+          }
+        } else {
+          // 2. If NOT a merchant, check if this customer interacted with a specific merchant last.
           const lastSession = await CallSession.findOne({
             include: [{
               model: Customer,
@@ -105,20 +110,18 @@ class VobizController {
           });
 
           if (lastSession) {
-            // Find the vobizNumber matching the merchant of the last session
             vobizNumber = vobizNumbers.find(n => n.userId === lastSession.userId);
           }
-        }
 
-        // If no call session found, check if they exist as a Customer for any of these merchants
-        if (!vobizNumber) {
-          const userIds = vobizNumbers.map(n => n.userId);
-          const lastCustomer = await Customer.findOne({
-            where: { mobile: fromNum, userId: { [Op.in]: userIds } },
-            order: [['createdAt', 'DESC']]
-          });
-          if (lastCustomer) {
-            vobizNumber = vobizNumbers.find(n => n.userId === lastCustomer.userId);
+          if (!vobizNumber) {
+            const userIds = vobizNumbers.map(n => n.userId);
+            const lastCustomer = await Customer.findOne({
+              where: { mobile: fromNum, userId: { [Op.in]: userIds } },
+              order: [['createdAt', 'DESC']]
+            });
+            if (lastCustomer) {
+              vobizNumber = vobizNumbers.find(n => n.userId === lastCustomer.userId);
+            }
           }
         }
 
