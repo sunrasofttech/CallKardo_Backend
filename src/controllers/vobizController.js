@@ -217,7 +217,7 @@ class VobizController {
         let resolvedAgent = vobizNumber.agent;
         
         if (isMerchantCallback && onboardingAgent) {
-           sessionUserId = callingMerchant.id;
+           sessionUserId = callerAsMerchant.id;
            sessionAgentId = onboardingAgent.id;
            sessionCustomerId = null; // Merchant acts as user, not customer
            sessionCallType = 'merchant_callback';
