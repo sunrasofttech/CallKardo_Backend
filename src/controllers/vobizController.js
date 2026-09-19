@@ -124,15 +124,21 @@ class VobizController {
              number: toNum
           };
         } else {
-          // Not a callback, they are testing their own numbers
-          vobizNumber = vobizNumbers.find(n => n.userId === callerAsMerchant.id);
-          
-          if (vobizNumber) {
-            console.log(`[VoBiz Webhook] Assigned Merchant's own agent: ${vobizNumber.agent.id}`);
-          } else if (vobizNumbers.length > 1) {
-            // Fallback for demo number if they haven't finished setup
-            vobizNumber = vobizNumbers.sort((a, b) => b.createdAt - a.createdAt)[0];
-            console.log(`[VoBiz Webhook] Assigned fallback demo agent for Merchant`);
+          // All merchant inbound calls must connect to the admin onboarding agent
+          onboardingAgent = await Agent.findOne({ where: { agentType: 'merchant_onboarding' } });
+          if (onboardingAgent) {
+             vobizNumber = {
+                id: null,
+                userId: callerAsMerchant.id,
+                agentId: onboardingAgent.id,
+                agent: onboardingAgent,
+                number: toNum
+             };
+             console.log(`[VoBiz Webhook] Routed Merchant inbound call to onboarding agent: ${onboardingAgent.id}`);
+          } else {
+             console.warn(`[VoBiz Webhook] No onboarding agent found for Merchant inbound call!`);
+             // Fallback to demo generic agent if onboarding agent is missing
+             vobizNumber = vobizNumbers.filter(n => n.agent).sort((a, b) => b.createdAt - a.createdAt)[0];
           }
         }
       } else {
