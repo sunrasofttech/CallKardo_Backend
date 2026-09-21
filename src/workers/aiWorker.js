@@ -274,7 +274,9 @@ async function processCallAnalysis(event) {
       // Safety net: if Callback Requested but no record exists, create one
       if (analysis.outcome === 'Callback Requested') {
         const { MerchantCallback } = require('../models');
-        const existingCb = await MerchantCallback.findOne({ where: { callSessionId } });
+        const { AlternateContactRequest } = require('../models');
+        const existingCb = await MerchantCallback.findOne({ where: { callSessionId } })
+          || await AlternateContactRequest.findOne({ where: { callSessionId, requestType: 'callback' } });
         if (!existingCb) {
           const MerchantOnboardingService = require('../services/merchantOnboardingService');
           await MerchantOnboardingService.scheduleCallback(finalUserId, null, callSessionId, session.agentId);
@@ -292,8 +294,8 @@ async function processCallAnalysis(event) {
       }
     }
 
-    // 7. Deduct call credit from merchant's subscription (only for regular merchant campaign calls)
-    if (created && finalUserId && (!session.callType || session.callType === 'campaign')) {
+    // 7. Deduct call credit from merchant's subscription (only for regular merchant customer calls)
+    if (created && finalUserId && (!session.callType || ['campaign', 'customer_callback'].includes(session.callType))) {
       try {
         await SubscriptionService.recordCallUsage(finalUserId);
       } catch (subErr) {

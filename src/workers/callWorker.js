@@ -9,6 +9,8 @@ const { Campaign, CampaignCustomer, CallSession, CallLog, VobizNumber, VobizAcco
 const { Op } = require('sequelize');
 const { decrypt } = require('../utils/crypto');
 
+const MERCHANT_CALL_TYPES = ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'];
+
 async function startCallWorker() {
   console.log('Call Worker started.');
 
@@ -34,6 +36,8 @@ async function startCallWorker() {
         await processPlaceCall(parsed.payload);
       } else if (parsed.type === 'PLACE_MERCHANT_CALL') {
         await processPlaceMerchantCall(parsed.payload);
+      } else if (parsed.type === 'PLACE_ALTERNATE_CALLBACK') {
+        await processAlternateCallback(parsed.payload);
       }
 
     } catch (error) {
@@ -147,85 +151,17 @@ async function processPlaceCall(payload) {
     }
 
     // 5. Connect and Dial
-    // Get VoBiz credentials (Merchant custom credentials or Parent credentials from .env)
-    const defaults = require('../config/defaults');
-    const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
-    const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
-    const parentDemoNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918065355001';
-
-    let apiKey = parentAuthId;
-    let apiSecret = parentAuthToken;
-    let fromNumber = parentDemoNumber;
-
-    // Fetch user to check KYC status
-    const merchant = await User.findByPk(userId);
-    const isKycFull = merchant && merchant.kycStatus === 'full';
-
-    // Check if merchant has their own valid custom VoBiz Account
-    const merchantAccount = await VobizAccount.findOne({ where: { userId } });
-    if (!isKycFull) {
-      console.log(`[callWorker] Merchant ${userId} KYC is not 'full' (Status: ${merchant?.kycStatus}). Using Parent VoBiz credentials (${parentAuthId})`);
-    } else {
-      // KYC is full. strictly use merchant token only
-      let validMerchantToken = false;
-      if (merchantAccount && merchantAccount.apiKey && merchantAccount.apiSecret) {
-        let key = merchantAccount.apiKey;
-        let secret = merchantAccount.apiSecret;
-        try {
-          key = decrypt(key) || key;
-          secret = decrypt(secret) || secret;
-        } catch (_) { }
-
-        if (key && !key.includes('your_') && !key.includes('mock') && !key.includes('real_key') && !key.includes('default') && key !== 'parent_auth_id') {
-          apiKey = key;
-          apiSecret = secret;
-          validMerchantToken = true;
-          console.log(`[callWorker] Merchant ${userId} KYC is 'full'. Using custom VoBiz Account credentials.`);
-        }
-      }
-
-      if (!validMerchantToken) {
-        console.warn(`[callWorker] Merchant ${userId} KYC is 'full', but no valid VoBiz Account credentials found. Failing call.`);
-        await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
-        await CallLog.create({
-          callSessionId: null,
-          logLevel: 'error',
-          message: `Call failed: Merchant KYC is full but valid VoBiz credentials are missing.`,
-        });
-        return;
-      }
+    const dialConfig = await resolveMerchantDialConfig(userId, campaign.vobizNumberId);
+    if (dialConfig.error) {
+      await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
+      await CallLog.create({
+        callSessionId: null,
+        logLevel: 'error',
+        message: dialConfig.error,
+      });
+      return;
     }
-
-    // Resolve VoBiz Number
-    let vobizNumber = campaign.vobizNumberId ? await VobizNumber.findByPk(campaign.vobizNumberId) : null;
-    if (vobizNumber && vobizNumber.number) {
-      if (vobizNumber.status !== 'active') {
-        console.warn(`[callWorker] VoBiz number ${vobizNumber.number} configured for campaign ${campaignId} is inactive.`);
-        await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
-        await CallLog.create({
-          callSessionId: null,
-          logLevel: 'error',
-          message: `Call failed: VoBiz number ${vobizNumber.number} is inactive. Please renew number rental.`,
-        });
-        return;
-      }
-      fromNumber = vobizNumber.number;
-    } else {
-      const activeNum = await VobizNumber.findOne({ where: { status: 'active', userId } });
-      if (activeNum && activeNum.number) {
-        fromNumber = activeNum.number;
-        vobizNumber = activeNum;
-      } else {
-        console.warn(`[callWorker] No active VoBiz number found for merchant ${userId}. Skipping call.`);
-        await CampaignCustomer.update({ callStatus: 'failed' }, { where: { campaignId, customerId } });
-        await CallLog.create({
-          callSessionId: null,
-          logLevel: 'error',
-          message: `Call failed: No active VoBiz number found under merchant account.`,
-        });
-        return;
-      }
-    }
+    const { apiKey, apiSecret, fromNumber, vobizNumber } = dialConfig;
 
     // Create session token and db call record
     const wsToken = crypto.randomBytes(32).toString('hex');
@@ -417,6 +353,181 @@ async function processPlaceMerchantCall(payload) {
   }
 }
 
+/**
+ * Resolves VoBiz credentials and caller number for a merchant's customer calls.
+ * Merchants without full KYC dial via the parent account; full-KYC merchants must use their own.
+ * @returns {{ apiKey, apiSecret, fromNumber, vobizNumber } | { error: string }}
+ */
+async function resolveMerchantDialConfig(userId, preferredVobizNumberId = null) {
+  // Get VoBiz credentials (Merchant custom credentials or Parent credentials from .env)
+  const defaults = require('../config/defaults');
+  const parentAuthId = process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId;
+  const parentAuthToken = process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken;
+  const parentDemoNumber = process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918065355001';
+
+  let apiKey = parentAuthId;
+  let apiSecret = parentAuthToken;
+  let fromNumber = parentDemoNumber;
+
+  // Fetch user to check KYC status
+  const merchant = await User.findByPk(userId);
+  const isKycFull = merchant && merchant.kycStatus === 'full';
+
+  // Check if merchant has their own valid custom VoBiz Account
+  const merchantAccount = await VobizAccount.findOne({ where: { userId } });
+  if (!isKycFull) {
+    console.log(`[callWorker] Merchant ${userId} KYC is not 'full' (Status: ${merchant?.kycStatus}). Using Parent VoBiz credentials (${parentAuthId})`);
+  } else {
+    // KYC is full. strictly use merchant token only
+    let validMerchantToken = false;
+    if (merchantAccount && merchantAccount.apiKey && merchantAccount.apiSecret) {
+      let key = merchantAccount.apiKey;
+      let secret = merchantAccount.apiSecret;
+      try {
+        key = decrypt(key) || key;
+        secret = decrypt(secret) || secret;
+      } catch (_) { }
+
+      if (key && !key.includes('your_') && !key.includes('mock') && !key.includes('real_key') && !key.includes('default') && key !== 'parent_auth_id') {
+        apiKey = key;
+        apiSecret = secret;
+        validMerchantToken = true;
+        console.log(`[callWorker] Merchant ${userId} KYC is 'full'. Using custom VoBiz Account credentials.`);
+      }
+    }
+
+    if (!validMerchantToken) {
+      console.warn(`[callWorker] Merchant ${userId} KYC is 'full', but no valid VoBiz Account credentials found. Failing call.`);
+      return { error: `Call failed: Merchant KYC is full but valid VoBiz credentials are missing.` };
+    }
+  }
+
+  // Resolve VoBiz Number
+  let vobizNumber = preferredVobizNumberId ? await VobizNumber.findByPk(preferredVobizNumberId) : null;
+  if (vobizNumber && vobizNumber.number) {
+    if (vobizNumber.status !== 'active') {
+      console.warn(`[callWorker] VoBiz number ${vobizNumber.number} is inactive.`);
+      return { error: `Call failed: VoBiz number ${vobizNumber.number} is inactive. Please renew number rental.` };
+    }
+    fromNumber = vobizNumber.number;
+  } else {
+    const activeNum = await VobizNumber.findOne({ where: { status: 'active', userId } });
+    if (activeNum && activeNum.number) {
+      fromNumber = activeNum.number;
+      vobizNumber = activeNum;
+    } else {
+      console.warn(`[callWorker] No active VoBiz number found for merchant ${userId}. Skipping call.`);
+      return { error: `Call failed: No active VoBiz number found under merchant account.` };
+    }
+  }
+
+  return { apiKey, apiSecret, fromNumber, vobizNumber };
+}
+
+/**
+ * Calls a customer/merchant back on the alternate number they gave during a call,
+ * so the agent can continue the conversation (see ActionService.requestCallbackOnAlternateNumber).
+ */
+async function processAlternateCallback(payload) {
+  const { requestId } = payload;
+  const { AlternateContactRequest } = require('../models');
+
+  try {
+    const request = await AlternateContactRequest.findByPk(requestId);
+    if (!request || request.status !== 'scheduled') {
+      console.log(`[callWorker:AltCallback] Request ${requestId} not found or already handled. Skipping.`);
+      return;
+    }
+
+    const failRequest = async (reason) => {
+      await request.update({ status: 'failed', lastError: reason, processedAt: new Date() });
+      console.warn(`[callWorker:AltCallback] Request ${requestId} failed: ${reason}`);
+      const ActionService = require('../services/actionService');
+      await ActionService._notifyMerchantAlternateRequest(request);
+    };
+
+    const original = request.callSessionId ? await CallSession.findByPk(request.callSessionId) : null;
+    if (!original) {
+      return failRequest('Original call session not found');
+    }
+
+    const isMerchantCall = MERCHANT_CALL_TYPES.includes(original.callType);
+    let dialConfig;
+    if (isMerchantCall) {
+      // Admin -> merchant calls always use the parent account (same as processPlaceMerchantCall)
+      const defaults = require('../config/defaults');
+      dialConfig = {
+        apiKey: process.env.VOBIZ_PARENT_AUTH_ID || defaults.vobiz.parentAuthId,
+        apiSecret: process.env.VOBIZ_PARENT_AUTH_TOKEN || defaults.vobiz.parentAuthToken,
+        fromNumber: process.env.VOBIZ_DEMO_NUMBER || defaults.vobiz.demoNumber || '+918065355001',
+        vobizNumber: null,
+      };
+    } else {
+      const limitCheck = await SubscriptionService.validateCallLimits(original.userId);
+      if (!limitCheck.isValid) {
+        return failRequest(`Subscription limits exceeded: ${limitCheck.reason}`);
+      }
+      dialConfig = await resolveMerchantDialConfig(original.userId, original.vobizNumberId);
+      if (dialConfig.error) {
+        return failRequest(dialConfig.error);
+      }
+    }
+
+    const wsToken = crypto.randomBytes(32).toString('hex');
+    const session = await CallSession.create({
+      userId: original.userId,
+      agentId: original.agentId,
+      adminId: original.adminId,
+      customerId: original.customerId,
+      vobizNumberId: dialConfig.vobizNumber ? dialConfig.vobizNumber.id : original.vobizNumberId,
+      callType: isMerchantCall ? 'merchant_callback' : 'customer_callback',
+      wsSessionToken: wsToken,
+      status: 'initiated',
+      direction: 'outbound',
+    });
+
+    await request.update({ status: 'dialing', callbackSessionId: session.id, attempts: request.attempts + 1 });
+
+    await CallLog.create({
+      callSessionId: session.id,
+      logLevel: 'info',
+      message: `Alternate number callback dispatched (request ${request.id}). Outbound dial initiated to ${request.alternateMobile} from ${dialConfig.fromNumber}`,
+    });
+
+    console.log(`[AltCallback Call Start] Dialing ${request.customerName || 'Customer'} on alternate number ${request.alternateMobile} (original session ${original.id})...`);
+
+    const dialResponse = await VobizService.initiateCall({
+      apiKey: dialConfig.apiKey,
+      apiSecret: dialConfig.apiSecret,
+      fromNumber: dialConfig.fromNumber,
+      toNumber: request.alternateMobile,
+      wsToken,
+    });
+
+    if (!dialResponse.success) {
+      session.status = 'failed';
+      session.endTime = new Date();
+      await session.save();
+
+      await CallLog.create({
+        callSessionId: session.id,
+        logLevel: 'error',
+        message: `VoBiz outbound dial trigger failed: ${dialResponse.error}`,
+      });
+      return failRequest(`Dial failed: ${dialResponse.error}`);
+    }
+
+    console.log(`[AltCallback Call Dispatched] Outbound call placed. Call ID: ${dialResponse.callId}`);
+    if (dialResponse.callId) {
+      session.vobizCallUuid = dialResponse.callId;
+      await session.save();
+    }
+    await request.update({ status: 'dialed', processedAt: new Date() });
+  } catch (err) {
+    console.error(`Error processing alternate number callback ${requestId}:`, err);
+  }
+}
+
 if (require.main === module) {
   startCallWorker();
 }
@@ -425,5 +536,6 @@ module.exports = {
   startCallWorker,
   processPlaceCall,
   processPlaceMerchantCall,
+  processAlternateCallback,
 };
 

@@ -682,3 +682,38 @@ CREATE TABLE `help_videos` (
   `updatedAt` datetime NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `alternate_contact_requests`
+DROP TABLE IF EXISTS `alternate_contact_requests`;
+CREATE TABLE `alternate_contact_requests` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `merchant_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `customer_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `agent_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `call_session_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `customer_name` varchar(100) DEFAULT NULL,
+  `original_mobile` varchar(20) DEFAULT NULL,
+  `alternate_mobile` varchar(20) NOT NULL,
+  `request_type` varchar(20) DEFAULT 'send_details',
+  `content_type` varchar(30) DEFAULT 'details',
+  `requested_time` varchar(100) DEFAULT NULL,
+  `scheduled_time` datetime DEFAULT NULL,
+  `callback_session_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL,
+  `context` json DEFAULT NULL,
+  `status` varchar(20) DEFAULT 'pending',
+  `attempts` int DEFAULT '0',
+  `last_error` text,
+  `result` json DEFAULT NULL,
+  `processed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_alt_contact_merchant` (`merchant_id`),
+  KEY `idx_alt_contact_customer` (`customer_id`),
+  KEY `idx_alt_contact_session` (`call_session_id`),
+  KEY `idx_alt_contact_status` (`status`),
+  KEY `idx_alt_contact_callback_session` (`callback_session_id`),
+  CONSTRAINT `fk_alt_contact_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_alt_contact_session` FOREIGN KEY (`call_session_id`) REFERENCES `call_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

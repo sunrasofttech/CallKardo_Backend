@@ -5,6 +5,7 @@ class QueueService {
     this.SCHEDULE_SET = 'campaign_schedule';
     this.CALL_QUEUE = 'call_queue';
     this.REPORT_QUEUE = 'report_queue';
+    this.MESSAGE_QUEUE = 'message_queue';
   }
 
   /**
@@ -50,6 +51,19 @@ class QueueService {
    */
   async enqueueReport(payload) {
     await redisClient.rPush(this.REPORT_QUEUE, JSON.stringify(payload));
+  }
+
+  /**
+   * Enqueue an outbound messaging job (e.g. send details to an alternate number)
+   * @param {string} type - Job type (e.g. 'ALTERNATE_NUMBER_MESSAGE')
+   * @param {object} payload
+   */
+  async enqueueMessageJob(type, payload) {
+    await redisClient.rPush(this.MESSAGE_QUEUE, JSON.stringify({
+      type,
+      payload,
+      createdAt: Date.now(),
+    }));
   }
 
   /**

@@ -46,6 +46,12 @@ async function startScheduler() {
           await handleMerchantCallback(job.payload);
         } else if (job.type === 'MEETING_REMINDER') {
           await handleMeetingReminder(job.payload);
+        } else if (job.type === 'ALTERNATE_NUMBER_MESSAGE') {
+          // Retry of a failed alternate-number send; hand back to the message worker
+          await QueueService.enqueueMessageJob('ALTERNATE_NUMBER_MESSAGE', job.payload);
+        } else if (job.type === 'ALTERNATE_NUMBER_CALLBACK') {
+          await QueueService.enqueueJob('PLACE_ALTERNATE_CALLBACK', job.payload);
+          console.log(`Moved alternate number callback job to call_queue for request: ${job.payload.requestId}`);
         }
       }
 

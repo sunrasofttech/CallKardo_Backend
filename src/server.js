@@ -24,14 +24,16 @@ async function bootServer() {
     }
 
     // Start queue workers in all environments
-    console.log('Starting background queue workers (Scheduler, Call, and AI Worker)...');
+    console.log('Starting background queue workers (Scheduler, Call, AI, and Message Worker)...');
     const { startScheduler } = require('./workers/schedulerWorker');
     const { startCallWorker } = require('./workers/callWorker');
     const { startAiWorker } = require('./workers/aiWorker');
+    const { startMessageWorker } = require('./workers/messageWorker');
 
     startScheduler();
     startCallWorker();
     startAiWorker();
+    startMessageWorker();
 
     const server = http.createServer(app);
 

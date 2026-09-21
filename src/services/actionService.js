@@ -1,5 +1,6 @@
 const defaults = require('../config/defaults');
 const { sendEmail } = require('../utils/email');
+const { normalizeMobile } = require('../utils/phone');
 
 class ActionService {
   /**
@@ -456,6 +457,292 @@ class ActionService {
 
     return { success: true, websiteLink: businessUrl };
   }
+
+  /**
+   * Helper: Parse "{{action:send_to_alternate_number:<number>:<content_type>}}" payload.
+   * Order-insensitive and tolerant of spaces/dashes the LLM may put inside the number.
+   */
+  _parseAlternateNumberPayload(payload) {
+    const segments = String(payload || '').split(':').map(s => s.trim()).filter(Boolean);
+    let rawNumber = null;
+    let contentType = 'details';
+
+    for (const segment of segments) {
+      const digits = segment.replace(/\D/g, '');
+      if (!rawNumber && digits.length >= 10) {
+        rawNumber = segment;
+      } else if (ALTERNATE_CONTENT_TYPES.includes(segment.toLowerCase())) {
+        contentType = segment.toLowerCase();
+      }
+    }
+
+    return { rawNumber, contentType };
+  }
+
+  /**
+   * Helper: Validate and normalize an alternate mobile number spoken by the customer.
+   * Returns the normalized number, or null if it is not a plausible mobile number.
+   */
+  _validateAlternateMobile(rawNumber) {
+    if (!rawNumber) return null;
+    const normalized = normalizeMobile(rawNumber);
+    if (normalized.startsWith('+91')) {
+      return /^\+91[6-9]\d{9}$/.test(normalized) ? normalized : null;
+    }
+    return /^\+\d{11,15}$/.test(normalized) ? normalized : null;
+  }
+
+  /**
+   * Helper: Send an approved template message and wait for the result
+   * (unlike the fire-and-forget sends above, the caller needs to know the outcome).
+   * @returns {{ sent: boolean, permanent?: boolean, reason?: string, data?: object }}
+   */
+  async _sendTemplateMessage(merchantId, mobile, masterTemplateSlug, customParams) {
+    const msgInfo = await this._getMerchantMessagingInfo(merchantId);
+    if (!msgInfo) {
+      return { sent: false, permanent: true, reason: 'Merchant messaging not verified or missing credentials' };
+    }
+    if (!['rcs', 'both', 'whatsapp'].includes(msgInfo.channel_mode)) {
+      return { sent: false, permanent: true, reason: `Messaging disabled (channel_mode: ${msgInfo.channel_mode})` };
+    }
+    const templateId = await this._getApprovedTemplateId(merchantId, masterTemplateSlug);
+    if (!templateId) {
+      return { sent: false, permanent: true, reason: `No approved '${masterTemplateSlug}' template found for merchant` };
+    }
+
+    const DovesoftService = require('./dovesoftService');
+    const response = await DovesoftService.sendRCS(mobile, templateId, customParams, msgInfo.credentials);
+    return { sent: true, data: response?.data };
+  }
+
+  /**
+   * Handle Send To Alternate Number action.
+   * Stores the alternate number the customer gave (friend / family / second phone)
+   * and queues the actual message send so it runs in the background.
+   */
+  async queueAlternateNumberRequest(customer, agent, merchant, actionPayload, callSessionId = null) {
+    const { rawNumber, contentType } = this._parseAlternateNumberPayload(actionPayload);
+    const prepared = await this._prepareAlternateContact('send_to_alternate_number', customer, agent, merchant, rawNumber, actionPayload, callSessionId);
+    if (prepared.error) return prepared.error;
+
+    const { AlternateContactRequest } = require('../models');
+    const request = await AlternateContactRequest.create({
+      ...prepared.fields,
+      requestType: 'send_details',
+      contentType,
+    });
+
+    console.log(`[Action: send_to_alternate_number] Stored request ${request.id}: send ${contentType} to ${request.alternateMobile} (customer ${request.customerName || 'Unknown'}, ${request.originalMobile || 'Unknown'})`);
+
+    try {
+      const QueueService = require('./queueService');
+      await QueueService.enqueueMessageJob('ALTERNATE_NUMBER_MESSAGE', { requestId: request.id });
+    } catch (err) {
+      // The row stays 'pending'; the message worker's recovery sweep will pick it up.
+      console.error(`[Action: send_to_alternate_number] Failed to enqueue request ${request.id}: ${err.message}`);
+    }
+
+    return { success: true, queued: true, requestId: request.id, alternateMobile: request.alternateMobile, contentType };
+  }
+
+  /**
+   * Handle Request Callback On Alternate Number action.
+   * Payload: "<number>:<requested_date_and_time>" (time may itself contain ':' e.g. "5:30pm").
+   * Stores the request and schedules the call; the call worker dials the alternate
+   * number at that time and the agent continues from the previous conversation.
+   */
+  async requestCallbackOnAlternateNumber(customer, agent, merchant, actionPayload, callSessionId = null) {
+    const segments = String(actionPayload || '').split(':');
+    const numberIndex = segments.findIndex(seg => seg.replace(/\D/g, '').length >= 10);
+    const rawNumber = numberIndex >= 0 ? segments[numberIndex] : null;
+    const requestedTime = segments.filter((_, i) => i !== numberIndex).join(':').trim() || ALTERNATE_CALLBACK_DEFAULT_TIME;
+
+    const prepared = await this._prepareAlternateContact('request_callback_alternate_number', customer, agent, merchant, rawNumber, actionPayload, callSessionId);
+    if (prepared.error) return prepared.error;
+
+    const MerchantOnboardingService = require('./merchantOnboardingService');
+    const { scheduledTime, isNightAdjusted } = MerchantOnboardingService.calculateCallbackTime(requestedTime, new Date());
+    const timeLabel = MerchantOnboardingService.formatDateTimeIST(scheduledTime);
+
+    const { AlternateContactRequest } = require('../models');
+    const request = await AlternateContactRequest.create({
+      ...prepared.fields,
+      requestType: 'callback',
+      contentType: 'callback',
+      requestedTime,
+      scheduledTime,
+      status: 'scheduled',
+    });
+
+    const QueueService = require('./queueService');
+    await QueueService.scheduleJob('ALTERNATE_NUMBER_CALLBACK', { requestId: request.id }, scheduledTime.getTime());
+
+    console.log(`[Action: request_callback_alternate_number] Request ${request.id}: call back ${request.customerName || 'Customer'} on ${request.alternateMobile} at ${timeLabel}${isNightAdjusted ? ' (night-adjusted)' : ''}`);
+
+    const ctx = request.context || {};
+    try {
+      await sendEmail({
+        to: ctx.merchantEmail || defaults.smtp.from,
+        subject: `[CallKardo Alert] Callback on another number (${request.alternateMobile}) scheduled for ${timeLabel}`,
+        text: `Customer ${request.customerName || 'Customer'} (${request.originalMobile || 'Unknown'}) asked Agent "${ctx.agentName || 'AI Agent'}" to call them back on a different number: ${request.alternateMobile}.\n\nThe AI agent will call ${request.alternateMobile} at ${timeLabel}${isNightAdjusted ? ' (shifted to business hours due to night calling policy)' : ''} and continue the conversation.`,
+      });
+    } catch (err) {
+      console.error(`[Action: request_callback_alternate_number] Failed to email merchant: ${err.message}`);
+    }
+
+    return { success: true, requestId: request.id, alternateMobile: request.alternateMobile, scheduledTime: timeLabel };
+  }
+
+  /**
+   * Helper: Validate the alternate number and build the common AlternateContactRequest fields.
+   * @returns {{ error: object } | { fields: object }}
+   */
+  async _prepareAlternateContact(actionName, customer, agent, merchant, rawNumber, actionPayload, callSessionId) {
+    const alternateMobile = this._validateAlternateMobile(rawNumber);
+    if (!alternateMobile) {
+      console.log(`[Action: ${actionName}] Invalid or missing alternate number in payload "${actionPayload}". Skipping.`);
+      return { error: { success: false, message: 'Invalid or missing alternate mobile number' } };
+    }
+
+    const originalMobile = customer?.mobile ? normalizeMobile(customer.mobile) : null;
+    if (originalMobile && originalMobile === alternateMobile) {
+      console.log(`[Action: ${actionName}] Alternate number is the same as the customer's own number. Skipping.`);
+      return { error: { success: false, message: 'Alternate number is same as the customer number' } };
+    }
+
+    const { Customer } = require('../models');
+    // On merchant-onboarding calls the "customer" is a merchant User, not a Customer row
+    const customerRow = customer?.id ? await Customer.findByPk(customer.id, { attributes: ['id'] }) : null;
+
+    return {
+      fields: {
+        merchantId: merchant?.id || null,
+        customerId: customerRow ? customerRow.id : null,
+        agentId: agent?.id || null,
+        callSessionId,
+        customerName: customer?.name || null,
+        originalMobile,
+        alternateMobile,
+        context: {
+          agentName: agent?.name || null,
+          merchantEmail: merchant?.email || null,
+          merchantMobile: merchant?.mobile || null,
+          merchantBusinessName: merchant?.businessName || null,
+          merchantBusinessUrl: merchant?.businessUrl || null,
+        },
+      },
+    };
+  }
+
+  /**
+   * Background processor for an AlternateContactRequest (called by the message worker).
+   * Sends the requested content to the alternate number and alerts the merchant
+   * once the request reaches a final state.
+   */
+  async processAlternateNumberRequest(requestId) {
+    const { AlternateContactRequest } = require('../models');
+    const request = await AlternateContactRequest.findByPk(requestId);
+    if (!request) {
+      console.warn(`[AlternateNumber] Request ${requestId} not found.`);
+      return;
+    }
+    if (['sent', 'failed'].includes(request.status)) {
+      console.log(`[AlternateNumber] Request ${requestId} already ${request.status}. Skipping.`);
+      return;
+    }
+
+    await request.update({ status: 'processing', attempts: request.attempts + 1 });
+
+    const ctx = request.context || {};
+    const name = request.customerName || 'Customer';
+    const businessUrl = ctx.merchantBusinessUrl;
+    const baseParams = {
+      user_name: name,
+      website_url: businessUrl || 'https://callkardo.com',
+      support_mobile: ctx.merchantMobile || '',
+    };
+
+    let outcome;
+    try {
+      if (request.contentType === 'join_link') {
+        const roomId = 'CallKardo-Join-' + Math.random().toString(36).substring(2, 8);
+        const joinLink = process.env.DEFAULT_JOIN_LINK || `https://meet.jit.si/${roomId}`;
+        outcome = await this._sendTemplateMessage(request.merchantId, request.alternateMobile, 'join_link', { ...baseParams, app_link: joinLink });
+        if (outcome.sent) outcome.link = joinLink;
+      } else if (businessUrl) {
+        // 'website_link' and generic 'details' both go out as the merchant's website link template
+        outcome = await this._sendTemplateMessage(request.merchantId, request.alternateMobile, 'website_link', { ...baseParams, app_link: businessUrl });
+        if (outcome.sent) outcome.link = businessUrl;
+      } else {
+        outcome = { sent: false, permanent: true, reason: 'No business website configured to send' };
+      }
+    } catch (err) {
+      outcome = { sent: false, permanent: false, reason: err.message };
+    }
+
+    if (outcome.sent) {
+      await request.update({ status: 'sent', lastError: null, result: { link: outcome.link, provider: outcome.data || null }, processedAt: new Date() });
+      console.log(`[AlternateNumber] Request ${requestId}: sent ${request.contentType} to ${request.alternateMobile}`);
+      await this._notifyMerchantAlternateRequest(request);
+      return;
+    }
+
+    const canRetry = !outcome.permanent && request.attempts < ALTERNATE_MAX_ATTEMPTS;
+    if (canRetry) {
+      const delayMs = ALTERNATE_RETRY_BASE_MS * Math.pow(2, request.attempts - 1);
+      await request.update({ status: 'pending', lastError: outcome.reason });
+      const QueueService = require('./queueService');
+      await QueueService.scheduleJob('ALTERNATE_NUMBER_MESSAGE', { requestId: request.id }, Date.now() + delayMs);
+      console.warn(`[AlternateNumber] Request ${requestId} attempt ${request.attempts} failed (${outcome.reason}). Retrying in ${delayMs / 1000}s.`);
+      return;
+    }
+
+    await request.update({ status: 'failed', lastError: outcome.reason, processedAt: new Date() });
+    console.warn(`[AlternateNumber] Request ${requestId} failed permanently: ${outcome.reason}`);
+    await this._notifyMerchantAlternateRequest(request);
+  }
+
+  /**
+   * Helper: Email the merchant so a human can follow up on the alternate number,
+   * especially when the automated message could not be delivered.
+   */
+  async _notifyMerchantAlternateRequest(request) {
+    const ctx = request.context || {};
+    const merchantEmail = ctx.merchantEmail || defaults.smtp.from;
+    const name = request.customerName || 'Customer';
+    const delivered = request.status === 'sent';
+
+    if (request.requestType === 'callback') {
+      try {
+        await sendEmail({
+          to: merchantEmail,
+          subject: `[CallKardo Alert] Callback to ${name} on another number (${request.alternateMobile}) failed`,
+          text: `Customer ${name} (${request.originalMobile || 'Unknown'}) asked Agent "${ctx.agentName || 'AI Agent'}" to call them back on a different number: ${request.alternateMobile}.\n\nThe automatic callback could NOT be placed (${request.lastError || 'unknown reason'}). Please follow up with the customer on ${request.alternateMobile}.`,
+        });
+      } catch (err) {
+        console.error(`[AlternateNumber] Failed to email merchant for request ${request.id}: ${err.message}`);
+      }
+      return;
+    }
+
+    try {
+      await sendEmail({
+        to: merchantEmail,
+        subject: `[CallKardo Alert] ${name} asked for details on another number (${request.alternateMobile})`,
+        text: `Customer ${name} (${request.originalMobile || 'Unknown'}) asked Agent "${ctx.agentName || 'AI Agent'}" to send ${request.contentType.replace(/_/g, ' ')} to a different number: ${request.alternateMobile}.\n\n`
+          + (delivered
+            ? `The message was sent automatically to ${request.alternateMobile}.`
+            : `The message could NOT be sent automatically (${request.lastError || 'unknown reason'}). Please follow up with the customer on ${request.alternateMobile}.`),
+      });
+    } catch (err) {
+      console.error(`[AlternateNumber] Failed to email merchant for request ${request.id}: ${err.message}`);
+    }
+  }
 }
+
+const ALTERNATE_CONTENT_TYPES = ['details', 'website_link', 'join_link'];
+const ALTERNATE_MAX_ATTEMPTS = 3;
+const ALTERNATE_RETRY_BASE_MS = 60 * 1000;
+const ALTERNATE_CALLBACK_DEFAULT_TIME = 'in 2 minutes';
 
 module.exports = new ActionService();

@@ -276,7 +276,9 @@ If the customer explicitly asks you to perform a specific action, acknowledge th
 - Customer asks for the website link / merchant website -> append {{action:send_website_link}} at the end of your response.
 - Customer asks to send a "hi" or greeting on WhatsApp -> append {{action:send_whatsapp_hi}} at the end of your response.
 - Customer asks to email them info/details -> append {{action:send_email}} at the end of your response.
+- Customer asks to send the details/link to a DIFFERENT mobile number (a friend's or family member's number, or their other number because this phone has no WhatsApp, etc.) -> first ask for the number if not given, then read it back digit by digit and get a clear "yes". Only AFTER they confirm, say you will send it and append {{action:send_to_alternate_number:<10_digit_number>:<what>}} where <what> is website_link, join_link, or details (e.g. {{action:send_to_alternate_number:9876543210:website_link}}). Write the number as digits only.
 - Customer asks to schedule a meeting -> append {{action:schedule_meeting:requested_date_and_time}} at the end of your response (e.g. {{action:schedule_meeting:tomorrow at 5pm}} or {{action:schedule_meeting:Friday 10am}} or {{action:schedule_meeting}}).
+- Customer asks you to call them back on a DIFFERENT number (their other phone, a family member's phone, etc.) to continue the conversation -> ask for the number if not given, read it back digit by digit and get a clear "yes", and ask when to call if they did not say. Only AFTER they confirm, append {{action:request_callback_alternate_number:<10_digit_number>:<requested_date_and_time>}} (e.g. {{action:request_callback_alternate_number:9876543210:in 5 minutes}} or {{action:request_callback_alternate_number:9876543210:tomorrow at 4pm}}). Write the number as digits only. Do NOT also append request_callback.
 - Customer is busy or asks for a callback / call back later / baad mein baat karte hain -> append {{action:request_callback:requested_date_and_time}} at the end of your response (e.g. {{action:request_callback:tomorrow at 4pm}} or {{action:request_callback}} if time is not mentioned).
 Do not say these tokens aloud. Only append them as text at the very end of your response.
 IMPORTANT: You must NEVER tell the customer an action is done (meeting scheduled, link sent, email sent, WhatsApp sent) unless you actually append its token in that SAME response. Saying it is done without appending the token means it will NOT actually happen — this is strictly forbidden. If you confirm a meeting/email/link to the customer, the token is mandatory in that exact response, every single time, with no exceptions.]`;
@@ -826,10 +828,16 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
     }
 
     const hasScheduleMeeting = actionsToExecute.some(a => a.actionName === 'schedule_meeting');
+    const hasAlternateCallback = actionsToExecute.some(a => a.actionName === 'request_callback_alternate_number');
 
     for (const action of actionsToExecute) {
       if (hasScheduleMeeting && (action.actionName === 'send_join_link' || action.actionName === 'send_meeting_link' || action.actionName === 'send_email')) {
         this._log('info', `[Action Triggered] Skipping ${action.actionName} because schedule_meeting is also present in this turn.`);
+        continue;
+      }
+
+      if (hasAlternateCallback && action.actionName === 'request_callback') {
+        this._log('info', `[Action Triggered] Skipping request_callback because request_callback_alternate_number is also present in this turn.`);
         continue;
       }
 
@@ -883,6 +891,15 @@ Examples of when to end: "thank you bye", "that's all", "call cut karo", "baad m
           break;
         case 'schedule_meeting':
           actionResult = await ActionService.scheduleMeeting(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);
+          break;
+        case 'send_to_alternate_number':
+          actionResult = await ActionService.queueAlternateNumberRequest(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);
+          break;
+        case 'request_callback_alternate_number':
+          actionResult = await ActionService.requestCallbackOnAlternateNumber(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);
+          if (actionResult?.success) {
+            this._scheduleGracefulHangup('Callback on alternate number requested', 3000);
+          }
           break;
         case 'request_callback':
           actionResult = await ActionService.requestCallback(this.customer, this.agent, this.merchant, actionPayload, this.callSessionId);

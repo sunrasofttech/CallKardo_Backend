@@ -165,9 +165,10 @@ class VobizSocketHandler {
       // Check if this is an admin-to-merchant call (onboarding, callback, reminder)
       const isMerchantCall = ['merchant_onboarding', 'merchant_callback', 'meeting_reminder'].includes(session.callType) || session.agent?.isMerchantCaller;
 
-      // Auto-resolve customer context if missing on session (only for regular customer campaign calls)
+      // Auto-resolve customer context if missing on session (only for regular customer campaign calls).
+      // Skipped for alternate-number callbacks: the dialed number isn't the customer's, so a lookup would pick the wrong person.
       let customer = session.customer;
-      if (!customer && !isMerchantCall) {
+      if (!customer && !isMerchantCall && session.callType !== 'customer_callback') {
         try {
           const { Op } = require('sequelize');
           const cleanFrom = (session.fromNumber || '').replace(/^\+91/, '').replace(/\D/g, '');
@@ -262,6 +263,29 @@ class VobizSocketHandler {
           session.adminId,
           'call'
         ).catch(() => {});
+      }
+
+      // Callback on an alternate number the customer gave in a previous call: continue that conversation
+      if (['merchant_callback', 'customer_callback'].includes(session.callType) && session.agent) {
+        try {
+          const { AlternateContactRequest, CallReport } = require('../models');
+          const altCallback = await AlternateContactRequest.findOne({ where: { callbackSessionId: session.id } });
+          if (altCallback) {
+            const previousReport = altCallback.callSessionId
+              ? await CallReport.findOne({ where: { callSessionId: altCallback.callSessionId } })
+              : null;
+            const personName = altCallback.customerName || pipelineCustomer?.name || 'the customer';
+            const previousTranscript = previousReport?.transcript
+              ? `\nHere is what was discussed in the previous call:\n${previousReport.transcript}`
+              : '';
+
+            session.agent.systemPrompt = (session.agent.systemPrompt || '') + `\n\n[Callback Context: In a previous call, ${personName} asked you to call them back on this different number (${altCallback.alternateMobile}) to continue the conversation. Someone else may pick up this phone, so first politely confirm you are speaking with ${personName} (or ask for them). Then mention you are calling back as they requested and continue from where you left off, without repeating the full introduction.${previousTranscript}]`;
+            session.agent.firstMessage = null; // Let LLM generate the greeting based on the callback context
+            console.log(`[VoBiz Call] Session ${session.id} is an alternate-number callback for request ${altCallback.id}`);
+          }
+        } catch (altErr) {
+          console.warn(`[VoBiz Call] Alternate callback context lookup failed: ${altErr.message}`);
+        }
       }
 
       // 2. Instantiate generic Voice Pipeline

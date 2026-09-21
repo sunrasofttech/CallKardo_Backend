@@ -92,7 +92,7 @@ class VobizController {
           where: {
             userId: callerAsMerchant.id,
             direction: 'outbound',
-            callType: { [Op.notIn]: ['campaign', 'merchant_callback'] } // Matches onboarding, reminder, pitch, etc.
+            callType: { [Op.notIn]: ['campaign', 'merchant_callback', 'customer_callback'] } // Matches onboarding, reminder, pitch, etc.
           },
           include: [{ model: Agent, as: 'agent' }],
           order: [['createdAt', 'DESC']]

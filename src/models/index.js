@@ -30,6 +30,7 @@ const HelpVideo = require('./helpVideo');
 const SubscriptionHistory = require('./subscriptionHistory');
 const Meeting = require('./meeting');
 const MerchantCallback = require('./merchantCallback');
+const AlternateContactRequest = require('./alternateContactRequest');
 
 // Establish Relationships
 
@@ -252,6 +253,14 @@ Agent.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
 Admin.hasMany(CallSession, { foreignKey: 'admin_id', as: 'merchantCallSessions' });
 CallSession.belongsTo(Admin, { foreignKey: 'admin_id', as: 'admin' });
 
+// AlternateContactRequest Associations
+// (merchant_id is intentionally not associated: on merchant-onboarding calls it holds an admin id)
+Customer.hasMany(AlternateContactRequest, { foreignKey: 'customer_id', as: 'alternateContactRequests' });
+AlternateContactRequest.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+
+CallSession.hasMany(AlternateContactRequest, { foreignKey: 'call_session_id', as: 'alternateContactRequests' });
+AlternateContactRequest.belongsTo(CallSession, { foreignKey: 'call_session_id', as: 'callSession' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -284,4 +293,5 @@ module.exports = {
   HelpVideo,
   Meeting,
   MerchantCallback,
+  AlternateContactRequest,
 };
