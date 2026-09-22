@@ -552,7 +552,10 @@ class ActionService {
    * number at that time and the agent continues from the previous conversation.
    */
   async requestCallbackOnAlternateNumber(customer, agent, merchant, actionPayload, callSessionId = null) {
-    const segments = String(actionPayload || '').split(':');
+    // Optional trailing "referral" marker: the number belongs to another interested person, not the caller
+    const allSegments = String(actionPayload || '').split(':');
+    const isReferral = allSegments.some(seg => seg.trim().toLowerCase() === 'referral');
+    const segments = allSegments.filter(seg => seg.trim().toLowerCase() !== 'referral');
     const numberIndex = segments.findIndex(seg => seg.replace(/\D/g, '').length >= 10);
     const rawNumber = numberIndex >= 0 ? segments[numberIndex] : null;
     const requestedTime = segments.filter((_, i) => i !== numberIndex).join(':').trim() || ALTERNATE_CALLBACK_DEFAULT_TIME;
@@ -568,7 +571,7 @@ class ActionService {
     const request = await AlternateContactRequest.create({
       ...prepared.fields,
       requestType: 'callback',
-      contentType: 'callback',
+      contentType: isReferral ? 'referral' : 'callback',
       requestedTime,
       scheduledTime,
       status: 'scheduled',
@@ -584,13 +587,13 @@ class ActionService {
       await sendEmail({
         to: ctx.merchantEmail || defaults.smtp.from,
         subject: `[CallKardo Alert] Callback on another number (${request.alternateMobile}) scheduled for ${timeLabel}`,
-        text: `Customer ${request.customerName || 'Customer'} (${request.originalMobile || 'Unknown'}) asked Agent "${ctx.agentName || 'AI Agent'}" to call them back on a different number: ${request.alternateMobile}.\n\nThe AI agent will call ${request.alternateMobile} at ${timeLabel}${isNightAdjusted ? ' (shifted to business hours due to night calling policy)' : ''} and continue the conversation.`,
+        text: `Customer ${request.customerName || 'Customer'} (${request.originalMobile || 'Unknown'}) asked Agent "${ctx.agentName || 'AI Agent'}" to ${isReferral ? 'call another interested person' : 'call them back'} on a different number: ${request.alternateMobile}.\n\nThe AI agent will call ${request.alternateMobile} at ${timeLabel}${isNightAdjusted ? ' (shifted to business hours due to night calling policy)' : ''} and continue the conversation.`,
       });
     } catch (err) {
       console.error(`[Action: request_callback_alternate_number] Failed to email merchant: ${err.message}`);
     }
 
-    return { success: true, requestId: request.id, alternateMobile: request.alternateMobile, scheduledTime: timeLabel };
+    return { success: true, requestId: request.id, alternateMobile: request.alternateMobile, scheduledTime: timeLabel, referral: isReferral };
   }
 
   /**

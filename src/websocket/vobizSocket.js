@@ -279,7 +279,10 @@ class VobizSocketHandler {
               ? `\nHere is what was discussed in the previous call:\n${previousReport.transcript}`
               : '';
 
-            session.agent.systemPrompt = (session.agent.systemPrompt || '') + `\n\n[Callback Context: In a previous call, ${personName} asked you to call them back on this different number (${altCallback.alternateMobile}) to continue the conversation. Someone else may pick up this phone, so first politely confirm you are speaking with ${personName} (or ask for them). Then mention you are calling back as they requested and continue from where you left off, without repeating the full introduction.${previousTranscript}]`;
+            const callbackContext = altCallback.contentType === 'referral'
+              ? `In a previous call, ${personName} gave you this number (${altCallback.alternateMobile}) and said the person here is interested. You are now calling that NEW person — they are NOT ${personName}. Greet them, introduce yourself and your business in one short sentence, mention that ${personName} shared their number because they may be interested, ask their name, and then explain the offering. Use the previous conversation only as background.`
+              : `In a previous call, ${personName} asked you to call them back on this different number (${altCallback.alternateMobile}) to continue the conversation. Someone else may pick up this phone, so first politely confirm you are speaking with ${personName} (or ask for them). Then mention you are calling back as they requested and continue from where you left off, without repeating the full introduction.`;
+            session.agent.systemPrompt = (session.agent.systemPrompt || '') + `\n\n[Callback Context: ${callbackContext}${previousTranscript}]`;
             session.agent.firstMessage = null; // Let LLM generate the greeting based on the callback context
             console.log(`[VoBiz Call] Session ${session.id} is an alternate-number callback for request ${altCallback.id}`);
           }

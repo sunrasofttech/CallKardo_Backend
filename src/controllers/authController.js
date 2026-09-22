@@ -29,6 +29,9 @@ const {
   updateFcmTokenSchema,
 } = require('../validators/auth');
 
+const TEST_MOBILE = '9876543210';
+const DEFAULT_TEST_OTP = '123456';
+
 class AuthController {
   /**
    * Helper to issue login tokens and format response profile
@@ -121,8 +124,9 @@ class AuthController {
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(password, salt);
 
-      // 3. Generate 6-digit verification OTP
-      const verificationOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      // 3. Generate 6-digit verification OTP (default OTP for test number)
+      const isTestNumber = cleanMobile === TEST_MOBILE;
+      const verificationOtp = isTestNumber ? DEFAULT_TEST_OTP : Math.floor(100000 + Math.random() * 900000).toString();
 
       // 4. Cache Pending Registration in Redis (10 minutes TTL)
       const pendingData = {
@@ -145,14 +149,18 @@ class AuthController {
         await redisClient.setEx(`pending_email:${cleanEmail}`, 600, cleanMobile);
       }
 
-      // 5. Send OTP via 2Factor SMS
-      await sendSMSVerification(cleanMobile, verificationOtp);
+      // 5. Send OTP via 2Factor SMS (skip for test number)
+      if (!isTestNumber) {
+        await sendSMSVerification(cleanMobile, verificationOtp);
+      }
 
       // 6. Return response - user will be registered in system after OTP verification
       return ResponseBuilder.success(
         res,
-        { mobile: cleanMobile, otpSent: true },
-        'OTP sent successfully. Please verify OTP to complete registration.',
+        { mobile: cleanMobile, otpSent: !isTestNumber },
+        isTestNumber
+          ? 'Default test OTP generated. Please verify OTP to complete registration.'
+          : 'OTP sent successfully. Please verify OTP to complete registration.',
         200
       );
     } catch (err) {
@@ -292,8 +300,10 @@ class AuthController {
       if (role === 'super_admin') {
         if (otp && !password) {
           const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
+          const isTestNumber = targetMobile === TEST_MOBILE || cleanMobile === TEST_MOBILE;
+          const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
           const cachedLoginOtp = await redisClient.get(`login_otp:${targetMobile}`);
-          if (!cachedLoginOtp || cachedLoginOtp !== otp) {
+          if (!isDefaultOtp && (!cachedLoginOtp || cachedLoginOtp !== otp)) {
             return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
           }
           await redisClient.del(`login_otp:${targetMobile}`);
@@ -303,11 +313,13 @@ class AuthController {
       }
 
       const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
+      const isTestNumber = targetMobile === TEST_MOBILE || cleanMobile === TEST_MOBILE;
 
       // If OTP is provided in this request, verify it directly
       if (otp) {
+        const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
         const cachedLoginOtp = await redisClient.get(`login_otp:${targetMobile}`);
-        if (!cachedLoginOtp || cachedLoginOtp !== otp) {
+        if (!isDefaultOtp && (!cachedLoginOtp || cachedLoginOtp !== otp)) {
           return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
         }
         await redisClient.del(`login_otp:${targetMobile}`);
@@ -316,12 +328,15 @@ class AuthController {
         return AuthController._issueLoginTokens(res, account, role, fcmToken);
       }
 
-      // If no OTP provided, generate and send login OTP via 2factor SMS
-      const loginOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      // If no OTP provided, generate and send login OTP (default OTP '123456' for test number)
+      const loginOtp = isTestNumber ? DEFAULT_TEST_OTP : Math.floor(100000 + Math.random() * 900000).toString();
       await redisClient.setEx(`login_otp:${targetMobile}`, 300, loginOtp); // 5 minutes TTL
       await redisClient.setEx(`login_otp_lookup:${loginOtp}`, 300, targetMobile);
 
-      await sendSMSVerification(targetMobile, loginOtp);
+      // Do NOT send SMS for test number
+      if (!isTestNumber) {
+        await sendSMSVerification(targetMobile, loginOtp);
+      }
 
       return ResponseBuilder.success(
         res,
@@ -330,7 +345,9 @@ class AuthController {
           mobile: targetMobile,
           role,
         },
-        'OTP sent to your registered mobile number. Please verify OTP to complete login.'
+        isTestNumber
+          ? 'Test number login initiated. Use default OTP to verify.'
+          : 'OTP sent to your registered mobile number. Please verify OTP to complete login.'
       );
     } catch (err) {
       next(err);
@@ -349,9 +366,11 @@ class AuthController {
 
       const { mobile, otp, role = 'merchant', fcmToken } = value;
       const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+      const isTestNumber = cleanMobile === TEST_MOBILE;
+      const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
 
       const cachedLoginOtp = await redisClient.get(`login_otp:${cleanMobile}`);
-      if (!cachedLoginOtp || cachedLoginOtp !== otp) {
+      if (!isDefaultOtp && (!cachedLoginOtp || cachedLoginOtp !== otp)) {
         return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
       }
 
@@ -471,7 +490,9 @@ class AuthController {
       }
 
       // Check if this OTP matches a pending registration
-      if (pendingData && pendingData.otp === otp) {
+      const isTestNumber = cleanMobile === TEST_MOBILE;
+      const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
+      if (pendingData && (pendingData.otp === otp || isDefaultOtp)) {
         // Race condition check: make sure user was not registered concurrently
         const duplicateCheck = await User.findOne({
           where: {
@@ -687,9 +708,9 @@ class AuthController {
         return ResponseBuilder.success(res, null, 'If this account exists, a password reset OTP has been sent');
       }
 
-      // Generate 6-digit OTP
-      const resetOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
+      // Generate 6-digit OTP (default OTP for test number)
+      const isTestNumber = targetMobile === TEST_MOBILE || cleanMobile === TEST_MOBILE;
+      const resetOtp = isTestNumber ? DEFAULT_TEST_OTP : Math.floor(100000 + Math.random() * 900000).toString();
 
       if (targetMobile) {
         await redisClient.setEx(`reset_otp:${targetMobile}`, 600, resetOtp);
@@ -700,8 +721,8 @@ class AuthController {
       account.resetTokenExpires = new Date(Date.now() + 600000); // 10 minutes
       await account.save();
 
-      // Send SMS OTP via 2factor
-      if (targetMobile) {
+      // Send SMS OTP via 2factor (skip for test number)
+      if (targetMobile && !isTestNumber) {
         await sendSMSVerification(targetMobile, resetOtp);
       }
 
@@ -739,9 +760,11 @@ class AuthController {
       let account = null;
 
       // 1. Check Redis by mobile
+      const isTestNumber = cleanMobile === TEST_MOBILE;
+      const isDefaultOtp = isTestNumber && resetCode === DEFAULT_TEST_OTP;
       if (cleanMobile) {
         const cachedOtp = await redisClient.get(`reset_otp:${cleanMobile}`);
-        if (cachedOtp && cachedOtp === resetCode) {
+        if ((cachedOtp && cachedOtp === resetCode) || isDefaultOtp) {
           account = role === 'super_admin'
             ? await Admin.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } })
             : await User.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } });
@@ -831,10 +854,15 @@ class AuthController {
           return ResponseBuilder.error(res, 'Account not found', 404);
         }
 
-        await redisClient.setEx(`login_otp:${cleanMobile}`, 300, newOtp);
-        await redisClient.setEx(`login_otp_lookup:${newOtp}`, 300, cleanMobile);
+        const isTestNumber = cleanMobile === TEST_MOBILE;
+        const loginOtp = isTestNumber ? DEFAULT_TEST_OTP : newOtp;
 
-        await sendSMSVerification(cleanMobile, newOtp);
+        await redisClient.setEx(`login_otp:${cleanMobile}`, 300, loginOtp);
+        await redisClient.setEx(`login_otp_lookup:${loginOtp}`, 300, cleanMobile);
+
+        if (!isTestNumber) {
+          await sendSMSVerification(cleanMobile, loginOtp);
+        }
         return ResponseBuilder.success(res, { mobile: cleanMobile }, 'Login OTP resent successfully');
       } else if (type === 'reset_password') {
         const account = role === 'super_admin'

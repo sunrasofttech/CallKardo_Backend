@@ -17,6 +17,12 @@ async function sendSMSVerification(mobile, otp) {
       return false;
     }
 
+    // Do not send SMS for test number
+    if (cleanMobile === '9876543210') {
+      console.log(`[2Factor] Test number ${cleanMobile}: SMS sending skipped (default OTP: ${otp}).`);
+      return true;
+    }
+
     const url = `https://2factor.in/API/V1/${apiKey}/SMS/+91${cleanMobile}/${otp}/OTP`;
 
     const response = await axios.get(url, { timeout: 10000 });
