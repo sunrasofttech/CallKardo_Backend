@@ -121,7 +121,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"merchant@example.com\",\n  \"mobile\": \"+919876543210\",\n  \"password\": \"securePass123\"\n}"
+              "raw": "{\n  \"email\": \"merchant@example.com\",\n  \"mobile\": \"+919876543210\",\n  \"password\": \"merchant123\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/register",
@@ -176,7 +176,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"password\": \"securePass123\",\n  \"role\": \"merchant\"\n}"
+              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"password\": \"merchant123\",\n  \"role\": \"merchant\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/login",

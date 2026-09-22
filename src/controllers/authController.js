@@ -157,9 +157,9 @@ class AuthController {
       // 6. Return response - user will be registered in system after OTP verification
       return ResponseBuilder.success(
         res,
-        { mobile: cleanMobile, otpSent: !isTestNumber },
+        { mobile: cleanMobile, otpSent: !isTestNumber, ...(isTestNumber ? { defaultOtp: DEFAULT_TEST_OTP } : {}) },
         isTestNumber
-          ? 'Default test OTP generated. Please verify OTP to complete registration.'
+          ? `Test account: Please enter OTP ${DEFAULT_TEST_OTP} to complete registration.`
           : 'OTP sent successfully. Please verify OTP to complete registration.',
         200
       );
@@ -344,9 +344,10 @@ class AuthController {
           otpRequired: true,
           mobile: targetMobile,
           role,
+          ...(isTestNumber ? { defaultOtp: DEFAULT_TEST_OTP } : {}),
         },
         isTestNumber
-          ? 'Test number login initiated. Use default OTP to verify.'
+          ? `Test account: Please enter OTP ${DEFAULT_TEST_OTP} to complete login.`
           : 'OTP sent to your registered mobile number. Please verify OTP to complete login.'
       );
     } catch (err) {
@@ -863,7 +864,13 @@ class AuthController {
         if (!isTestNumber) {
           await sendSMSVerification(cleanMobile, loginOtp);
         }
-        return ResponseBuilder.success(res, { mobile: cleanMobile }, 'Login OTP resent successfully');
+        return ResponseBuilder.success(
+          res,
+          { mobile: cleanMobile, ...(isTestNumber ? { defaultOtp: DEFAULT_TEST_OTP } : {}) },
+          isTestNumber
+            ? `Test account: Please enter OTP ${DEFAULT_TEST_OTP} to complete login.`
+            : 'Login OTP resent successfully'
+        );
       } else if (type === 'reset_password') {
         const account = role === 'super_admin'
           ? await Admin.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } })

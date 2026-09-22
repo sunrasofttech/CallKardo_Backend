@@ -33,7 +33,7 @@ async function runTests() {
   let user = await User.findOne({ where: { mobile: '9876543210' } });
   if (!user) {
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash('securePass123', salt);
+    const passwordHash = await bcrypt.hash('merchant123', salt);
     user = await User.create({
       email: 'testuser@example.com',
       mobile: '9876543210',
@@ -44,7 +44,7 @@ async function runTests() {
   } else {
     // Ensure verified and has known password
     const salt = await bcrypt.genSalt(10);
-    user.passwordHash = await bcrypt.hash('securePass123', salt);
+    user.passwordHash = await bcrypt.hash('merchant123', salt);
     user.isVerified = true;
     await user.save();
   }
@@ -54,7 +54,7 @@ async function runTests() {
   const req1 = {
     body: {
       mobile: '9876543210',
-      password: 'securePass123',
+      password: 'merchant123',
       role: 'merchant',
     },
   };
