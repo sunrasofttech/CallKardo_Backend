@@ -295,7 +295,7 @@ async function processCallAnalysis(event) {
     }
 
     // 7. Deduct call credit from merchant's subscription (only for regular merchant customer calls)
-    if (created && finalUserId && (!session.callType || ['campaign', 'customer_callback'].includes(session.callType))) {
+    if (created && finalUserId && (!session.callType || ['campaign', 'customer_callback', 'call_forwarding'].includes(session.callType))) {
       try {
         await SubscriptionService.recordCallUsage(finalUserId);
       } catch (subErr) {

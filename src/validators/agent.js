@@ -14,6 +14,7 @@ const createAgentSchema = Joi.object({
   temperature: Joi.number().min(0.01).max(2.0).default(0.60),
   firstMessage: Joi.string().max(1000).optional().allow(null, ''),
   aiProvider: Joi.string().valid('custom', 'geminilive', 'customv2', 'elevenlabs').default(() => defaults.defaultAiProvider),
+  agentType: Joi.string().valid('customer_support', 'call_forwarding').default('customer_support'),
 });
 
 const updateAgentSchema = Joi.object({
@@ -29,6 +30,7 @@ const updateAgentSchema = Joi.object({
   temperature: Joi.number().min(0.01).max(2.0).optional(),
   firstMessage: Joi.string().max(1000).optional().allow(null, ''),
   aiProvider: Joi.string().valid('custom', 'geminilive', 'customv2', 'elevenlabs').optional(),
+  agentType: Joi.string().valid('customer_support', 'call_forwarding').optional(),
 });
 
 module.exports = {

@@ -31,6 +31,7 @@ const SubscriptionHistory = require('./subscriptionHistory');
 const Meeting = require('./meeting');
 const MerchantCallback = require('./merchantCallback');
 const AlternateContactRequest = require('./alternateContactRequest');
+const CallForwarding = require('./callForwarding');
 
 // Establish Relationships
 
@@ -261,6 +262,16 @@ AlternateContactRequest.belongsTo(Customer, { foreignKey: 'customer_id', as: 'cu
 CallSession.hasMany(AlternateContactRequest, { foreignKey: 'call_session_id', as: 'alternateContactRequests' });
 AlternateContactRequest.belongsTo(CallSession, { foreignKey: 'call_session_id', as: 'callSession' });
 
+// CallForwarding Associations
+User.hasMany(CallForwarding, { foreignKey: 'user_id', as: 'callForwardings' });
+CallForwarding.belongsTo(User, { foreignKey: 'user_id', as: 'merchant' });
+
+VobizNumber.hasOne(CallForwarding, { foreignKey: 'vobiz_number_id', as: 'callForwarding' });
+CallForwarding.belongsTo(VobizNumber, { foreignKey: 'vobiz_number_id', as: 'vobizNumber' });
+
+Agent.hasMany(CallForwarding, { foreignKey: 'agent_id', as: 'callForwardings' });
+CallForwarding.belongsTo(Agent, { foreignKey: 'agent_id', as: 'agent' });
+
 module.exports = {
   sequelize,
   Admin,
@@ -294,4 +305,5 @@ module.exports = {
   Meeting,
   MerchantCallback,
   AlternateContactRequest,
+  CallForwarding,
 };

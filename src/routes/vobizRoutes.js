@@ -1,5 +1,6 @@
 const express = require('express');
 const VobizController = require('../controllers/vobizController');
+const CallForwardingController = require('../controllers/callForwardingController');
 const { authenticate, isMerchant } = require('../middleware/auth');
 
 const router = express.Router();
@@ -31,6 +32,13 @@ router.get('/available-numbers', VobizController.listAvailableNumbers);
 router.post('/buy-number', VobizController.buyNumber);
 router.post('/initiate-buy-number', require('../controllers/paymentController').initiateNumberPurchasePayment);
 router.post('/initiate-renew-number', require('../controllers/paymentController').initiateNumberRenewalPayment);
+
+// Call Forwarding (merchant's own number -> VoBiz number, answered by a dedicated agent)
+router.get('/call-forwarding', CallForwardingController.getAll);
+router.post('/call-forwarding', CallForwardingController.create);
+router.get('/call-forwarding/:id', CallForwardingController.getById);
+router.put('/call-forwarding/:id', CallForwardingController.update);
+router.delete('/call-forwarding/:id', CallForwardingController.delete);
 
 // KYC
 router.post('/kyc/generate-session', VobizController.generateKycSession);

@@ -81,8 +81,10 @@ class AgentController {
       const categoryId = user.categoryId;
 
       // Find all custom agents or default agents of matching category
+      const { agentType } = req.query;
       const agents = await Agent.findAll({
         where: {
+          ...(agentType && { agentType }),
           [Op.or]: [
             { userId: req.user.id },
             {
@@ -141,7 +143,7 @@ class AgentController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage, aiProvider } = value;
+      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage, aiProvider, agentType } = value;
 
       // Validate voice exists
       const voice = await Voice.findByPk(voiceId);
@@ -182,6 +184,7 @@ class AgentController {
         temperature,
         firstMessage,
         aiProvider,
+        agentType,
       });
 
       if (firstMessage) {
@@ -217,7 +220,7 @@ class AgentController {
         return ResponseBuilder.error(res, 'Forbidden: You cannot modify default preloaded agents', 403);
       }
 
-      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage, aiProvider } = value;
+      const { name, description, systemPrompt, language, voiceId, categoryId, activeStatus, allowInterruption, pace, temperature, firstMessage, aiProvider, agentType } = value;
 
       if (voiceId) {
         const voice = await Voice.findByPk(voiceId);
@@ -263,6 +266,7 @@ class AgentController {
         language: language !== undefined ? language : agent.language,
         voiceId: voiceId !== undefined ? voiceId : agent.voiceId,
         categoryId: categoryId !== undefined ? categoryId : agent.categoryId,
+        agentType: agentType !== undefined ? agentType : agent.agentType,
         activeStatus: finalActiveStatus,
         approvalStatus: finalApprovalStatus,
         allowInterruption: allowInterruption !== undefined ? allowInterruption : agent.allowInterruption,

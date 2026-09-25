@@ -24,6 +24,7 @@ Setting.init(
     sequelize,
     modelName: 'Setting',
     tableName: 'settings',
+    paranoid: false,
   }
 );
 

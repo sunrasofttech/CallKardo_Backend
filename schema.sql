@@ -717,3 +717,28 @@ CREATE TABLE `alternate_contact_requests` (
   CONSTRAINT `fk_alt_contact_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_alt_contact_session` FOREIGN KEY (`call_session_id`) REFERENCES `call_sessions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Table structure for table `call_forwardings`
+DROP TABLE IF EXISTS `call_forwardings`;
+CREATE TABLE `call_forwardings` (
+  `id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `user_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `vobiz_number_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `agent_id` char(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `personal_number` varchar(20) NOT NULL,
+  `forwarding_type` varchar(20) DEFAULT 'all',
+  `status` varchar(20) DEFAULT 'active',
+  `last_call_at` datetime DEFAULT NULL,
+  `notes` text,
+  `created_at` datetime NOT NULL,
+  `updated_at` datetime NOT NULL,
+  `deleted_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_call_fwd_user` (`user_id`),
+  KEY `idx_call_fwd_number` (`vobiz_number_id`),
+  KEY `idx_call_fwd_agent` (`agent_id`),
+  KEY `idx_call_fwd_status` (`status`),
+  CONSTRAINT `fk_call_fwd_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_call_fwd_number` FOREIGN KEY (`vobiz_number_id`) REFERENCES `vobiz_numbers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_call_fwd_agent` FOREIGN KEY (`agent_id`) REFERENCES `agents` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

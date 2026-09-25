@@ -1,8 +1,9 @@
-const { VobizAccount, VobizNumber, User, Agent, Customer, CallSession, CallLog, KycDetail } = require('../models');
+const { VobizAccount, VobizNumber, User, Agent, Customer, CallSession, CallLog, KycDetail, CallForwarding } = require('../models');
 const { Op } = require('sequelize');
 const ResponseBuilder = require('../utils/response');
 const { connectAccountSchema, addNumberSchema, updateNumberSchema, buyNumberSchema, importAccountSchema, saveImportedNumberSchema } = require('../validators/vobiz');
 const { encrypt, decrypt } = require('../utils/crypto');
+const { normalizeMobile } = require('../utils/phone');
 const vobizService = require('../services/vobizService');
 const defaults = require('../config/defaults');
 const { removeTrialDemoNumber } = require('../services/trialDemoNumberService');
@@ -78,13 +79,44 @@ class VobizController {
       let vobizNumber = null;
       let isMerchantCallback = false;
       let onboardingAgent = null;
+      let forwardingSetup = null;
 
       // 1. Check if the caller is a registered Merchant
       const callerAsMerchant = await User.findOne({
         where: { mobile: { [Op.in]: searchFromNumbers } }
       });
 
-      if (callerAsMerchant) {
+      // 2. Call forwarding: the dialed number receives calls forwarded from a merchant's own
+      // phone, so its dedicated forwarding agent answers instead of the number's default agent.
+      if (vobizNumbers.length > 0) {
+        forwardingSetup = await CallForwarding.findOne({
+          where: {
+            vobizNumberId: { [Op.in]: vobizNumbers.map(n => n.id) },
+            status: 'active',
+          },
+          include: [{ model: Agent, as: 'agent' }],
+        });
+      }
+
+      if (forwardingSetup && forwardingSetup.agent && forwardingSetup.agent.activeStatus) {
+        const forwardedNumber = vobizNumbers.find(n => n.id === forwardingSetup.vobizNumberId);
+        vobizNumber = {
+          id: forwardedNumber.id,
+          userId: forwardingSetup.userId,
+          agentId: forwardingSetup.agentId,
+          agent: forwardingSetup.agent,
+          number: forwardedNumber.number,
+        };
+        console.log(`[VoBiz Webhook] Routed forwarded call on ${toNum} to call forwarding agent: ${forwardingSetup.agentId}`);
+        forwardingSetup.update({ lastCallAt: new Date() }).catch(() => { });
+      } else if (forwardingSetup) {
+        console.warn(`[VoBiz Webhook] Call forwarding on ${toNum} is active but its agent is missing or inactive. Falling back to default routing.`);
+        forwardingSetup = null;
+      }
+
+      if (forwardingSetup) {
+        // Forwarding agent already resolved above
+      } else if (callerAsMerchant) {
         console.log(`[VoBiz Webhook] Caller is a registered Merchant (ID: ${callerAsMerchant.id}). Prioritizing merchant routing.`);
         
         // Check for missed outbound callback (onboarding, reminder, sales pitch, etc.)
@@ -189,20 +221,32 @@ class VobizController {
         return res.send(xml);
       }
 
-      // Find or register customer record for caller
-      let customer = await Customer.findOne({
-        where: {
-          userId: vobizNumber.userId,
-          mobile: fromNum
-        }
-      });
+      // Some operators pass the forwarding phone's own number instead of the original caller's.
+      // In that case the caller is unknown, so no customer is recorded against the merchant's number.
+      const callerIsForwardingPhone = forwardingSetup
+        && normalizeMobile(fromNum) === normalizeMobile(forwardingSetup.personalNumber);
 
-      if (!customer) {
-        customer = await Customer.create({
-          userId: vobizNumber.userId,
-          mobile: fromNum,
-          name: 'Inbound Caller'
+      if (callerIsForwardingPhone) {
+        console.warn(`[VoBiz Webhook] Forwarded call on ${toNum} arrived with the merchant's own number as caller ID; original caller unknown.`);
+      }
+
+      // Find or register customer record for caller
+      let customer = null;
+      if (!callerIsForwardingPhone) {
+        customer = await Customer.findOne({
+          where: {
+            userId: vobizNumber.userId,
+            mobile: fromNum
+          }
         });
+
+        if (!customer) {
+          customer = await Customer.create({
+            userId: vobizNumber.userId,
+            mobile: fromNum,
+            name: 'Inbound Caller'
+          });
+        }
       }
 
       const vobizCallUuid = req.body.CallUUID || req.query.CallUUID || req.body.call_uuid || req.query.call_uuid || null;
@@ -218,8 +262,8 @@ class VobizController {
         
         let sessionUserId = vobizNumber.userId;
         let sessionAgentId = vobizNumber.agentId;
-        let sessionCustomerId = customer.id;
-        let sessionCallType = undefined; // Use default
+        let sessionCustomerId = customer ? customer.id : null;
+        let sessionCallType = forwardingSetup ? 'call_forwarding' : undefined; // Use default
         let resolvedAgent = vobizNumber.agent;
         
         if (isMerchantCallback && onboardingAgent) {
@@ -571,19 +615,9 @@ class VobizController {
         }
       }
 
-      // Setup inbound routing in Vobiz if sub-account is configured
+      // Setup inbound routing in VoBiz (sub-account when present, parent account otherwise)
       try {
-        const account = await VobizAccount.findOne({ where: { userId: req.user.id } });
-        if (account) {
-          const encryptEnabled = defaults.vobiz.encryptCredentials;
-          const decryptedApiSecret = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
-
-          await vobizService.setupInboundRouting({
-            authId: account.customerId,
-            authToken: decryptedApiSecret,
-            number: number
-          });
-        }
+        await vobizService.ensureInboundRouting(req.user.id, number);
       } catch (routingErr) {
         console.error('Failed to setup inbound routing on manual add:', routingErr.message);
       }
@@ -776,16 +810,9 @@ class VobizController {
       // Assign to the sub-account
       await vobizService.assignNumberToSubAccount(number, subAccountAuthId);
 
-      // Setup inbound routing in the sub-account
+      // Setup inbound routing so the answer webhook is called for this number
       try {
-        const encryptEnabled = defaults.vobiz.encryptCredentials;
-        const decryptedApiSecret = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
-
-        await vobizService.setupInboundRouting({
-          authId: subAccountAuthId,
-          authToken: decryptedApiSecret,
-          number: number
-        });
+        await vobizService.ensureInboundRouting(req.user.id, number);
       } catch (routingErr) {
         console.error('Failed to setup inbound routing on purchase:', routingErr.message);
       }

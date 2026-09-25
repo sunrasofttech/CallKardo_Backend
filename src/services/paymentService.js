@@ -1246,19 +1246,12 @@ class PaymentService {
       console.warn(`[Fulfill VoBiz Number] VoBiz API buy/assign warning: ${vobizErr.message}`);
     }
 
-    if (account) {
-      try {
-        const encryptEnabled = defaults.vobiz.encryptCredentials;
-        const decryptedApiSecret = encryptEnabled ? decrypt(account.apiSecret) : account.apiSecret;
-
-        await vobizService.setupInboundRouting({
-          authId: account.customerId,
-          authToken: decryptedApiSecret,
-          number: number,
-        });
-      } catch (routingErr) {
-        console.warn(`[Fulfill VoBiz Number] Inbound routing setup warning: ${routingErr.message}`);
-      }
+    // Always configure inbound routing: without a sub-account the number stays on the
+    // parent account, and skipping this leaves the number unable to receive calls.
+    try {
+      await vobizService.ensureInboundRouting(tx.userId, number);
+    } catch (routingErr) {
+      console.warn(`[Fulfill VoBiz Number] Inbound routing setup warning: ${routingErr.message}`);
     }
 
     const rentalExpiryDate = new Date();

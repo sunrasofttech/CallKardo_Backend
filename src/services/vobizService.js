@@ -481,6 +481,33 @@ class VobizService {
   }
 
   /**
+   * Configure inbound routing for a merchant's number, using their sub-account when they
+   * have one and the parent account otherwise (numbers bought without full KYC live there).
+   * Without this the VoBiz answer webhook is never called for the number.
+   */
+  async ensureInboundRouting(userId, number) {
+    const { VobizAccount } = require('../models');
+    const { decrypt } = require('../utils/crypto');
+
+    let authId = defaults.vobiz.parentAuthId;
+    let authToken = defaults.vobiz.parentAuthToken;
+
+    const account = await VobizAccount.findOne({ where: { userId } });
+    if (account && account.customerId && account.apiSecret) {
+      authId = account.customerId;
+      authToken = defaults.vobiz.encryptCredentials ? decrypt(account.apiSecret) : account.apiSecret;
+    } else {
+      console.log(`[VoBiz Service] No sub-account for user ${userId}; configuring inbound routing on the parent account for ${number}`);
+    }
+
+    const result = await this.setupInboundRouting({ authId, authToken, number });
+    if (!result || result.success === false) {
+      console.error(`[VoBiz Service] Inbound routing setup failed for ${number}: ${result?.error}`);
+    }
+    return result;
+  }
+
+  /**
    * Hang up an active call via VoBiz REST API
    * DELETE https://api.vobiz.ai/api/v1/Account/{auth_id}/Call/{call_uuid}/
    * Terminates the call immediately. No request body needed.
