@@ -91,6 +91,11 @@ PaymentTransaction.init(
       allowNull: true,
       field: 'raw_webhook_data',
     },
+    gateway: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+      defaultValue: 'abcgate', // 'abcgate', 'phonepe', or 'razorpay'
+    },
   },
   {
     sequelize,

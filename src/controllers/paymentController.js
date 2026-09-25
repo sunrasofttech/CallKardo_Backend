@@ -281,6 +281,139 @@ class PaymentController {
       next(err);
     }
   }
+
+  /**
+   * Handle PhonePe S2S (server-to-server) webhook callback
+   * PhonePe sends POST requests when payment reaches a terminal state
+   */
+  async handlePhonePeWebhook(req, res, next) {
+    try {
+      console.log('[PaymentController] Incoming PhonePe webhook request');
+
+      const result = await paymentService.processPhonePeWebhook(req.headers, req.body);
+
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error('[PaymentController] PhonePe webhook error:', err.message);
+      // Always return 200 to PhonePe to avoid retries on validation errors
+      return res.status(200).json({
+        success: false,
+        message: err.message || 'PhonePe webhook processing failed',
+      });
+    }
+  }
+
+  /**
+   * Handle PhonePe redirect — user lands back on this URL after completing/cancelling payment
+   * Checks status via SDK and returns result
+   */
+  async handlePhonePeRedirect(req, res, next) {
+    try {
+      const merchantOrderId = req.query.merchantOrderId || req.query.orderId || req.query.order_id || req.body?.merchantOrderId;
+
+      console.log(`[PaymentController] PhonePe redirect for merchantOrderId: ${merchantOrderId}`);
+
+      const result = await paymentService.handlePhonePeRedirect(merchantOrderId);
+
+      // Return JSON (the mobile app / frontend can handle this)
+      return res.status(200).json({
+        success: result.success,
+        message: result.status === 'success'
+          ? 'Payment completed successfully'
+          : result.status === 'pending'
+            ? 'Payment is being processed'
+            : 'Payment failed or was cancelled',
+        data: result,
+      });
+    } catch (err) {
+      console.error('[PaymentController] PhonePe redirect error:', err.message);
+      return res.status(200).json({
+        success: false,
+        message: err.message || 'Error processing redirect',
+      });
+    }
+  }
+
+  /**
+   * Check PhonePe payment status by merchantOrderId (via SDK)
+   */
+  async checkPhonePeStatus(req, res, next) {
+    try {
+      const { orderId } = req.params;
+
+      const statusResponse = await paymentService.checkPhonePeOrderStatus(orderId);
+
+      return ResponseBuilder.success(res, {
+        orderId,
+        phonePeStatus: statusResponse,
+      }, 'PhonePe payment status retrieved');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Verify Razorpay payment signature & complete transaction
+   * Called by client app after Razorpay checkout modal finishes
+   */
+  async verifyRazorpayPayment(req, res, next) {
+    try {
+      const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return ResponseBuilder.error(res, 'razorpay_order_id, razorpay_payment_id, and razorpay_signature are required', 400);
+      }
+
+      const result = await paymentService.processRazorpayVerification({
+        orderId,
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        userId: req.user.id,
+      });
+
+      return ResponseBuilder.success(res, result.data, result.message);
+    } catch (err) {
+      console.error('[PaymentController] Razorpay verification error:', err.message);
+      return ResponseBuilder.error(res, err.message || 'Payment verification failed', 400);
+    }
+  }
+
+  /**
+   * Handle Razorpay Webhook events
+   * Public endpoint, signature verified via X-Razorpay-Signature header
+   */
+  async handleRazorpayWebhook(req, res, next) {
+    try {
+      console.log('[PaymentController] Incoming Razorpay webhook');
+
+      const result = await paymentService.processRazorpayWebhook(req.headers, req.rawBody || req.body);
+
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error('[PaymentController] Razorpay webhook error:', err.message);
+      // Return 200 with error info so Razorpay does not endlessly retry malformed/invalid payloads
+      return res.status(200).json({
+        success: false,
+        message: err.message || 'Razorpay webhook processing failed',
+      });
+    }
+  }
+
+  /**
+   * Check Razorpay payment status by orderId
+   */
+  async getRazorpayPaymentStatus(req, res, next) {
+    try {
+      const { orderId } = req.params;
+
+      const result = await paymentService.checkRazorpayOrderStatus(orderId, req.user.id);
+
+      return ResponseBuilder.success(res, result, 'Razorpay payment status retrieved');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new PaymentController();

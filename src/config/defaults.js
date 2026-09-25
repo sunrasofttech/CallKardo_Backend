@@ -178,11 +178,52 @@ module.exports = {
 
   // Payment Gateway Configuration
   paymentGateway: {
+    get activeGateway() {
+      return process.env.ACTIVE_PAYMENT_GATEWAY || 'razorpay';
+    },
     get initiateUrl() {
       return process.env.PAYMENT_GATEWAY_URL || 'http://localhost:3000/api/payments/initiate';
     },
     get apiToken() {
       return process.env.PAYMENT_API_TOKEN || 'your_api_token';
+    },
+  },
+
+  // PhonePe Payment Gateway Configuration
+  phonepe: {
+    get clientId() {
+      return process.env.PHONEPE_CLIENT_ID || '';
+    },
+    get clientSecret() {
+      return process.env.PHONEPE_CLIENT_SECRET || '';
+    },
+    get clientVersion() {
+      return parseInt(process.env.PHONEPE_CLIENT_VERSION || '1', 10);
+    },
+    get env() {
+      return process.env.PHONEPE_ENV || 'SANDBOX'; // 'SANDBOX' or 'PRODUCTION'
+    },
+    get callbackUsername() {
+      return process.env.PHONEPE_CALLBACK_USERNAME || '';
+    },
+    get callbackPassword() {
+      return process.env.PHONEPE_CALLBACK_PASSWORD || '';
+    },
+    get redirectUrl() {
+      return process.env.PHONEPE_REDIRECT_URL || 'https://api.callkardo.com/api/payments/phonepe/redirect';
+    },
+  },
+
+  // Razorpay Payment Gateway Configuration
+  razorpay: {
+    get keyId() {
+      return process.env.RAZORPAY_KEY_ID || '';
+    },
+    get keySecret() {
+      return process.env.RAZORPAY_KEY_SECRET || '';
+    },
+    get webhookSecret() {
+      return process.env.RAZORPAY_WEBHOOK_SECRET || '';
     },
   },
 };

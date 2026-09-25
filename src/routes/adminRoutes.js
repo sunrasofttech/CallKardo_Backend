@@ -101,6 +101,10 @@ router.get('/settings', settingController.getAllSettings);
 router.get('/settings/:key', settingController.getSettingByKey);
 router.put('/settings', settingController.upsertSetting);
 
+// Payment Gateway Configuration routes
+router.get('/payment-gateway', settingController.getPaymentGatewayConfig);
+router.put('/payment-gateway', settingController.updatePaymentGatewayConfig);
+
 // Admin Notification routes
 router.post('/notifications/send', adminController.sendNotification);
 router.get('/notifications', adminController.getAllNotifications);

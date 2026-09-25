@@ -372,6 +372,7 @@ CREATE TABLE `payment_transactions` (
   `urn_number` varchar(100) DEFAULT NULL,
   `raw_response` json DEFAULT NULL,
   `raw_webhook_data` json DEFAULT NULL,
+  `gateway` varchar(30) DEFAULT 'abcgate',
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
   `deleted_at` datetime DEFAULT NULL,
