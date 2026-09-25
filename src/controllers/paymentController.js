@@ -60,18 +60,25 @@ class PaymentController {
         return ResponseBuilder.error(res, 'Subscription plan not found', 404);
       }
 
+      const planPrice = Number(plan.price !== undefined && plan.price !== null ? plan.price : 100);
+      const isFree = planPrice <= 0;
+
       const result = await paymentService.initiatePayment({
         userId: req.user.id,
         type: 'SUBSCRIPTION',
         targetId: plan.id,
-        amount: plan.price || 100,
+        amount: planPrice,
         note: `Subscription Purchase: ${plan.name} Plan`,
         customerName: customer_name,
         customerMobile: customer_mobile,
         customerEmail: customer_email,
       });
 
-      return ResponseBuilder.success(res, result.data, 'Subscription payment initiated successfully');
+      const message = isFree
+        ? 'Subscription activated successfully (Free plan)'
+        : 'Subscription payment initiated successfully';
+
+      return ResponseBuilder.success(res, result.data, message);
     } catch (err) {
       next(err);
     }

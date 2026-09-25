@@ -173,6 +173,52 @@ class PaymentService {
 
     console.log(`[PaymentService] Initiating payment via ${activeGateway.toUpperCase()} for OrderId: ${orderId}, Amount: ${formattedAmount}, Type: ${type}`);
 
+    // Handle free / zero-amount purchases (e.g. Free Starter Plan) without gateway
+    if (Number(amount) <= 0) {
+      console.log(`[PaymentService] Amount is ${formattedAmount} for OrderId: ${orderId}, Type: ${type}. Fulfilling free activation directly without gateway.`);
+
+      const transaction = await PaymentTransaction.create({
+        userId,
+        orderId,
+        type,
+        targetId: String(targetId),
+        amount: formattedAmount,
+        status: 'success',
+        gateway: 'free',
+        customerName: resolvedName,
+        customerMobile: resolvedMobile,
+        customerEmail: resolvedEmail,
+        note: resolvedNote,
+        gatewayTransactionId: `FREE_${orderId}`,
+        rawResponse: { free: true, activatedAt: new Date().toISOString() },
+      });
+
+      try {
+        if (type === 'SUBSCRIPTION') {
+          await this._fulfillSubscriptionPurchase(transaction);
+        } else if (type === 'VOBIZ_NUMBER') {
+          await this._fulfillVobizNumberPurchase(transaction);
+        }
+      } catch (fulfillErr) {
+        console.error(`[PaymentService Free Activation] Fulfillment error for orderId ${orderId}:`, fulfillErr);
+      }
+
+      return {
+        success: true,
+        message: 'Plan activated successfully (Free plan, no payment required)',
+        data: {
+          success: true,
+          free: true,
+          gateway: 'free',
+          order_id: orderId,
+          amount: formattedAmount,
+          status: 'success',
+          timestamp: new Date().toISOString(),
+          paymentTransactionId: transaction.id,
+        },
+      };
+    }
+
     let result;
     if (activeGateway === 'phonepe') {
       result = await this._initiatePhonePe({
@@ -465,7 +511,8 @@ class PaymentService {
         },
       };
     } catch (err) {
-      console.error('[PaymentService Razorpay] Payment initiation error:', err.message);
+      const errorMsg = err.error?.description || err.error?.message || err.message || 'Razorpay payment initiation failed';
+      console.error('[PaymentService Razorpay] Payment initiation error:', errorMsg, err.error || err);
 
       // Log failed transaction
       await PaymentTransaction.create({
@@ -480,10 +527,10 @@ class PaymentService {
         customerMobile: resolvedMobile,
         customerEmail: resolvedEmail,
         note: resolvedNote,
-        rawResponse: { error: err.message },
+        rawResponse: { error: errorMsg, details: err.error || err },
       }).catch(() => {});
 
-      throw new Error(err.message || 'Razorpay payment initiation failed');
+      throw new Error(errorMsg);
     }
   }
 
