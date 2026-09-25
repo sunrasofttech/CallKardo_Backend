@@ -5,7 +5,7 @@ const { authenticate, isAdmin } = require('../middleware/auth');
 const router = express.Router();
 
 // Public/Merchant can fetch categories
-router.get('/', authenticate, CategoryController.getAll);
+router.get('/', CategoryController.getAll);
 router.get('/:id', authenticate, CategoryController.getById);
 
 // Admin Only Category Management
