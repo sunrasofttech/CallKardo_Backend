@@ -5,6 +5,7 @@ const router = express.Router();
 
 // Merchant Registration
 router.post('/register', AuthController.registerMerchant);
+router.post('/register-with-business', AuthController.registerMerchantWithBusiness);
 
 // Super Admin Registration (typically internal/restricted)
 router.post('/admin/register', AuthController.registerAdmin);

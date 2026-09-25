@@ -16,6 +16,44 @@ const merchantRegisterSchema = Joi.object({
   intrestinourproduct: Joi.boolean().default(true).optional(),
 });
 
+const merchantRegisterWithBusinessSchema = Joi.object({
+  email: Joi.string().email().optional().allow('').messages({
+    'string.email': 'Please enter a valid email address',
+  }),
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required().messages({
+    'string.pattern.base': 'Please enter a valid international mobile number',
+    'any.required': 'Mobile number is required',
+  }),
+  password: Joi.string().min(6).required().messages({
+    'string.min': 'Password must be at least 6 characters long',
+    'any.required': 'Password is required',
+  }),
+  fcmToken: Joi.string().optional().allow(''),
+  intrestinourproduct: Joi.boolean().default(true).optional(),
+  businessName: Joi.string()
+    .pattern(/^[a-zA-Z\s]+$/)
+    .min(2)
+    .max(100)
+    .required()
+    .messages({
+      'string.pattern.base': 'Business name must contain only letters and spaces',
+      'string.min': 'Business name must be at least 2 characters long',
+      'any.required': 'Business name is required',
+    }),
+  businessUrl: Joi.string().uri().optional().allow('').messages({
+    'string.uri': 'Please enter a valid URL',
+  }),
+  business_type: Joi.string().valid('individual', 'proprietorship', 'private_limited', 'llp', 'partnership', 'public_limited', 'trust', 'society', 'huf', 'government').required().messages({
+    'any.only': 'Invalid business type',
+    'any.required': 'Business type is required',
+  }),
+  businessType: Joi.any().strip(),
+  categoryId: Joi.string().uuid().required().messages({
+    'string.uuid': 'Invalid category ID format',
+    'any.required': 'Business category is required',
+  }),
+});
+
 const adminRegisterSchema = Joi.object({
   email: Joi.string().email().optional().allow(''),
   mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required(),
@@ -143,6 +181,7 @@ const resetMerchantPasswordSchema = Joi.object({
 
 module.exports = {
   merchantRegisterSchema,
+  merchantRegisterWithBusinessSchema,
   adminRegisterSchema,
   loginSchema,
   setupBusinessSchema,

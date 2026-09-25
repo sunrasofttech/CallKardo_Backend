@@ -38,17 +38,48 @@ const swaggerSpec = {
                 type: 'object',
                 properties: {
                   email: { type: 'string' },
+                  mobile: { type: 'string' },
                   password: { type: 'string' },
-                  businessName: { type: 'string' },
-                  categoryId: { type: 'string', format: 'uuid' },
                 },
-                required: ['email', 'password', 'businessName', 'categoryId'],
+                required: ['mobile', 'password'],
               },
             },
           },
         },
         responses: {
-          201: { description: 'Merchant registered successfully' },
+          200: { description: 'OTP sent successfully for registration' },
+          400: { description: 'Validation or duplicate error' },
+        },
+      },
+    },
+    '/auth/register-with-business': {
+      post: {
+        summary: 'Register a new Merchant with Business Setup details',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  mobile: { type: 'string', example: '9876543210' },
+                  password: { type: 'string', minLength: 6, example: 'Password123' },
+                  email: { type: 'string', format: 'email', example: 'merchant@example.com' },
+                  businessName: { type: 'string', example: 'Apex Logistics' },
+                  business_type: { type: 'string', enum: ['individual', 'proprietorship', 'private_limited', 'llp', 'partnership', 'public_limited', 'trust', 'society', 'huf', 'government'], example: 'private_limited' },
+                  categoryId: { type: 'string', format: 'uuid', example: '123e4567-e89b-12d3-a456-426614174000' },
+                  businessUrl: { type: 'string', format: 'uri', example: 'https://apexlogistics.com' },
+                  fcmToken: { type: 'string' },
+                  intrestinourproduct: { type: 'boolean', default: true },
+                },
+                required: ['mobile', 'password', 'businessName', 'business_type', 'categoryId'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'OTP sent successfully for registration' },
           400: { description: 'Validation or duplicate error' },
         },
       },

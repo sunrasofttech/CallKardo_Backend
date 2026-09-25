@@ -16,6 +16,7 @@ function hashToken(token) {
 }
 const {
   merchantRegisterSchema,
+  merchantRegisterWithBusinessSchema,
   adminRegisterSchema,
   loginSchema,
   loginVerifyOtpSchema,
@@ -58,6 +59,7 @@ class AuthController {
         ? {
             businessName: account.businessName,
             businessUrl: account.businessUrl,
+            businessType: account.businessType,
             categoryId: account.categoryId,
           }
         : { firstName: account.firstName, lastName: account.lastName }),
@@ -155,6 +157,116 @@ class AuthController {
       }
 
       // 6. Return response - user will be registered in system after OTP verification
+      return ResponseBuilder.success(
+        res,
+        { mobile: cleanMobile, otpSent: !isTestNumber, ...(isTestNumber ? { defaultOtp: DEFAULT_TEST_OTP } : {}) },
+        isTestNumber
+          ? `Test account: Please enter OTP ${DEFAULT_TEST_OTP} to complete registration.`
+          : 'OTP sent successfully. Please verify OTP to complete registration.',
+        200
+      );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Merchant Registration with Business Setup - Merged flow.
+   * Validates registration credentials and business details together.
+   * Caches all details in Redis; user and business profile are created upon OTP verification.
+   */
+  async registerMerchantWithBusiness(req, res, next) {
+    try {
+      if (!req.body.business_type && req.body.businessType) {
+        req.body.business_type = req.body.businessType;
+      }
+
+      const { error, value } = merchantRegisterWithBusinessSchema.validate(req.body);
+      if (error) {
+        return ResponseBuilder.error(res, error.details[0].message, 400);
+      }
+
+      const { email, mobile, password, fcmToken, intrestinourproduct, businessName, businessUrl, business_type, categoryId } = value;
+      const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
+      const cleanEmail = email && email.trim() !== '' ? email.trim().toLowerCase() : null;
+
+      // 1. Verify business category exists
+      const category = await Category.findByPk(categoryId);
+      if (!category) {
+        return ResponseBuilder.error(res, 'Selected business category does not exist', 400);
+      }
+
+      // 2. UNIQUE VALIDATION CHECKS (Run BEFORE OTP generation/validation)
+      let existingEmail = null;
+      if (cleanEmail) {
+        existingEmail = await User.findOne({
+          where: { email: cleanEmail },
+          paranoid: false,
+        });
+        if (existingEmail && !existingEmail.deletedAt) {
+          return ResponseBuilder.error(res, 'Email address already registered', 400);
+        }
+
+        const pendingEmailMobile = await redisClient.get(`pending_email:${cleanEmail}`);
+        if (pendingEmailMobile && pendingEmailMobile !== cleanMobile) {
+          return ResponseBuilder.error(res, 'Email address already registered', 400);
+        }
+      }
+
+      const existingMobile = await User.findOne({
+        where: {
+          [Op.or]: [
+            { mobile },
+            { mobile: cleanMobile },
+            { mobile: `+91${cleanMobile}` },
+            { mobile: `0${cleanMobile}` },
+          ],
+        },
+        paranoid: false,
+      });
+
+      if (existingMobile && !existingMobile.deletedAt) {
+        return ResponseBuilder.error(res, 'Mobile number already registered', 400);
+      }
+
+      // 3. Hash Password
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+
+      // 4. Generate 6-digit verification OTP (default OTP for test number)
+      const isTestNumber = cleanMobile === TEST_MOBILE;
+      const verificationOtp = isTestNumber ? DEFAULT_TEST_OTP : Math.floor(100000 + Math.random() * 900000).toString();
+
+      // 5. Cache Pending Registration in Redis (10 minutes TTL)
+      const pendingData = {
+        email: cleanEmail,
+        mobile: cleanMobile,
+        passwordHash,
+        fcmToken: fcmToken || null,
+        intrestinourproduct: intrestinourproduct !== undefined ? intrestinourproduct : true,
+        businessName,
+        businessUrl: businessUrl || null,
+        businessType: business_type,
+        categoryId,
+        otp: verificationOtp,
+        hasSoftDeletedUser: Boolean(
+          (existingMobile && existingMobile.deletedAt) ||
+          (existingEmail && existingEmail.deletedAt)
+        ),
+        createdAt: new Date().toISOString(),
+      };
+
+      await redisClient.setEx(`pending_reg:${cleanMobile}`, 600, JSON.stringify(pendingData));
+      await redisClient.setEx(`pending_otp:${verificationOtp}`, 600, cleanMobile);
+      if (cleanEmail) {
+        await redisClient.setEx(`pending_email:${cleanEmail}`, 600, cleanMobile);
+      }
+
+      // 6. Send OTP via 2Factor SMS (skip for test number)
+      if (!isTestNumber) {
+        await sendSMSVerification(cleanMobile, verificationOtp);
+      }
+
       return ResponseBuilder.success(
         res,
         { mobile: cleanMobile, otpSent: !isTestNumber, ...(isTestNumber ? { defaultOtp: DEFAULT_TEST_OTP } : {}) },
@@ -538,6 +650,10 @@ class AuthController {
             isVerified: true,
             fcmToken: pendingData.fcmToken,
             intrestinourproduct: pendingData.intrestinourproduct,
+            businessName: pendingData.businessName || null,
+            businessUrl: pendingData.businessUrl || null,
+            businessType: pendingData.businessType || null,
+            categoryId: pendingData.categoryId || null,
           }, { transaction: t });
 
           // Setup Initial Starter Subscription Plan
@@ -566,13 +682,25 @@ class AuthController {
             status: 'active',
           }, { transaction: t });
 
+          // Auto-assign default agent for category to demo number if categoryId was provided
+          let defaultAgent = null;
+          if (pendingData.categoryId) {
+            defaultAgent = await Agent.findOne({
+              where: {
+                isCustom: false,
+                categoryId: pendingData.categoryId,
+              },
+              transaction: t,
+            });
+          }
+
           // Setup demo number for trial testing
           await VobizNumber.create({
             userId: merchant.id,
             number: defaults.vobiz.demoNumber,
             status: 'active',
             providerData: { isDemo: true },
-            agentId: null,
+            agentId: defaultAgent ? defaultAgent.id : null,
           }, { transaction: t });
 
           // Generate login tokens
@@ -592,6 +720,14 @@ class AuthController {
             await redisClient.del(`pending_email:${pendingData.email}`);
           }
 
+          // Trigger automatic AI Onboarding Call if category was configured
+          if (pendingData.categoryId) {
+            const MerchantOnboardingService = require('../services/merchantOnboardingService');
+            MerchantOnboardingService.scheduleOnboardingCall(merchant.id).catch((callErr) => {
+              console.error('[authController] Failed to schedule onboarding call on registration:', callErr.message);
+            });
+          }
+
           // Notify Admins about new signup
           NotificationService.notifyAdmin(
             'New Merchant Signup',
@@ -607,6 +743,7 @@ class AuthController {
             role: 'merchant',
             businessName: merchant.businessName,
             businessUrl: merchant.businessUrl,
+            businessType: merchant.businessType,
             categoryId: merchant.categoryId,
           };
 

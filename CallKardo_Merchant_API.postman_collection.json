@@ -133,6 +133,25 @@
           "response": []
         },
         {
+          "name": "1.1b Register Merchant With Business Setup",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"9876543210\",\n  \"password\": \"merchant123\",\n  \"email\": \"merchant@example.com\",\n  \"businessName\": \"Apex Solutions\",\n  \"business_type\": \"private_limited\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"businessUrl\": \"https://apexsolutions.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register-with-business",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register-with-business"]
+            },
+            "description": "Combined registration & business setup flow. Validates credentials and business details together, caches in Redis, sends OTP, and provisions merchant + business details + category default agent upon OTP verification."
+          },
+          "response": []
+        },
+        {
           "name": "1.2 Verify OTP (Complete Registration)",
           "event": [
             {
