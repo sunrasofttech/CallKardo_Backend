@@ -28,7 +28,7 @@ const swaggerSpec = {
   paths: {
     '/auth/register': {
       post: {
-        summary: 'Register a new Merchant',
+        summary: 'Register a new Merchant (OTP based, password not required)',
         security: [],
         requestBody: {
           required: true,
@@ -39,9 +39,9 @@ const swaggerSpec = {
                 properties: {
                   email: { type: 'string' },
                   mobile: { type: 'string' },
-                  password: { type: 'string' },
+                  password: { type: 'string', description: 'Optional: kept for future use' },
                 },
-                required: ['mobile', 'password'],
+                required: ['mobile'],
               },
             },
           },
@@ -54,7 +54,7 @@ const swaggerSpec = {
     },
     '/auth/register-with-business': {
       post: {
-        summary: 'Register a new Merchant with Business Setup details',
+        summary: 'Register a new Merchant with Business Setup details (OTP based, password not required)',
         security: [],
         requestBody: {
           required: true,
@@ -64,7 +64,7 @@ const swaggerSpec = {
                 type: 'object',
                 properties: {
                   mobile: { type: 'string', example: '9876543210' },
-                  password: { type: 'string', minLength: 6, example: 'Password123' },
+                  password: { type: 'string', minLength: 6, example: 'Password123', description: 'Optional: kept for future use' },
                   email: { type: 'string', format: 'email', example: 'merchant@example.com' },
                   businessName: { type: 'string', example: 'Apex Logistics' },
                   business_type: { type: 'string', enum: ['individual', 'proprietorship', 'private_limited', 'llp', 'partnership', 'public_limited', 'trust', 'society', 'huf', 'government'], example: 'private_limited' },
@@ -73,7 +73,7 @@ const swaggerSpec = {
                   fcmToken: { type: 'string' },
                   intrestinourproduct: { type: 'boolean', default: true },
                 },
-                required: ['mobile', 'password', 'businessName', 'business_type', 'categoryId'],
+                required: ['mobile', 'businessName', 'business_type', 'categoryId'],
               },
             },
           },
@@ -113,7 +113,7 @@ const swaggerSpec = {
     },
     '/auth/login': {
       post: {
-        summary: 'Authenticate Merchant or Admin',
+        summary: 'Authenticate Merchant (OTP only) or Admin (Password/OTP)',
         security: [],
         requestBody: {
           required: true,
@@ -122,18 +122,19 @@ const swaggerSpec = {
               schema: {
                 type: 'object',
                 properties: {
-                  email: { type: 'string' },
-                  password: { type: 'string' },
-                  role: { type: 'string', enum: ['merchant', 'super_admin'] },
+                  mobile: { type: 'string', example: '9876543210' },
+                  email: { type: 'string', example: 'merchant@example.com' },
+                  otp: { type: 'string', minLength: 6, maxLength: 6, example: '123456' },
+                  password: { type: 'string', description: 'Required for super_admin, not used for merchant users' },
+                  role: { type: 'string', enum: ['merchant', 'super_admin'], default: 'merchant' },
                 },
-                required: ['email', 'password'],
               },
             },
           },
         },
         responses: {
-          200: { description: 'Authentication token returned' },
-          401: { description: 'Invalid credentials' },
+          200: { description: 'OTP sent (if no OTP provided) or authentication tokens returned (if OTP provided)' },
+          401: { description: 'Invalid credentials or user not found' },
         },
       },
     },

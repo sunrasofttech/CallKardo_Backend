@@ -32,6 +32,7 @@ const {
 
 const TEST_MOBILE = '9876543210';
 const DEFAULT_TEST_OTP = '123456';
+const DEFAULT_USER_PASSWORD = defaults.defaultUserPassword || 'CallKardo@123';
 
 class AuthController {
   /**
@@ -122,9 +123,10 @@ class AuthController {
         return ResponseBuilder.error(res, 'Mobile number already registered', 400);
       }
 
-      // 2. Hash Password
+      // 2. Hash Password (use provided password or default reference password for future use)
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(password, salt);
+      const rawPassword = (password && String(password).trim() !== '') ? password : DEFAULT_USER_PASSWORD;
+      const passwordHash = await bcrypt.hash(rawPassword, salt);
 
       // 3. Generate 6-digit verification OTP (default OTP for test number)
       const isTestNumber = cleanMobile === TEST_MOBILE;
@@ -229,9 +231,10 @@ class AuthController {
         return ResponseBuilder.error(res, 'Mobile number already registered', 400);
       }
 
-      // 3. Hash Password
+      // 3. Hash Password (use provided password or default reference password for future use)
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(password, salt);
+      const rawPassword = (password && String(password).trim() !== '') ? password : DEFAULT_USER_PASSWORD;
+      const passwordHash = await bcrypt.hash(rawPassword, salt);
 
       // 4. Generate 6-digit verification OTP (default OTP for test number)
       const isTestNumber = cleanMobile === TEST_MOBILE;
@@ -393,24 +396,20 @@ class AuthController {
         return ResponseBuilder.error(res, 'Invalid credentials', 401);
       }
 
-      // Check Password if password provided
-      if (password) {
-        const isMatch = await bcrypt.compare(password, account.passwordHash);
-        if (!isMatch) {
-          return ResponseBuilder.error(res, 'Invalid credentials', 401);
-        }
-      } else if (!otp) {
-        return ResponseBuilder.error(res, 'Password or OTP is required', 400);
-      }
-
       // Check Verification
       if (!account.isVerified && role !== 'super_admin') {
         return ResponseBuilder.error(res, 'Please verify your account before logging in', 403);
       }
 
-      // For super_admin: do not require OTP on login. Issue tokens directly upon valid password.
+      // For super_admin: retain password (or OTP) verification
       if (role === 'super_admin') {
-        if (otp && !password) {
+        if (password) {
+          const isMatch = await bcrypt.compare(password, account.passwordHash);
+          if (!isMatch) {
+            return ResponseBuilder.error(res, 'Invalid credentials', 401);
+          }
+          return AuthController._issueLoginTokens(res, account, role, fcmToken);
+        } else if (otp) {
           const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
           const isTestNumber = targetMobile === TEST_MOBILE || cleanMobile === TEST_MOBILE;
           const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
@@ -420,10 +419,13 @@ class AuthController {
           }
           await redisClient.del(`login_otp:${targetMobile}`);
           await redisClient.del(`login_otp_lookup:${otp}`);
+          return AuthController._issueLoginTokens(res, account, role, fcmToken);
+        } else {
+          return ResponseBuilder.error(res, 'Password or OTP is required for admin login', 400);
         }
-        return AuthController._issueLoginTokens(res, account, role, fcmToken);
       }
 
+      // For merchant / regular users: OTP ONLY (password is not used)
       const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
       const isTestNumber = targetMobile === TEST_MOBILE || cleanMobile === TEST_MOBILE;
 
@@ -477,37 +479,47 @@ class AuthController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { mobile, otp, role = 'merchant', fcmToken } = value;
-      const cleanMobile = String(mobile).replace(/\D/g, '').slice(-10);
-      const isTestNumber = cleanMobile === TEST_MOBILE;
-      const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
-
-      const cachedLoginOtp = await redisClient.get(`login_otp:${cleanMobile}`);
-      if (!isDefaultOtp && (!cachedLoginOtp || cachedLoginOtp !== otp)) {
-        return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
-      }
+      const { email, mobile, otp, role = 'merchant', fcmToken } = value;
+      const cleanMobile = mobile ? String(mobile).replace(/\D/g, '').slice(-10) : null;
 
       let account = null;
       if (role === 'super_admin') {
-        account = await Admin.findOne({
-          where: {
-            [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
-          },
-        });
+        if (email) {
+          account = await Admin.findOne({ where: { email } });
+        } else if (cleanMobile) {
+          account = await Admin.findOne({
+            where: {
+              [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+            },
+          });
+        }
       } else {
-        account = await User.findOne({
-          where: {
-            [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
-          },
-        });
+        if (email) {
+          account = await User.findOne({ where: { email } });
+        } else if (cleanMobile) {
+          account = await User.findOne({
+            where: {
+              [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }],
+            },
+          });
+        }
       }
 
       if (!account) {
         return ResponseBuilder.error(res, 'Account not found', 404);
       }
 
+      const targetMobile = account.mobile ? String(account.mobile).replace(/\D/g, '').slice(-10) : cleanMobile;
+      const isTestNumber = targetMobile === TEST_MOBILE || cleanMobile === TEST_MOBILE;
+      const isDefaultOtp = isTestNumber && otp === DEFAULT_TEST_OTP;
+
+      const cachedLoginOtp = await redisClient.get(`login_otp:${targetMobile}`);
+      if (!isDefaultOtp && (!cachedLoginOtp || cachedLoginOtp !== otp)) {
+        return ResponseBuilder.error(res, 'Invalid or expired OTP', 400);
+      }
+
       // Clear OTP
-      await redisClient.del(`login_otp:${cleanMobile}`);
+      await redisClient.del(`login_otp:${targetMobile}`);
       await redisClient.del(`login_otp_lookup:${otp}`);
 
       return AuthController._issueLoginTokens(res, account, role, fcmToken);
@@ -977,12 +989,22 @@ class AuthController {
           return ResponseBuilder.error(res, 'No pending registration found for this mobile. Please register first.', 404);
         }
         const pendingData = JSON.parse(cached);
-        pendingData.otp = newOtp;
+        const isTestNumber = cleanMobile === TEST_MOBILE;
+        const regOtp = isTestNumber ? DEFAULT_TEST_OTP : newOtp;
+        pendingData.otp = regOtp;
         await redisClient.setEx(`pending_reg:${cleanMobile}`, 600, JSON.stringify(pendingData));
-        await redisClient.setEx(`pending_otp:${newOtp}`, 600, cleanMobile);
+        await redisClient.setEx(`pending_otp:${regOtp}`, 600, cleanMobile);
 
-        await sendSMSVerification(cleanMobile, newOtp);
-        return ResponseBuilder.success(res, { mobile: cleanMobile }, 'Registration OTP resent successfully');
+        if (!isTestNumber) {
+          await sendSMSVerification(cleanMobile, regOtp);
+        }
+        return ResponseBuilder.success(
+          res,
+          { mobile: cleanMobile, ...(isTestNumber ? { defaultOtp: DEFAULT_TEST_OTP } : {}) },
+          isTestNumber
+            ? `Test account: Please enter OTP ${DEFAULT_TEST_OTP} to complete registration.`
+            : 'Registration OTP resent successfully'
+        );
       } else if (type === 'login') {
         const account = role === 'super_admin'
           ? await Admin.findOne({ where: { [Op.or]: [{ mobile }, { mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }] } })

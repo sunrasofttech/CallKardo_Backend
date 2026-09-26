@@ -121,7 +121,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"merchant@example.com\",\n  \"mobile\": \"+919876543210\",\n  \"password\": \"merchant123\"\n}"
+              "raw": "{\n  \"email\": \"merchant@example.com\",\n  \"mobile\": \"+919876543210\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/register",
@@ -140,7 +140,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mobile\": \"9876543210\",\n  \"password\": \"merchant123\",\n  \"email\": \"merchant@example.com\",\n  \"businessName\": \"Apex Solutions\",\n  \"business_type\": \"private_limited\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"businessUrl\": \"https://apexsolutions.com\"\n}"
+              "raw": "{\n  \"mobile\": \"9876543210\",\n  \"email\": \"merchant@example.com\",\n  \"businessName\": \"Apex Solutions\",\n  \"business_type\": \"private_limited\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"businessUrl\": \"https://apexsolutions.com\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/register-with-business",
@@ -195,14 +195,14 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"password\": \"merchant123\",\n  \"role\": \"merchant\"\n}"
+              "raw": "{\n  \"mobile\": \"+919876543210\",\n  \"role\": \"merchant\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/auth/login",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "login"]
             },
-            "description": "Login with email/mobile and password. Sends 6-digit OTP to user's registered mobile."
+            "description": "Request login OTP. Sends 6-digit OTP to user's registered mobile. Password is not required for merchant login."
           },
           "response": []
         },

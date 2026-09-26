@@ -226,4 +226,9 @@ module.exports = {
       return process.env.RAZORPAY_WEBHOOK_SECRET || '';
     },
   },
+
+  // Default User Reference Password
+  get defaultUserPassword() {
+    return process.env.DEFAULT_USER_PASSWORD || 'CallKardo@123';
+  },
 };

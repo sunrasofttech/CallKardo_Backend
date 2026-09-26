@@ -1,5 +1,7 @@
 const { DataTypes, Model } = require('sequelize');
+const bcrypt = require('bcryptjs');
 const sequelize = require('../config/database');
+const defaults = require('../config/defaults');
 
 class User extends Model {}
 
@@ -110,6 +112,14 @@ User.init(
     sequelize,
     modelName: 'User',
     tableName: 'users',
+    hooks: {
+      beforeValidate: async (user) => {
+        if (!user.passwordHash) {
+          const salt = await bcrypt.genSalt(10);
+          user.passwordHash = await bcrypt.hash(defaults.defaultUserPassword || 'CallKardo@123', salt);
+        }
+      },
+    },
   }
 );
 

@@ -8,9 +8,8 @@ const merchantRegisterSchema = Joi.object({
     'string.pattern.base': 'Please enter a valid international mobile number',
     'any.required': 'Mobile number is required',
   }),
-  password: Joi.string().min(6).required().messages({
+  password: Joi.string().min(6).optional().allow('', null).messages({
     'string.min': 'Password must be at least 6 characters long',
-    'any.required': 'Password is required',
   }),
   fcmToken: Joi.string().optional().allow(''),
   intrestinourproduct: Joi.boolean().default(true).optional(),
@@ -24,9 +23,8 @@ const merchantRegisterWithBusinessSchema = Joi.object({
     'string.pattern.base': 'Please enter a valid international mobile number',
     'any.required': 'Mobile number is required',
   }),
-  password: Joi.string().min(6).required().messages({
+  password: Joi.string().min(6).optional().allow('', null).messages({
     'string.min': 'Password must be at least 6 characters long',
-    'any.required': 'Password is required',
   }),
   fcmToken: Joi.string().optional().allow(''),
   intrestinourproduct: Joi.boolean().default(true).optional(),
@@ -66,15 +64,18 @@ const adminRegisterSchema = Joi.object({
 const loginSchema = Joi.object({
   email: Joi.string().email().optional(),
   mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional(),
-  password: Joi.string().optional(),
+  password: Joi.string().optional().allow('', null),
   otp: Joi.string().length(6).optional(),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
   fcmToken: Joi.string().optional().allow(''),
 }).or('email', 'mobile');
 
 const loginVerifyOtpSchema = Joi.object({
-  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).required().messages({
-    'any.required': 'Mobile number is required',
+  mobile: Joi.string().pattern(/^\+?[1-9]\d{1,14}$/).optional().messages({
+    'string.pattern.base': 'Please enter a valid international mobile number',
+  }),
+  email: Joi.string().email().optional().messages({
+    'string.email': 'Please enter a valid email address',
   }),
   otp: Joi.string().length(6).required().messages({
     'string.length': 'OTP must be 6 digits',
@@ -82,7 +83,7 @@ const loginVerifyOtpSchema = Joi.object({
   }),
   role: Joi.string().valid('merchant', 'super_admin').default('merchant'),
   fcmToken: Joi.string().optional().allow(''),
-});
+}).or('mobile', 'email');
 
 const setupBusinessSchema = Joi.object({
   businessName: Joi.string()
