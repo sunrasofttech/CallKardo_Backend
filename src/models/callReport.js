@@ -48,6 +48,11 @@ CallReport.init(
       type: DataTypes.INTEGER,
       defaultValue: 0, // in seconds
     },
+    usageRecorded: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'usage_recorded',
+    },
     outcome: {
       type: DataTypes.STRING(30),
       allowNull: true, // Interested, Not Interested, Callback Requested, Appointment Booked, Sale Closed, Wrong Number, No Answer

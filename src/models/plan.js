@@ -26,6 +26,12 @@ Plan.init(
       defaultValue: 0, // -1 means unlimited
       field: 'call_limit',
     },
+    minuteLimit: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: -1, // -1 means unlimited
+      field: 'minute_limit',
+    },
     maxConcurrentCalls: {
       type: DataTypes.INTEGER,
       allowNull: false,

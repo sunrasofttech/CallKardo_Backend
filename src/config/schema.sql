@@ -130,6 +130,7 @@ CREATE TABLE `call_reports` (
   `transcript` longtext,
   `summary` text,
   `duration` int DEFAULT '0',
+  `usage_recorded` tinyint(1) DEFAULT '0',
   `outcome` varchar(30) DEFAULT NULL,
   `sentiment` varchar(20) DEFAULT NULL,
   `lead_score` int DEFAULT '0',
@@ -401,6 +402,7 @@ CREATE TABLE `plans` (
   `name` varchar(50) NOT NULL,
   `price` decimal(10,2) NOT NULL DEFAULT '0.00',
   `call_limit` int NOT NULL DEFAULT '0',
+  `minute_limit` int NOT NULL DEFAULT '-1',
   `max_concurrent_calls` int NOT NULL DEFAULT '1',
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
@@ -444,6 +446,8 @@ CREATE TABLE `subscriptions` (
   `expiry_date` datetime DEFAULT NULL,
   `calls_used` int DEFAULT '0',
   `calls_remaining` int DEFAULT '0',
+  `minutes_used` int DEFAULT '0',
+  `minutes_remaining` int DEFAULT '-1',
   `status` varchar(20) DEFAULT 'active',
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
@@ -552,4 +556,3 @@ CREATE TABLE `voices` (
   KEY `user_id` (`user_id`),
   CONSTRAINT `voices_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-

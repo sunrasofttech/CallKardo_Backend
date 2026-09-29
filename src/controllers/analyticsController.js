@@ -158,6 +158,8 @@ class AnalyticsController {
         activePlan: subscription.activePlan,
         callsUsed: subscription.callsUsed,
         callsRemaining: subscription.callsRemaining,
+        minutesUsed: subscription.minutesUsed,
+        minutesRemaining: subscription.minutesRemaining,
         planExpiry: subscription.expiryDate,
         utilizationPercentage: utilization,
       }, 'Plan utilization analytics retrieved');

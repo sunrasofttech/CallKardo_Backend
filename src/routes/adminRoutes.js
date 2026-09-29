@@ -39,6 +39,7 @@ router.post('/users/reset-password', adminController.resetMerchantPasswordByAdmi
 // Subscription management routes
 router.get('/subscriptions', adminController.getSubscriptions);
 router.get('/subscriptions/history', (req, res, next) => adminController.getSubscriptionHistories(req, res, next));
+router.get('/subscriptions/upgrades/today', adminController.getTodayPlanUpgrades);
 router.get('/subscriptions/:id', adminController.getSubscriptionById);
 router.post('/subscriptions/upgrade', adminController.upgradeMerchantSubscription);
 router.put('/subscriptions/:id', adminController.updateSubscription);
@@ -122,6 +123,7 @@ router.delete('/categories/:id', categoryController.delete);
 
 // Subscription Plan management routes
 router.get('/plans', PlanController.getAll);
+router.get('/plans/upgrades/today', adminController.getTodayPlanUpgrades);
 router.get('/plans/:id', PlanController.getById);
 router.post('/plans', PlanController.create);
 router.put('/plans/:id', PlanController.update);
@@ -194,4 +196,3 @@ router.get('/merchant-calls/reports/:sessionId', adminController.getMerchantCall
 router.get('/merchant-calls/:sessionId', adminController.getMerchantCallReportDetails);
 
 module.exports = router;
-

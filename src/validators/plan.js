@@ -13,6 +13,10 @@ const createPlanSchema = Joi.object({
     'number.min': 'Call limit must be -1 (unlimited) or greater',
     'any.required': 'Call limit is required',
   }),
+  minuteLimit: Joi.number().integer().min(-1).required().messages({
+    'number.min': 'Minute limit must be -1 (unlimited) or greater',
+    'any.required': 'Minute limit is required',
+  }),
   maxConcurrentCalls: Joi.number().integer().min(1).required().messages({
     'number.min': 'Max concurrent calls must be at least 1',
     'any.required': 'Max concurrent calls is required',
@@ -23,6 +27,7 @@ const updatePlanSchema = Joi.object({
   name: Joi.string().min(2).max(50).optional(),
   price: Joi.number().min(0).optional(),
   callLimit: Joi.number().integer().min(-1).optional(),
+  minuteLimit: Joi.number().integer().min(-1).optional(),
   maxConcurrentCalls: Joi.number().integer().min(1).optional(),
 }).unknown(true);
 

@@ -675,6 +675,7 @@ class AuthController {
               name: 'Starter',
               price: 0.00,
               callLimit: 15,
+              minuteLimit: 15,
               maxConcurrentCalls: 1,
             }, { transaction: t });
           }
@@ -691,6 +692,8 @@ class AuthController {
             expiryDate,
             callsUsed: 0,
             callsRemaining: starterPlan.callLimit,
+            minutesUsed: 0,
+            minutesRemaining: starterPlan.minuteLimit,
             status: 'active',
           }, { transaction: t });
 
@@ -1228,6 +1231,8 @@ class AuthController {
             expiryDate: subRecord.expiryDate,
             callsUsed: subRecord.callsUsed,
             callsRemaining: subRecord.callsRemaining,
+            minutesUsed: subRecord.minutesUsed,
+            minutesRemaining: subRecord.minutesRemaining,
             status: subRecord.status,
             isTrial,
             plan: subRecord.plan
@@ -1236,6 +1241,7 @@ class AuthController {
                   name: subRecord.plan.name,
                   price: subRecord.plan.price,
                   callLimit: subRecord.plan.callLimit,
+                  minuteLimit: subRecord.plan.minuteLimit,
                   maxConcurrentCalls: subRecord.plan.maxConcurrentCalls,
                 }
               : null,

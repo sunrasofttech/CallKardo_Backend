@@ -71,11 +71,19 @@ async function processCallAnalysis(event) {
       if (defaultUser) finalUserId = defaultUser.id;
     }
 
+    const sessionDuration = session.startTime && session.endTime
+      ? Math.max(0, Math.ceil((new Date(session.endTime) - new Date(session.startTime)) / 1000))
+      : 0;
+    const billableDuration = Math.max(0, Number(duration) || 0, sessionDuration);
+
     const finalTranscript = (transcript && transcript.trim().length > 0) ? transcript : '';
 
     // Check if CallReport already exists for this session
     const existingReport = await CallReport.findOne({ where: { callSessionId } });
     if (existingReport) {
+      if (finalUserId && (!session.callType || ['campaign', 'customer_callback', 'call_forwarding'].includes(session.callType))) {
+        await SubscriptionService.recordCallUsage(finalUserId, Math.max(existingReport.duration || 0, billableDuration), callSessionId);
+      }
       let needsUpdate = false;
 
       // Update transcript if incoming is longer/more detailed or existing is empty
@@ -89,8 +97,8 @@ async function processCallAnalysis(event) {
         needsUpdate = true;
       }
       // Update duration if incoming is longer
-      if (duration && duration > (existingReport.duration || 0)) {
-        existingReport.duration = duration;
+      if (billableDuration > (existingReport.duration || 0)) {
+        existingReport.duration = billableDuration;
         needsUpdate = true;
       }
       // Update customer ID if existing is missing
@@ -214,7 +222,7 @@ async function processCallAnalysis(event) {
         customerId: finalCustomerId,
         transcript: finalTranscript,
         summary: analysis.summary,
-        duration: duration || 0,
+        duration: billableDuration,
         outcome: analysis.outcome,
         sentiment: analysis.sentiment,
         leadScore: analysis.leadScore,
@@ -226,7 +234,7 @@ async function processCallAnalysis(event) {
       await report.update({
         ...(finalTranscript && (!report.transcript || report.transcript.length < finalTranscript.length) && { transcript: finalTranscript, summary: analysis.summary, outcome: analysis.outcome, sentiment: analysis.sentiment, leadScore: analysis.leadScore }),
         ...(recordingUrl && !report.recordingUrl && { recordingUrl }),
-        ...(duration && duration > (report.duration || 0) && { duration }),
+        ...(billableDuration > (report.duration || 0) && { duration: billableDuration }),
         ...(finalCustomerId && !report.customerId && { customerId: finalCustomerId }),
       });
     }
@@ -297,7 +305,7 @@ async function processCallAnalysis(event) {
     // 7. Deduct call credit from merchant's subscription (only for regular merchant customer calls)
     if (created && finalUserId && (!session.callType || ['campaign', 'customer_callback', 'call_forwarding'].includes(session.callType))) {
       try {
-        await SubscriptionService.recordCallUsage(finalUserId);
+        await SubscriptionService.recordCallUsage(finalUserId, Math.max(report.duration || 0, billableDuration), callSessionId);
       } catch (subErr) {
         console.warn(`[AI Worker] Failed to record call usage for user ${finalUserId}: ${subErr.message}`);
       }

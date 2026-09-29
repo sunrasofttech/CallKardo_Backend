@@ -39,6 +39,7 @@ const adminUpgradeSubscriptionSchema = Joi.object({
     'any.required': 'Plan ID is required',
   }),
   customCallLimit: Joi.number().integer().min(-1).optional(),
+  customMinuteLimit: Joi.number().integer().min(-1).optional(),
   durationMonths: Joi.number().integer().min(1).max(36).default(1),
   expiryDate: Joi.date().iso().optional(),
   status: Joi.string().valid('active', 'expired', 'cancelled').default('active'),
@@ -48,6 +49,8 @@ const adminUpdateSubscriptionSchema = Joi.object({
   planId: Joi.string().uuid().optional(),
   callsRemaining: Joi.number().integer().min(-1).optional(),
   callsUsed: Joi.number().integer().min(0).optional(),
+  minutesRemaining: Joi.number().integer().min(-1).optional(),
+  minutesUsed: Joi.number().integer().min(0).optional(),
   expiryDate: Joi.date().iso().optional().allow(null),
   status: Joi.string().valid('active', 'expired', 'cancelled').optional(),
 });
@@ -104,5 +107,4 @@ module.exports = {
   sendNotificationSchema,
   adminResetMerchantPasswordSchema,
 };
-
 

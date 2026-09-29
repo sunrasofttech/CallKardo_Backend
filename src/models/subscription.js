@@ -46,6 +46,16 @@ Subscription.init(
       defaultValue: 0,
       field: 'calls_remaining',
     },
+    minutesUsed: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      field: 'minutes_used',
+    },
+    minutesRemaining: {
+      type: DataTypes.INTEGER,
+      defaultValue: -1, // -1 means unlimited
+      field: 'minutes_remaining',
+    },
     status: {
       type: DataTypes.STRING(20),
       defaultValue: 'active', // active, expired, cancelled

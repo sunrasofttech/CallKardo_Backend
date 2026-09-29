@@ -1208,6 +1208,7 @@ class PaymentService {
     expiryDate.setMonth(now.getMonth() + 1);
 
     const callLimitVal = plan.callLimit === -1 ? 999999 : plan.callLimit;
+    const minuteLimitVal = plan.minuteLimit === -1 ? -1 : plan.minuteLimit;
 
     if (!subscription) {
       subscription = await Subscription.create({
@@ -1218,6 +1219,8 @@ class PaymentService {
         expiryDate,
         callsUsed: 0,
         callsRemaining: callLimitVal,
+        minutesUsed: 0,
+        minutesRemaining: minuteLimitVal,
         status: 'active',
       });
     } else {
@@ -1227,6 +1230,9 @@ class PaymentService {
         startDate: now,
         expiryDate,
         callsRemaining: callLimitVal, // Do not carry forward old calls
+        callsUsed: 0,
+        minutesUsed: 0,
+        minutesRemaining: minuteLimitVal,
         status: 'active',
       });
     }
@@ -1246,6 +1252,8 @@ class PaymentService {
       expiryDate,
       callsLimit: callLimitVal,
       callsUsed: prevCallsUsed,
+      minutesLimit: minuteLimitVal,
+      minutesUsed: 0,
       notes: `Subscribed to ${plan.name} via payment (Order: ${tx.orderId})`,
     }).catch((err) => console.error('[SubscriptionHistory] Error logging online purchase history:', err));
 

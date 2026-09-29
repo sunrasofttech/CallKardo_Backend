@@ -65,6 +65,16 @@ SubscriptionHistory.init(
       defaultValue: 0,
       field: 'calls_used',
     },
+    minutesLimit: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'minutes_limit',
+    },
+    minutesUsed: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      field: 'minutes_used',
+    },
     notes: {
       type: DataTypes.TEXT,
       allowNull: true,

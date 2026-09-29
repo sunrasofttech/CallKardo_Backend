@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { Admin, Agent, CallReport, Campaign, Category, Plan, Setting, Subscription, SubscriptionHistory, User, VobizNumber, Voice, AuditLog, CallSession, Customer, Notification, CallLog, PaymentTransaction, Meeting, MerchantCallback } = require('../models');
 const ResponseBuilder = require('../utils/response');
 const fcmService = require('../services/fcmService');
@@ -121,6 +122,7 @@ class AdminController {
           .toUpperCase() || 'BU';
         const planName = m.subscription?.plan?.name || m.subscription?.activePlan || 'N/A';
         const calls = m.subscription?.callsUsed || 0;
+        const minutes = m.subscription?.minutesUsed || 0;
         const status = m.isVerified ? 'Active' : (m.kycStatus === 'pending' ? 'Pending' : 'Inactive');
         return {
           id: m.id,
@@ -128,6 +130,10 @@ class AdminController {
           initials,
           plan: planName,
           callsCount: calls,
+          callsUsed: calls,
+          callsRemaining: m.subscription?.callsRemaining ?? 0,
+          minutesUsed: minutes,
+          minutesRemaining: m.subscription?.minutesRemaining ?? 0,
           formattedCalls: `${calls.toLocaleString('en-IN')} calls`,
           status,
         };
@@ -730,6 +736,16 @@ class AdminController {
       } else {
         callsRemaining = plan.callLimit === -1 ? 999999 : plan.callLimit;
       }
+      let minutesRemaining;
+      if (req.body.customMinuteLimit !== undefined && req.body.customMinuteLimit !== null) {
+        minutesRemaining = parseInt(req.body.customMinuteLimit, 10);
+      } else {
+        minutesRemaining = plan.minuteLimit === -1 ? -1 : plan.minuteLimit;
+      }
+      if (!Number.isInteger(callsRemaining) || callsRemaining < -1 ||
+          !Number.isInteger(minutesRemaining) || minutesRemaining < -1) {
+        return ResponseBuilder.error(res, 'Call and minute limits must be -1 (unlimited) or non-negative integers', 400);
+      }
 
       let subscription = await Subscription.findOne({ where: { userId: merchant.id } });
       const previousPlanId = subscription ? subscription.planId : null;
@@ -742,13 +758,11 @@ class AdminController {
         startDate: now,
         expiryDate,
         callsRemaining, // Set exactly to the new call limit
+        callsUsed: 0,
+        minutesRemaining,
+        minutesUsed: 0,
         status: req.body.status || 'active',
       };
-
-      // Only reset callsUsed if explicitly requested
-      if (req.body.resetCallsUsed === true) {
-        values.callsUsed = 0;
-      }
 
       if (!subscription) {
         subscription = await Subscription.create({ userId: merchant.id, callsUsed: 0, ...values });
@@ -770,7 +784,9 @@ class AdminController {
         startDate: values.startDate,
         expiryDate: values.expiryDate,
         callsLimit: callsRemaining,
-        callsUsed: values.callsUsed !== undefined ? values.callsUsed : prevCallsUsed,
+        callsUsed: prevCallsUsed,
+        minutesLimit: minutesRemaining,
+        minutesUsed: values.minutesUsed,
         notes: req.body.notes || `Upgraded to ${plan.name} plan by admin`,
       }).catch((err) => console.error('[SubscriptionHistory] Error logging upgrade history:', err));
 
@@ -814,12 +830,22 @@ class AdminController {
         if (!plan) return ResponseBuilder.error(res, 'Plan not found', 404);
         updates.planId = plan.id;
         updates.activePlan = plan.name;
+        updates.callsRemaining = plan.callLimit === -1 ? 999999 : plan.callLimit;
+        updates.callsUsed = 0;
+        updates.minutesRemaining = plan.minuteLimit;
+        updates.minutesUsed = 0;
       }
       if (req.body.callsRemaining !== undefined) {
         updates.callsRemaining = parseInt(req.body.callsRemaining, 10);
       }
       if (req.body.callsUsed !== undefined) {
         updates.callsUsed = parseInt(req.body.callsUsed, 10);
+      }
+      if (req.body.minutesRemaining !== undefined) {
+        updates.minutesRemaining = parseInt(req.body.minutesRemaining, 10);
+      }
+      if (req.body.minutesUsed !== undefined) {
+        updates.minutesUsed = parseInt(req.body.minutesUsed, 10);
       }
       if (req.body.expiryDate !== undefined) {
         updates.expiryDate = req.body.expiryDate ? new Date(req.body.expiryDate) : null;
@@ -846,6 +872,8 @@ class AdminController {
           expiryDate: updates.expiryDate || subscription.expiryDate,
           callsLimit: updates.callsRemaining !== undefined ? updates.callsRemaining : subscription.callsRemaining,
           callsUsed: updates.callsUsed !== undefined ? updates.callsUsed : subscription.callsUsed,
+          minutesLimit: updates.minutesRemaining !== undefined ? updates.minutesRemaining : subscription.minutesRemaining,
+          minutesUsed: updates.minutesUsed !== undefined ? updates.minutesUsed : subscription.minutesUsed,
           notes: req.body.notes || `Plan changed to ${updates.activePlan} by admin`,
         }).catch((err) => console.error('[SubscriptionHistory] Error logging update history:', err));
       }
@@ -3048,13 +3076,13 @@ class AdminController {
           {
             model: Plan,
             as: 'newPlan',
-            attributes: ['id', 'name', 'price', 'callLimit', 'maxConcurrentCalls'],
+            attributes: ['id', 'name', 'price', 'callLimit', 'minuteLimit', 'maxConcurrentCalls'],
             required: false,
           },
           {
             model: Plan,
             as: 'previousPlan',
-            attributes: ['id', 'name', 'price', 'callLimit', 'maxConcurrentCalls'],
+            attributes: ['id', 'name', 'price', 'callLimit', 'minuteLimit', 'maxConcurrentCalls'],
             required: false,
           },
         ],
@@ -3076,6 +3104,45 @@ class AdminController {
         },
         'Subscription upgrade history retrieved successfully'
       );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * List subscription upgrades created today for the admin dashboard.
+   */
+  async getTodayPlanUpgrades(req, res, next) {
+    try {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfTomorrow = new Date(startOfToday);
+      startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+      const upgrades = await SubscriptionHistory.findAll({
+        where: {
+          createdAt: { [Op.gte]: startOfToday, [Op.lt]: startOfTomorrow },
+          actionType: { [Op.in]: ['ADMIN_UPGRADE', 'ADMIN_UPDATE', 'MERCHANT_UPGRADE', 'MERCHANT_PURCHASE'] },
+        },
+        include: [
+          { model: User, as: 'merchant', attributes: ['id', 'businessName', 'email', 'mobile'] },
+          { model: Admin, as: 'admin', attributes: ['id', 'firstName', 'lastName', 'email'], required: false },
+          { model: Plan, as: 'newPlan', attributes: ['id', 'name', 'price', 'callLimit', 'minuteLimit', 'maxConcurrentCalls'], required: false },
+          { model: Plan, as: 'previousPlan', attributes: ['id', 'name', 'price', 'callLimit', 'minuteLimit', 'maxConcurrentCalls'], required: false },
+        ],
+        order: [['createdAt', 'DESC']],
+      });
+
+      const localDate = [
+        startOfToday.getFullYear(),
+        String(startOfToday.getMonth() + 1).padStart(2, '0'),
+        String(startOfToday.getDate()).padStart(2, '0'),
+      ].join('-');
+      return ResponseBuilder.success(res, {
+        date: localDate,
+        total: upgrades.length,
+        upgrades,
+      }, "Today's plan upgrades retrieved successfully");
     } catch (err) {
       next(err);
     }
@@ -3935,4 +4002,3 @@ class AdminController {
 
 const adminController = new AdminController();
 module.exports = adminController;
-

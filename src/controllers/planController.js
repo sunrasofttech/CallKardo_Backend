@@ -46,7 +46,7 @@ class PlanController {
         return ResponseBuilder.error(res, error.details[0].message, 400);
       }
 
-      const { name, price, callLimit, maxConcurrentCalls } = value;
+      const { name, price, callLimit, minuteLimit, maxConcurrentCalls } = value;
       const trimmedName = name.trim();
 
       // Check if plan already exists with same name
@@ -59,6 +59,7 @@ class PlanController {
         name: trimmedName,
         price,
         callLimit,
+        minuteLimit,
         maxConcurrentCalls,
       });
 
@@ -89,7 +90,7 @@ class PlanController {
         return ResponseBuilder.error(res, 'Plan not found', 404);
       }
 
-      const { name, price, callLimit, maxConcurrentCalls } = value;
+      const { name, price, callLimit, minuteLimit, maxConcurrentCalls } = value;
 
       if (name !== undefined) {
         const trimmedName = name.trim();
@@ -108,6 +109,7 @@ class PlanController {
         ...(name !== undefined && { name: name.trim() }),
         ...(price !== undefined && { price }),
         ...(callLimit !== undefined && { callLimit }),
+        ...(minuteLimit !== undefined && { minuteLimit }),
         ...(maxConcurrentCalls !== undefined && { maxConcurrentCalls }),
       });
 

@@ -55,6 +55,7 @@ class SubscriptionController {
       expiryDate.setMonth(now.getMonth() + 1); // 30-day billing cycle
 
       const callLimitVal = targetPlan.callLimit === -1 ? 999999 : targetPlan.callLimit;
+      const minuteLimitVal = targetPlan.minuteLimit === -1 ? -1 : targetPlan.minuteLimit;
 
       if (!subscription) {
         subscription = await Subscription.create({
@@ -64,7 +65,9 @@ class SubscriptionController {
           startDate: now,
           expiryDate,
           callsUsed: 0,
-          callsRemaining: targetPlan.callLimit,
+          callsRemaining: callLimitVal,
+          minutesUsed: 0,
+          minutesRemaining: minuteLimitVal,
           status: 'active',
         });
       } else {
@@ -74,6 +77,9 @@ class SubscriptionController {
           startDate: now,
           expiryDate,
           callsRemaining: callLimitVal,
+          callsUsed: 0,
+          minutesUsed: 0,
+          minutesRemaining: minuteLimitVal,
           status: 'active',
         });
       }
@@ -93,6 +99,8 @@ class SubscriptionController {
         expiryDate,
         callsLimit: callLimitVal,
         callsUsed: prevCallsUsed,
+        minutesLimit: minuteLimitVal,
+        minutesUsed: 0,
         notes: `Merchant upgraded to ${targetPlan.name} plan`,
       }).catch((err) => console.error('[SubscriptionHistory] Error logging merchant upgrade history:', err));
 

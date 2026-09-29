@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Subscription, Plan, User } = require('../models');
+const { Subscription, Plan, User, CallReport, sequelize } = require('../models');
 const { removeTrialDemoNumber } = require('./trialDemoNumberService');
 
 const NotificationService = require('./notificationService');
@@ -114,10 +114,12 @@ class SubscriptionService {
     // Starter plan: Max 15 calls (Starter has callLimit = 15)
     // Validate call quota. (Starter is free, no credits required but Max 15 calls total)
     // Basic/Pro have limits. Unlimited plans might have callLimit = -1
-    const callLimit = subscription.plan ? subscription.plan.callLimit : -1;
-    
-    if (callLimit !== -1 && subscription.callsRemaining <= 0) {
+    if (subscription.callsRemaining !== -1 && subscription.callsRemaining <= 0) {
       return { isValid: false, reason: 'Call quota limit reached for the current billing cycle.' };
+    }
+
+    if (subscription.minutesRemaining !== -1 && subscription.minutesRemaining <= 0) {
+      return { isValid: false, reason: 'Call-minute quota limit reached for the current billing cycle.' };
     }
 
     return {
@@ -127,18 +129,38 @@ class SubscriptionService {
   }
 
   /**
-   * Deduct 1 call credit and record usage
-   * @param {string} userId 
+   * Deduct one call and the rounded-up duration under a row lock.
+   * @param {string} userId
+   * @param {number} durationSeconds
+   * @param {string} callSessionId
    */
-  async recordCallUsage(userId) {
-    const subscription = await Subscription.findOne({ where: { userId } });
-    if (!subscription) return;
+  async recordCallUsage(userId, durationSeconds = 0, callSessionId) {
+    await sequelize.transaction(async (transaction) => {
+      const report = callSessionId && await CallReport.findOne({
+        where: { callSessionId }, transaction, lock: transaction.LOCK.UPDATE,
+      });
+      if (callSessionId && (!report || report.usageRecorded)) return;
 
-    subscription.callsUsed += 1;
-    if (subscription.callsRemaining > 0) {
-      subscription.callsRemaining -= 1;
-    }
-    await subscription.save();
+      const subscription = await Subscription.findOne({
+        where: { userId }, transaction, lock: transaction.LOCK.UPDATE,
+      });
+      if (!subscription) return;
+
+      subscription.callsUsed = (subscription.callsUsed || 0) + 1;
+      if (subscription.callsRemaining > 0) subscription.callsRemaining -= 1;
+
+      // 1-60 seconds uses one minute; 61-120 seconds uses two.
+      const minutesConsumed = Math.ceil(Math.max(0, Number(durationSeconds) || 0) / 60);
+      subscription.minutesUsed = (subscription.minutesUsed || 0) + minutesConsumed;
+      if (subscription.minutesRemaining !== -1 && subscription.minutesRemaining !== null) {
+        subscription.minutesRemaining = Math.max(0, subscription.minutesRemaining - minutesConsumed);
+      }
+      await subscription.save({ transaction });
+      if (report) {
+        report.usageRecorded = true;
+        await report.save({ transaction });
+      }
+    });
   }
 }
 
