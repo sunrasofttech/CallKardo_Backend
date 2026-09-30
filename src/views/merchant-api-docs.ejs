@@ -37,6 +37,10 @@
                 <li class="pt-4 pb-2"><span class="text-xs uppercase tracking-wider text-gray-400 font-bold">REST API (Pull)</span></li>
                 <li><a href="#get-reports" class="sidebar-link block py-2">Get Call Reports</a></li>
                 <li><a href="#get-report-details" class="sidebar-link block py-2">Get Report Details</a></li>
+                <li><a href="#get-transcript" class="sidebar-link block py-2">Get Call Transcript</a></li>
+                <li><a href="#play-recording" class="sidebar-link block py-2">Play Recording</a></li>
+                <li><a href="#get-customers" class="sidebar-link block py-2">Get Customers</a></li>
+                <li><a href="#get-campaigns" class="sidebar-link block py-2">Get Campaigns</a></li>
                 <li class="pt-4 pb-2"><span class="text-xs uppercase tracking-wider text-gray-400 font-bold">Webhooks (Push)</span></li>
                 <li><a href="#webhook-setup" class="sidebar-link block py-2">Setting up a Webhook</a></li>
                 <li><a href="#webhook-payload" class="sidebar-link block py-2">Webhook Payload</a></li>
@@ -63,7 +67,7 @@
             <section id="authentication" class="mb-12">
                 <h2 class="text-2xl font-semibold text-gray-900 mb-4 border-b pb-2">Authentication</h2>
                 <p class="text-gray-600 leading-relaxed mb-4">
-                    All requests to the CallKardo Public API require an API Key. You can generate or revoke your API Key directly from your Merchant Dashboard.
+                    All requests to the CallKardo Public API require an API Key. To get your API Key, you must <strong>contact your Account Admin directly</strong>.
                 </p>
                 <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r">
                     <p class="text-sm text-blue-800 font-medium">Keep your API key secure. Do not expose it in client-side code.</p>
@@ -108,13 +112,11 @@
       "id": "report-uuid",
       "userId": "merchant-uuid",
       "customerId": "customer-uuid",
-      "transcript": "Hello, I would like to book an appointment...",
       "summary": "Customer wanted to book an appointment for tomorrow.",
       "duration": 45,
       "outcome": "Appointment Booked",
       "sentiment": "Positive",
       "leadScore": 8,
-      "recordingUrl": "https://storage.provider.com/rec.wav",
       "createdAt": "2026-09-30T10:00:00.000Z",
       "customer": {
         "id": "customer-uuid",
@@ -143,6 +145,73 @@
                     </div>
                     <p class="text-gray-600 mb-4">Retrieve the full details of a specific call report by its ID.</p>
                 </section>
+
+                <section id="get-transcript" class="mb-12">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold font-mono">GET</span>
+                        <h3 class="text-xl font-semibold text-gray-900">/reports/:id/transcript</h3>
+                    </div>
+                    <p class="text-gray-600 mb-4">Fetch just the text transcript of a specific call.</p>
+                    <h4 class="font-medium text-gray-900 mb-2">Example Response</h4>
+<pre><code class="language-json">{
+  "success": true,
+  "data": {
+    "transcript": "Hello, I would like to book an appointment..."
+  }
+}</code></pre>
+                </section>
+
+                <section id="play-recording" class="mb-12">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold font-mono">GET</span>
+                        <h3 class="text-xl font-semibold text-gray-900">/reports/:id/recording</h3>
+                    </div>
+                    <p class="text-gray-600 mb-4">Retrieve the audio recording for a call report. This endpoint will either stream the audio file directly or redirect you to the recording URL.</p>
+                    <p class="text-gray-500 text-sm"><strong>Expected Behavior:</strong> Returns an audio file stream or a <code>302 Redirect</code> to the audio URL.</p>
+                </section>
+
+                <section id="get-customers" class="mb-12">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold font-mono">GET</span>
+                        <h3 class="text-xl font-semibold text-gray-900">/customers</h3>
+                    </div>
+                    <p class="text-gray-600 mb-4">Fetch a paginated list of customers in your merchant account.</p>
+                    <h4 class="font-medium text-gray-900 mb-2">Example Response</h4>
+<pre><code class="language-json">{
+  "success": true,
+  "data": [
+    {
+      "id": "customer-uuid",
+      "name": "John Doe",
+      "mobile": "+919876543210",
+      "email": "john@example.com",
+      "tags": "vip",
+      "createdAt": "2026-09-30T10:00:00.000Z"
+    }
+  ]
+}</code></pre>
+                </section>
+
+                <section id="get-campaigns" class="mb-12">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold font-mono">GET</span>
+                        <h3 class="text-xl font-semibold text-gray-900">/campaigns</h3>
+                    </div>
+                    <p class="text-gray-600 mb-4">Fetch a paginated list of your campaigns.</p>
+                    <h4 class="font-medium text-gray-900 mb-2">Example Response</h4>
+<pre><code class="language-json">{
+  "success": true,
+  "data": [
+    {
+      "id": "campaign-uuid",
+      "name": "October Promo",
+      "status": "running",
+      "startTime": "2026-10-01T10:00:00.000Z",
+      "createdAt": "2026-09-30T10:00:00.000Z"
+    }
+  ]
+}</code></pre>
+                </section>
             </div>
 
             <!-- Webhooks Section -->
@@ -154,7 +223,7 @@
                         Webhooks allow your CRM to receive real-time data immediately after an AI call is completed and analyzed. Instead of constantly polling the API, CallKardo will send an HTTP POST request to your specified URL.
                     </p>
                     <p class="text-gray-600 mb-4">
-                        Configure your Webhook URL in the <strong>Integration Settings</strong> of your Merchant Dashboard.
+                        To configure a Webhook URL, you must <strong>contact your Account Admin directly</strong> and provide them with your endpoint URL.
                     </p>
                     <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-r">
                         <p class="text-sm text-yellow-800 font-medium">Your endpoint must accept POST requests with a JSON body and should return a 200 OK status within 5 seconds. We recommend queuing the payload on your end for processing.</p>
