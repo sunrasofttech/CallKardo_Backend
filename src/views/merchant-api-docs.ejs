@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CallKardo Merchant API & Webhooks Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .sidebar-link { transition: all 0.2s; }
+        .sidebar-link:hover { color: #3b82f6; background-color: #eff6ff; padding-left: 0.5rem; border-radius: 0.25rem; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Header -->
+    <header class="bg-white border-b sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">CallKardo</span>
+                    <span class="ml-2 text-gray-500 font-medium border-l border-gray-300 pl-2">Developer Docs</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col md:flex-row gap-8">
+        
+        <!-- Sidebar Navigation -->
+        <nav class="md:w-64 flex-shrink-0 hidden md:block sticky top-24 h-[calc(100vh-8rem)] overflow-y-auto">
+            <ul class="space-y-2 text-sm font-medium text-gray-600">
+                <li><a href="#introduction" class="sidebar-link block py-2">Introduction</a></li>
+                <li><a href="#authentication" class="sidebar-link block py-2">Authentication</a></li>
+                <li class="pt-4 pb-2"><span class="text-xs uppercase tracking-wider text-gray-400 font-bold">REST API (Pull)</span></li>
+                <li><a href="#get-reports" class="sidebar-link block py-2">Get Call Reports</a></li>
+                <li><a href="#get-report-details" class="sidebar-link block py-2">Get Report Details</a></li>
+                <li class="pt-4 pb-2"><span class="text-xs uppercase tracking-wider text-gray-400 font-bold">Webhooks (Push)</span></li>
+                <li><a href="#webhook-setup" class="sidebar-link block py-2">Setting up a Webhook</a></li>
+                <li><a href="#webhook-payload" class="sidebar-link block py-2">Webhook Payload</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 bg-white shadow-sm rounded-xl p-6 md:p-10 border border-gray-100">
+            
+            <section id="introduction" class="mb-12">
+                <h1 class="text-3xl font-bold text-gray-900 mb-4">Merchant CRM Integration</h1>
+                <p class="text-gray-600 leading-relaxed mb-4">
+                    Welcome to the CallKardo Merchant Integration documentation. This guide explains how you can seamlessly sync your AI call reports and customer data with your existing CRM.
+                </p>
+                <p class="text-gray-600 leading-relaxed">
+                    We offer two integration methods:
+                </p>
+                <ul class="list-disc pl-5 mt-2 text-gray-600 space-y-2">
+                    <li><strong class="text-gray-900">REST API (Pull):</strong> You can query our endpoints on-demand to fetch historical call reports and customer details.</li>
+                    <li><strong class="text-gray-900">Webhooks (Push):</strong> Real-time push notifications sent directly to your server the moment an AI call is completed and analyzed.</li>
+                </ul>
+            </section>
+
+            <section id="authentication" class="mb-12">
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4 border-b pb-2">Authentication</h2>
+                <p class="text-gray-600 leading-relaxed mb-4">
+                    All requests to the CallKardo Public API require an API Key. You can generate or revoke your API Key directly from your Merchant Dashboard.
+                </p>
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r">
+                    <p class="text-sm text-blue-800 font-medium">Keep your API key secure. Do not expose it in client-side code.</p>
+                </div>
+                <p class="text-gray-600 mb-2">Include the API key in the headers of your HTTP requests using the <code>x-api-key</code> header:</p>
+                <pre><code class="language-http">x-api-key: ck_live_12345abcdef...</code></pre>
+            </section>
+
+            <!-- REST API Section -->
+            <div class="mb-12 border-t pt-10">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">REST API Endpoints</h2>
+                <p class="text-gray-500 mb-8">Base URL: <code>https://api.your-callkardo-domain.com/api/v1/public</code></p>
+
+                <section id="get-reports" class="mb-12">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold font-mono">GET</span>
+                        <h3 class="text-xl font-semibold text-gray-900">/reports</h3>
+                    </div>
+                    <p class="text-gray-600 mb-4">Fetch a paginated list of all AI call reports associated with your merchant account.</p>
+                    
+                    <h4 class="font-medium text-gray-900 mb-2">Query Parameters (Optional)</h4>
+                    <div class="overflow-x-auto mb-6">
+                        <table class="min-w-full text-sm text-left text-gray-500 border">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr><th class="px-4 py-3 border-b">Parameter</th><th class="px-4 py-3 border-b">Type</th><th class="px-4 py-3 border-b">Description</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white border-b"><td class="px-4 py-3 font-medium text-gray-900">page</td><td class="px-4 py-3">integer</td><td class="px-4 py-3">Page number (default: 1)</td></tr>
+                                <tr class="bg-gray-50 border-b"><td class="px-4 py-3 font-medium text-gray-900">limit</td><td class="px-4 py-3">integer</td><td class="px-4 py-3">Records per page (default: 50)</td></tr>
+                                <tr class="bg-white border-b"><td class="px-4 py-3 font-medium text-gray-900">startDate</td><td class="px-4 py-3">string</td><td class="px-4 py-3">ISO 8601 Date String (e.g. 2026-09-01T00:00:00Z)</td></tr>
+                                <tr class="bg-gray-50 border-b"><td class="px-4 py-3 font-medium text-gray-900">endDate</td><td class="px-4 py-3">string</td><td class="px-4 py-3">ISO 8601 Date String</td></tr>
+                                <tr class="bg-white"><td class="px-4 py-3 font-medium text-gray-900">outcome</td><td class="px-4 py-3">string</td><td class="px-4 py-3">Filter by specific outcome (e.g., "Appointment Booked")</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h4 class="font-medium text-gray-900 mb-2">Example Response</h4>
+<pre><code class="language-json">{
+  "success": true,
+  "data": [
+    {
+      "id": "report-uuid",
+      "userId": "merchant-uuid",
+      "customerId": "customer-uuid",
+      "transcript": "Hello, I would like to book an appointment...",
+      "summary": "Customer wanted to book an appointment for tomorrow.",
+      "duration": 45,
+      "outcome": "Appointment Booked",
+      "sentiment": "Positive",
+      "leadScore": 8,
+      "recordingUrl": "https://storage.provider.com/rec.wav",
+      "createdAt": "2026-09-30T10:00:00.000Z",
+      "customer": {
+        "id": "customer-uuid",
+        "name": "John Doe",
+        "mobile": "+919876543210"
+      },
+      "session": {
+        "status": "completed",
+        "direction": "outbound"
+      }
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "page": 1,
+    "limit": 50,
+    "totalPages": 1
+  }
+}</code></pre>
+                </section>
+
+                <section id="get-report-details" class="mb-12">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold font-mono">GET</span>
+                        <h3 class="text-xl font-semibold text-gray-900">/reports/:id</h3>
+                    </div>
+                    <p class="text-gray-600 mb-4">Retrieve the full details of a specific call report by its ID.</p>
+                </section>
+            </div>
+
+            <!-- Webhooks Section -->
+            <div class="mb-12 border-t pt-10">
+                <h2 class="text-2xl font-bold text-gray-900 mb-4">Webhooks (Push Integration)</h2>
+                
+                <section id="webhook-setup" class="mb-8">
+                    <p class="text-gray-600 leading-relaxed mb-4">
+                        Webhooks allow your CRM to receive real-time data immediately after an AI call is completed and analyzed. Instead of constantly polling the API, CallKardo will send an HTTP POST request to your specified URL.
+                    </p>
+                    <p class="text-gray-600 mb-4">
+                        Configure your Webhook URL in the <strong>Integration Settings</strong> of your Merchant Dashboard.
+                    </p>
+                    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-r">
+                        <p class="text-sm text-yellow-800 font-medium">Your endpoint must accept POST requests with a JSON body and should return a 200 OK status within 5 seconds. We recommend queuing the payload on your end for processing.</p>
+                    </div>
+                </section>
+
+                <section id="webhook-payload">
+                    <h3 class="text-xl font-semibold text-gray-900 mb-4">Webhook Payload Format</h3>
+                    <p class="text-gray-600 mb-4">Whenever a call report is generated, we send the following JSON structure to your endpoint:</p>
+<pre><code class="language-json">{
+  "event": "call_report.created",
+  "data": {
+    "reportId": "report-uuid",
+    "callSessionId": "session-uuid",
+    "campaignId": "campaign-uuid",
+    "customerId": "customer-uuid",
+    "duration": 45,
+    "outcome": "Appointment Booked",
+    "sentiment": "Positive",
+    "leadScore": 8,
+    "transcript": "Hello, I would like to book an appointment...",
+    "summary": "Customer wanted to book an appointment for tomorrow.",
+    "recordingUrl": "https://storage.provider.com/rec.wav",
+    "createdAt": "2026-09-30T10:00:00.000Z"
+  }
+}</code></pre>
+                </section>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-http.min.js"></script>
+</body>
+</html>

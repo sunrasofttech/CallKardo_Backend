@@ -472,6 +472,8 @@ CREATE TABLE `users` (
   `reset_token_expires` datetime DEFAULT NULL,
   `refresh_token` text,
   `fcm_token` varchar(255) DEFAULT NULL,
+  `api_key` varchar(255) DEFAULT NULL,
+  `webhook_url` varchar(255) DEFAULT NULL,
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,
   `deleted_at` datetime DEFAULT NULL,

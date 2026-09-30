@@ -4,6 +4,7 @@ const SubscriptionService = require('../services/subscriptionService');
 const QueueService = require('../services/queueService');
 const { CallReport, CallSession, Customer, CampaignCustomer, Campaign, User, sequelize } = require('../models');
 const NotificationService = require('../services/notificationService');
+const axios = require('axios');
 
 async function startAiWorker() {
   console.log('AI Worker started.');
@@ -299,6 +300,40 @@ async function processCallAnalysis(event) {
           const MerchantOnboardingService = require('../services/merchantOnboardingService');
           await MerchantOnboardingService.scheduleMeeting(finalUserId, null, callSessionId, session.agentId);
         }
+      }
+    }
+
+    // 6.5. Send Webhook to Merchant CRM if configured
+    if (finalUserId) {
+      try {
+        const merchantUser = await User.findByPk(finalUserId);
+        if (merchantUser && merchantUser.webhookUrl) {
+          const webhookPayload = {
+            event: created ? 'call_report.created' : 'call_report.updated',
+            data: {
+              reportId: report.id,
+              callSessionId: callSessionId,
+              campaignId: finalCampaignId,
+              customerId: finalCustomerId,
+              duration: report.duration || billableDuration,
+              outcome: analysis.outcome,
+              sentiment: analysis.sentiment,
+              leadScore: analysis.leadScore,
+              transcript: report.transcript || finalTranscript,
+              summary: report.summary || analysis.summary,
+              recordingUrl: report.recordingUrl || recordingUrl || null,
+              createdAt: report.createdAt || new Date()
+            }
+          };
+          
+          await axios.post(merchantUser.webhookUrl, webhookPayload, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 5000 // Don't hang the worker
+          });
+          console.log(`[AI Worker] Successfully pushed Webhook to ${merchantUser.webhookUrl} for session ${callSessionId}`);
+        }
+      } catch (webhookErr) {
+        console.error(`[AI Worker] Failed to push Webhook for session ${callSessionId}:`, webhookErr.message);
       }
     }
 

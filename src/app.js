@@ -23,6 +23,8 @@ const settingRoutes = require('./routes/settingRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const merchantIntegrationRoutes = require('./routes/merchantIntegrationRoutes');
+const publicApiRoutes = require('./routes/publicApiRoutes');
 
 // Swagger Spec
 const swaggerSpec = require('./utils/swagger');
@@ -161,6 +163,8 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/v1/messages', messageRoutes);
+app.use('/api/v1/merchant-integration', merchantIntegrationRoutes);
+app.use('/api/v1/public', publicApiRoutes);
 
 // Web Tester UI Route
 app.get('/test-call', (req, res) => {
@@ -171,6 +175,11 @@ app.get('/test-call', (req, res) => {
   }
   const wsUrl = `ws://${req.headers.host}/ws/webcall?agentId=${agentId}${customerId ? `&customerId=${customerId}` : ''}`;
   res.render('test-call', { agentId, wsUrl });
+});
+
+// Merchant API Docs Route (Public UI)
+app.get('/merchant-api-docs', (req, res) => {
+  res.render('merchant-api-docs');
 });
 
 // Account Deletion Instructions (Public for Play Store)

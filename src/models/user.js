@@ -107,6 +107,16 @@ User.init(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    apiKey: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'api_key',
+    },
+    webhookUrl: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'webhook_url',
+    },
   },
   {
     sequelize,
