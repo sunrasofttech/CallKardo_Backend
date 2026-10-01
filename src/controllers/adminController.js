@@ -859,14 +859,14 @@ class AdminController {
 
       await subscription.update(updates);
 
-      if (updates.planId && updates.planId !== oldPlanId) {
+      if (Object.keys(updates).length > 0) {
         await SubscriptionHistory.create({
           userId: subscription.userId,
           adminId: req.user?.id || null,
           previousPlanId: oldPlanId,
           previousPlanName: oldPlanName,
-          newPlanId: updates.planId,
-          newPlanName: updates.activePlan,
+          newPlanId: updates.planId || oldPlanId,
+          newPlanName: updates.activePlan || oldPlanName,
           actionType: 'ADMIN_UPDATE',
           startDate: subscription.startDate,
           expiryDate: updates.expiryDate || subscription.expiryDate,
@@ -874,7 +874,7 @@ class AdminController {
           callsUsed: updates.callsUsed !== undefined ? updates.callsUsed : subscription.callsUsed,
           minutesLimit: updates.minutesRemaining !== undefined ? updates.minutesRemaining : subscription.minutesRemaining,
           minutesUsed: updates.minutesUsed !== undefined ? updates.minutesUsed : subscription.minutesUsed,
-          notes: req.body.notes || `Plan changed to ${updates.activePlan} by admin`,
+          notes: req.body.notes || (updates.planId && updates.planId !== oldPlanId ? `Plan changed to ${updates.activePlan} by admin` : 'Subscription updated by admin'),
         }).catch((err) => console.error('[SubscriptionHistory] Error logging update history:', err));
       }
 
