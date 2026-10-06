@@ -79,6 +79,29 @@ class AdminController {
         Meeting.count({ where: { status: 'cancelled' } }),
       ]);
 
+      // Calculate Today's Revenue from PaymentTransaction to match Revenue API
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+      const yesterdayEnd = new Date(todayEnd);
+      yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+
+      const [todaysTxns, yesterdayTxns] = await Promise.all([
+        PaymentTransaction.findAll({
+          where: { status: 'success', createdAt: { [Op.between]: [todayStart, todayEnd] } }
+        }),
+        PaymentTransaction.findAll({
+          where: { status: 'success', createdAt: { [Op.between]: [yesterdayStart, yesterdayEnd] } }
+        })
+      ]);
+
+      const todaysRevenue = todaysTxns.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+      const yesterdayRevenue = yesterdayTxns.reduce((sum, tx) => sum + parseFloat(tx.amount || 0), 0);
+
       // Calculate Revenue dynamically from active subscriptions
       let trialUsersCount = 0;
       let paidSubscriptionsCount = 0;
@@ -105,6 +128,7 @@ class AdminController {
       };
 
       const revenueChange = calcPctChange(currentRevenue, prevRevenue);
+      const todaysRevenueChange = calcPctChange(todaysRevenue, yesterdayRevenue);
       const callsChange = calcPctChange(completedCallsCount, prevCompletedCallsCount);
       const usersChange = calcPctChange(totalUsersCount, prevTotalUsersCount);
       const newBusinessesCount = merchantsCount - prevMerchantsCount;
@@ -161,6 +185,7 @@ class AdminController {
 
       // Stat Cards dynamic formatting
       const revenueFormatted = `₹${currentRevenue.toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
+      const todaysRevenueFormatted = `₹${todaysRevenue.toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
       const callsFormatted = completedCallsCount.toLocaleString('en-IN');
       const usersFormatted = totalUsersCount.toLocaleString('en-IN');
       const activeBusinessesFormatted = merchantsCount.toString();
@@ -173,6 +198,15 @@ class AdminController {
           numericValue: currentRevenue,
           change: revenueChange,
           changeType: parseFloat(revenueChange) >= 0 ? 'positive' : 'negative',
+          icon: 'dollar',
+        },
+        {
+          key: 'todays_revenue',
+          label: 'Today\'s Revenue',
+          value: todaysRevenueFormatted,
+          numericValue: todaysRevenue,
+          change: todaysRevenueChange,
+          changeType: parseFloat(todaysRevenueChange) >= 0 ? 'positive' : 'negative',
           icon: 'dollar',
         },
         {
@@ -246,6 +280,12 @@ class AdminController {
             value: revenueFormatted,
             numericValue: currentRevenue,
             change: revenueChange,
+          },
+          todaysRevenue: {
+            label: 'Today\'s Revenue',
+            value: todaysRevenueFormatted,
+            numericValue: todaysRevenue,
+            change: todaysRevenueChange,
           },
           totalAiCalls: {
             label: 'Total AI Calls',
