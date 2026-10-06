@@ -18,6 +18,50 @@ class AdminController {
       const { Op } = require('sequelize');
       const now = new Date();
       const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const { period, startDate, endDate } = req.query;
+
+      let currentStart, currentEnd, prevStart, prevEnd;
+
+      if (period) {
+        if (period === 'today') {
+          currentStart = new Date(now.setHours(0, 0, 0, 0));
+          currentEnd = new Date(now.setHours(23, 59, 59, 999));
+          prevStart = new Date(currentStart); prevStart.setDate(prevStart.getDate() - 1);
+          prevEnd = new Date(currentEnd); prevEnd.setDate(prevEnd.getDate() - 1);
+        } else if (period === 'yesterday') {
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          currentStart = new Date(yesterday.setHours(0, 0, 0, 0));
+          currentEnd = new Date(yesterday.setHours(23, 59, 59, 999));
+          prevStart = new Date(currentStart); prevStart.setDate(prevStart.getDate() - 1);
+          prevEnd = new Date(currentEnd); prevEnd.setDate(prevEnd.getDate() - 1);
+        } else if (period === '7days') {
+          currentEnd = new Date();
+          currentStart = new Date(); currentStart.setDate(currentStart.getDate() - 7);
+          prevEnd = new Date(currentStart);
+          prevStart = new Date(currentStart); prevStart.setDate(prevStart.getDate() - 7);
+        } else if (period === '30days' || period === '1month') {
+          currentEnd = new Date();
+          currentStart = new Date(); currentStart.setMonth(currentStart.getMonth() - 1);
+          prevEnd = new Date(currentStart);
+          prevStart = new Date(currentStart); prevStart.setMonth(prevStart.getMonth() - 1);
+        }
+      } else if (startDate && endDate) {
+        currentStart = new Date(startDate);
+        currentEnd = new Date(endDate);
+        currentEnd.setHours(23, 59, 59, 999);
+        const diffTime = Math.abs(currentEnd - currentStart);
+        prevEnd = new Date(currentStart);
+        prevStart = new Date(prevEnd.getTime() - diffTime);
+      }
+
+      let currentWhereClause = {};
+      let prevWhereClause = { createdAt: { [Op.lt]: startOfCurrentMonth } };
+
+      if (currentStart && currentEnd) {
+        currentWhereClause = { createdAt: { [Op.lte]: currentEnd } };
+        prevWhereClause = { createdAt: { [Op.lte]: prevEnd } };
+      }
 
       const [
         merchantsCount,
@@ -39,27 +83,27 @@ class AdminController {
         completedMeetingsCount,
         cancelledMeetingsCount,
       ] = await Promise.all([
-        User.count({ where: { role: 'merchant' } }),
-        User.count({ where: { role: 'merchant', createdAt: { [Op.lt]: startOfCurrentMonth } } }),
-        Subscription.count({ where: { status: 'active' } }),
-        Subscription.count({ where: { status: 'active', createdAt: { [Op.lt]: startOfCurrentMonth } } }),
-        Agent.count(),
-        VobizNumber.count({ where: { status: 'active' } }),
-        Campaign.count({ where: { status: 'running' } }),
-        CallReport.count(),
-        CallReport.count({ where: { createdAt: { [Op.lt]: startOfCurrentMonth } } }),
-        User.count(),
-        User.count({ where: { createdAt: { [Op.lt]: startOfCurrentMonth } } }),
+        User.count({ where: { role: 'merchant', ...currentWhereClause } }),
+        User.count({ where: { role: 'merchant', ...prevWhereClause } }),
+        Subscription.count({ where: { status: 'active', ...currentWhereClause } }),
+        Subscription.count({ where: { status: 'active', ...prevWhereClause } }),
+        Agent.count({ where: currentWhereClause }),
+        VobizNumber.count({ where: { status: 'active', ...currentWhereClause } }),
+        Campaign.count({ where: { status: 'running', ...currentWhereClause } }),
+        CallReport.count({ where: currentWhereClause }),
+        CallReport.count({ where: prevWhereClause }),
+        User.count({ where: currentWhereClause }),
+        User.count({ where: prevWhereClause }),
         Subscription.findAll({
-          where: { status: 'active' },
+          where: { status: 'active', ...currentWhereClause },
           include: [{ model: Plan, as: 'plan' }],
         }).catch(() => []),
         Subscription.findAll({
-          where: { status: 'active', createdAt: { [Op.lt]: startOfCurrentMonth } },
+          where: { status: 'active', ...prevWhereClause },
           include: [{ model: Plan, as: 'plan' }],
         }).catch(() => []),
         User.findAll({
-          where: { role: 'merchant' },
+          where: { role: 'merchant', ...currentWhereClause },
           limit: 5,
           order: [['createdAt', 'DESC']],
           include: [
@@ -67,6 +111,7 @@ class AdminController {
           ],
         }).catch(() => []),
         Subscription.findAll({
+          where: currentWhereClause,
           limit: 5,
           order: [['createdAt', 'DESC']],
           include: [
@@ -74,28 +119,26 @@ class AdminController {
             { model: Plan, as: 'plan' },
           ],
         }).catch(() => []),
-        Meeting.count(),
-        Meeting.count({ where: { status: 'completed' } }),
-        Meeting.count({ where: { status: 'cancelled' } }),
+        Meeting.count({ where: currentWhereClause }),
+        Meeting.count({ where: { status: 'completed', ...currentWhereClause } }),
+        Meeting.count({ where: { status: 'cancelled', ...currentWhereClause } }),
       ]);
 
-      // Calculate Today's Revenue from PaymentTransaction to match Revenue API
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
-
-      const yesterdayStart = new Date(todayStart);
-      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-      const yesterdayEnd = new Date(todayEnd);
-      yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+      // Calculate Today's / Period Revenue from PaymentTransaction
+      const periodStart = currentStart || new Date(new Date().setHours(0, 0, 0, 0));
+      const periodEnd = currentEnd || new Date(new Date().setHours(23, 59, 59, 999));
+      
+      const prevPeriodStart = prevStart || new Date(periodStart.getTime());
+      if (!currentStart) prevPeriodStart.setDate(prevPeriodStart.getDate() - 1);
+      const prevPeriodEnd = prevEnd || new Date(periodEnd.getTime());
+      if (!currentEnd) prevPeriodEnd.setDate(prevPeriodEnd.getDate() - 1);
 
       const [todaysTxns, yesterdayTxns] = await Promise.all([
         PaymentTransaction.findAll({
-          where: { status: 'success', createdAt: { [Op.between]: [todayStart, todayEnd] } }
+          where: { status: 'success', createdAt: { [Op.between]: [periodStart, periodEnd] } }
         }),
         PaymentTransaction.findAll({
-          where: { status: 'success', createdAt: { [Op.between]: [yesterdayStart, yesterdayEnd] } }
+          where: { status: 'success', createdAt: { [Op.between]: [prevPeriodStart, prevPeriodEnd] } }
         })
       ]);
 
@@ -189,6 +232,8 @@ class AdminController {
       const callsFormatted = completedCallsCount.toLocaleString('en-IN');
       const usersFormatted = totalUsersCount.toLocaleString('en-IN');
       const activeBusinessesFormatted = merchantsCount.toString();
+      
+      const revenueCardLabel = currentStart ? 'Period Revenue' : 'Today\'s Revenue';
 
       const statCards = [
         {
@@ -202,7 +247,7 @@ class AdminController {
         },
         {
           key: 'todays_revenue',
-          label: 'Today\'s Revenue',
+          label: revenueCardLabel,
           value: todaysRevenueFormatted,
           numericValue: todaysRevenue,
           change: todaysRevenueChange,
@@ -282,7 +327,7 @@ class AdminController {
             change: revenueChange,
           },
           todaysRevenue: {
-            label: 'Today\'s Revenue',
+            label: revenueCardLabel,
             value: todaysRevenueFormatted,
             numericValue: todaysRevenue,
             change: todaysRevenueChange,
